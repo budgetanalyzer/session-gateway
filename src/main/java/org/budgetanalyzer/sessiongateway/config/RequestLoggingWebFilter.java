@@ -4,11 +4,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
+
 import reactor.core.publisher.Mono;
 
-/**
- * Web filter to log all incoming requests for debugging OAuth2 callback issues.
- */
+/** Web filter to log all incoming requests for debugging OAuth2 callback issues. */
 @Component
 public class RequestLoggingWebFilter implements WebFilter {
 

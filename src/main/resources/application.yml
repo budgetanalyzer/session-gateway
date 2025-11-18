@@ -1,5 +1,9 @@
 server:
   port: 8081
+  # Phase 6 Fix: Enable forward headers strategy for WebFlux
+  # This ensures Spring Security correctly constructs redirect URIs when behind proxies
+  # Without this, the redirect_uri sent to Auth0 may be incorrect
+  forward-headers-strategy: framework
 
 logging:
   level:
@@ -53,8 +57,12 @@ spring:
   # Spring Cloud Gateway routes
   cloud:
     gateway:
+      # Global configuration for all routes
       server:
         webflux:
+          httpclient:
+            # Increase Wiretap logging to debug headers being sent
+            wiretap: true
           routes:
             # Route all /api/* requests to NGINX gateway (backend APIs)
             - id: api-route
@@ -62,10 +70,8 @@ spring:
               predicates:
                 - Path=/api/**
               filters:
-                # Phase 2 Task 2.4: TokenRefresh filter checks and refreshes tokens before they expire
-                - TokenRefresh=
-                # Phase 2 Task 2.3: TokenRelay filter forwards JWT to downstream services
-                - TokenRelay=
+                # Phase 2: OAuth2 token forwarding handled by OAuth2TokenRelayGatewayFilter (WebFilter)
+                # TokenRelay and TokenRefresh filters are not compatible with Spring Cloud Gateway Server
                 - StripPrefix=0  # Keep the /api prefix when forwarding
 
             # Route all frontend requests to NGINX gateway (static files and React app)

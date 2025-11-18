@@ -52,9 +52,7 @@ public class OAuth2ClientConfig {
     return new LoggingServerOAuth2AuthorizationRequestResolver(resolver);
   }
 
-  /**
-   * Wrapper that logs authorization requests for debugging.
-   */
+  /** Wrapper that logs authorization requests for debugging. */
   private static class LoggingServerOAuth2AuthorizationRequestResolver
       implements ServerOAuth2AuthorizationRequestResolver {
 

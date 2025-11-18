@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
+
 import reactor.core.publisher.Mono;
 
 /**
@@ -26,10 +27,11 @@ public class RequestLoggingFilter implements WebFilter {
     System.err.println("==== INCOMING REQUEST ====");
     System.err.println("Method: " + method);
     System.err.println("Path: " + path);
-    System.err.println("Has Authorization header: "
-        + exchange.getRequest().getHeaders().containsKey("Authorization"));
-    System.err.println("Has Cookie header: "
-        + exchange.getRequest().getHeaders().containsKey("Cookie"));
+    System.err.println(
+        "Has Authorization header: "
+            + exchange.getRequest().getHeaders().containsKey("Authorization"));
+    System.err.println(
+        "Has Cookie header: " + exchange.getRequest().getHeaders().containsKey("Cookie"));
 
     return chain
         .filter(exchange)
@@ -37,8 +39,8 @@ public class RequestLoggingFilter implements WebFilter {
             signalType -> {
               System.err.println("==== RESPONSE FOR " + path + " ====");
               System.err.println("Status: " + exchange.getResponse().getStatusCode());
-              System.err.println("Location header: "
-                  + exchange.getResponse().getHeaders().getLocation());
+              System.err.println(
+                  "Location header: " + exchange.getResponse().getHeaders().getLocation());
             });
   }
 }

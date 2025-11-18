@@ -1,8 +1,11 @@
 package org.budgetanalyzer.sessiongateway.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.session.data.redis.config.annotation.web.server.EnableRedisWebSession;
+import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.session.CookieWebSessionIdResolver;
 import org.springframework.web.server.session.WebSessionIdResolver;
 
@@ -23,6 +26,8 @@ import org.springframework.web.server.session.WebSessionIdResolver;
 @Configuration
 @EnableRedisWebSession(maxInactiveIntervalInSeconds = 1800) // 30 minutes
 public class SessionConfig {
+
+  private static final Logger log = LoggerFactory.getLogger(SessionConfig.class);
 
   /**
    * Configures session cookie with security attributes.
@@ -49,4 +54,35 @@ public class SessionConfig {
 
     return resolver;
   }
+
+  /**
+   * Phase 6 Fix: Session debugging filter to log session creation and access.
+   *
+   * <p>This filter helps diagnose session persistence issues by logging: - Session ID - Request
+   * path - Session attributes - Creation time
+   *
+   * @return WebFilter that logs session information
+   */
+  @Bean
+  public WebFilter sessionLoggingFilter() {
+    return (exchange, chain) -> {
+      String path = exchange.getRequest().getPath().value();
+      return exchange
+          .getSession()
+          .doOnNext(
+              session -> {
+                log.info("==== SESSION DEBUG ====");
+                log.info("Path: {}", path);
+                log.info("Session ID: {}", session.getId());
+                log.info("Session creation time: {}", session.getCreationTime());
+                log.info("Session attributes: {}", session.getAttributes().keySet());
+                log.info("=======================");
+              })
+          .then(chain.filter(exchange));
+    };
+  }
+
+  // Phase 6 Note: WebSessionManager bean is automatically configured by
+  // @EnableRedisWebSession annotation, so we don't need to define it manually.
+  // Spring Session handles the wiring between Redis and WebFlux session management.
 }
