@@ -1,0 +1,325 @@
+# =============================================================================
+# Comprehensive .gitignore for Spring Boot Microservices + React Projects
+# =============================================================================
+
+# =============================================================================
+# SECRETS & ENVIRONMENT VARIABLES (CRITICAL - Keep these private!)
+# =============================================================================
+.env
+.env.*
+!.env.example
+!.env.template
+*.env
+*.key
+*.pem
+*.p12
+*.jks
+*.keystore
+*.truststore
+secrets/
+credentials/
+config/secrets/
+.secrets
+*.credentials
+application-local.properties
+application-local.yml
+application-dev.properties
+application-dev.yml
+
+# API Keys and tokens
+*-key.json
+*-credentials.json
+service-account*.json
+gcloud-service-key.json
+firebase-adminsdk*.json
+
+# =============================================================================
+# JAVA / SPRING BOOT / MAVEN / GRADLE
+# =============================================================================
+
+# Compiled class files
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+
+# Build directories
+target/
+build/
+out/
+bin/
+.gradle/
+.mvn/wrapper/maven-wrapper.jar
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+# Gradle
+.gradle
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+.gradletasknamecache
+
+# Spring Boot
+spring-boot-starter-*.jar
+HELP.md
+.springBeans
+
+# =============================================================================
+# NODE / NPM / REACT / JAVASCRIPT
+# =============================================================================
+
+# Dependencies
+node_modules/
+jspm_packages/
+bower_components/
+
+# Production builds
+/build
+/dist
+/.next
+/out
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output
+*.lcov
+
+# Cache
+.npm
+.eslintcache
+.stylelintcache
+.cache
+.parcel-cache
+.next/cache
+
+# React Native
+*.jsbundle
+*.hbc
+
+# =============================================================================
+# IDE / EDITOR FILES
+# =============================================================================
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.idea_modules/
+
+# Eclipse
+.classpath
+.project
+.settings/
+.metadata
+.recommenders
+*.launch
+.factorypath
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.code-workspace
+
+# NetBeans
+nbproject/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw?
+
+# =============================================================================
+# OPERATING SYSTEM FILES
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# LOGS & DATABASES
+# =============================================================================
+
+# Log files
+*.log
+logs/
+log/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.h2.db
+
+# H2 Database
+*.h2.db
+*.trace.db
+*.lock.db
+
+# =============================================================================
+# DOCKER & CONTAINERS
+# =============================================================================
+
+# Docker override files (keep base docker-compose.yml)
+docker-compose.override.yml
+docker-compose.local.yml
+.dockerignore.local
+
+# Container data volumes
+data/
+volumes/
+
+# =============================================================================
+# TESTING & COVERAGE
+# =============================================================================
+
+# Test results
+test-results/
+test-reports/
+junit/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# =============================================================================
+# CLOUD & DEPLOYMENT
+# =============================================================================
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# AWS
+.aws/
+
+# Google Cloud
+.gcloud/
+
+# Azure
+.azure/
+
+# =============================================================================
+# TEMPORARY FILES & BACKUPS
+# =============================================================================
+
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*.rej
+*.swp
+*~
+.#*
+\#*#
+
+# =============================================================================
+# MISCELLANEOUS
+# =============================================================================
+
+# Archives (unless intentionally committed)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Generated documentation
+docs/_build/
+site/
+
+# Ignore generated API documentation
+api-docs/
+
+# JaCoCo coverage reports
+*.exec
+jacoco.xml
+
+# SonarQube
+.sonar/
+.scannerwork/
+
+# Local development notes
+TODO.local
+NOTES.local
+scratch/
