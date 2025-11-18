@@ -1,0 +1,100 @@
+server:
+  port: 8081
+
+logging:
+  level:
+    root: WARN
+    org.budgetanalyzer: TRACE
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.security.oauth2: TRACE
+    org.springframework.web.reactive.function.client: TRACE
+
+spring:
+  application:
+    name: session-gateway
+
+  # Redis configuration for session storage
+  data:
+    redis:
+      host: localhost  # Use 'redis' when running in Docker
+      port: 6379
+      timeout: 2000ms
+
+  # Session management with Redis
+  session:
+    store-type: redis
+    timeout: 30m  # 30 minutes session timeout
+    redis:
+      flush-mode: on_save
+      namespace: spring:session
+
+  # OAuth2 Client configuration (Auth0)
+  # Phase 2 Task 2.1: Configure OAuth2 with PKCE flow
+  security:
+    oauth2:
+      client:
+        registration:
+          auth0:
+            client-id: ${AUTH0_CLIENT_ID:placeholder-client-id}
+            client-secret: ${AUTH0_CLIENT_SECRET:placeholder-client-secret}
+            scope:
+              - openid
+              - profile
+              - email
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            # Auth0 specific: request audience to get JWT access token
+            client-authentication-method: client_secret_basic
+        provider:
+          auth0:
+            issuer-uri: ${AUTH0_ISSUER_URI:https://placeholder.auth0.com/}
+
+  # Spring Cloud Gateway routes
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # Route all /api/* requests to NGINX gateway (backend APIs)
+            - id: api-route
+              uri: http://localhost:8080  # Use 'http://nginx-gateway:80' when running in Docker
+              predicates:
+                - Path=/api/**
+              filters:
+                # Phase 2 Task 2.4: TokenRefresh filter checks and refreshes tokens before they expire
+                - TokenRefresh=
+                # Phase 2 Task 2.3: TokenRelay filter forwards JWT to downstream services
+                - TokenRelay=
+                - StripPrefix=0  # Keep the /api prefix when forwarding
+
+            # Route all frontend requests to NGINX gateway (static files and React app)
+            # Phase 5 Task 5.4: Frontend base URL configuration
+            # All non-API requests (except /user, /logout, /oauth2/*) proxy to NGINX
+            # NGINX handles WebSocket proxying to React dev server (Vite) in dev
+            - id: frontend-route
+              uri: http://localhost:8080  # Use 'http://nginx-gateway:80' when running in Docker
+              predicates:
+                - Path=/**
+              filters:
+                - StripPrefix=0
+              # Lower priority than api-route, /user, /logout, /oauth2/* routes
+              order: 10000
+
+# Auth0 specific configuration
+auth0:
+  audience: ${AUTH0_AUDIENCE:https://api.budgetanalyzer.org}
+  logout:
+    return-to: ${AUTH0_LOGOUT_RETURN_TO:http://localhost:8081}  # Where to redirect after logout (Session Gateway)
+
+# Actuator configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
