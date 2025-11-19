@@ -38,7 +38,7 @@ public class SessionConfig {
    */
   @Bean
   public WebSessionIdResolver webSessionIdResolver() {
-    CookieWebSessionIdResolver resolver = new CookieWebSessionIdResolver();
+    var resolver = new CookieWebSessionIdResolver();
 
     resolver.setCookieName("SESSION");
 
@@ -66,7 +66,8 @@ public class SessionConfig {
   @Bean
   public WebFilter sessionLoggingFilter() {
     return (exchange, chain) -> {
-      String path = exchange.getRequest().getPath().value();
+      var path = exchange.getRequest().getPath().value();
+
       return exchange
           .getSession()
           .doOnNext(
@@ -82,7 +83,7 @@ public class SessionConfig {
     };
   }
 
-  // Phase 6 Note: WebSessionManager bean is automatically configured by
+  // Note: WebSessionManager bean is automatically configured by
   // @EnableRedisWebSession annotation, so we don't need to define it manually.
   // Spring Session handles the wiring between Redis and WebFlux session management.
 }

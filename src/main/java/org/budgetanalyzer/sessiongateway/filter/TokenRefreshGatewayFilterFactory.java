@@ -2,7 +2,6 @@ package org.budgetanalyzer.sessiongateway.filter;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +13,6 @@ import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientManager;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
-import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 
@@ -95,21 +93,21 @@ public class TokenRefreshGatewayFilterFactory
    * @return true if token expires within 5 minutes
    */
   private boolean needsRefresh(OAuth2AuthorizedClient authorizedClient) {
-    OAuth2AccessToken accessToken = authorizedClient.getAccessToken();
+    var accessToken = authorizedClient.getAccessToken();
 
     if (accessToken == null || accessToken.getExpiresAt() == null) {
       logger.warn("Access token or expiration is null, skipping refresh check");
       return false;
     }
 
-    Instant now = clock.instant();
-    Instant expiresAt = accessToken.getExpiresAt();
-    Instant refreshThreshold = now.plus(REFRESH_THRESHOLD);
+    var now = clock.instant();
+    var expiresAt = accessToken.getExpiresAt();
+    var refreshThreshold = now.plus(REFRESH_THRESHOLD);
 
-    boolean needsRefresh = expiresAt.isBefore(refreshThreshold);
+    var needsRefresh = expiresAt.isBefore(refreshThreshold);
 
     if (needsRefresh) {
-      Duration timeUntilExpiry = Duration.between(now, expiresAt);
+      var timeUntilExpiry = Duration.between(now, expiresAt);
       logger.debug(
           "Token expires in {} seconds, threshold is {} seconds",
           timeUntilExpiry.getSeconds(),

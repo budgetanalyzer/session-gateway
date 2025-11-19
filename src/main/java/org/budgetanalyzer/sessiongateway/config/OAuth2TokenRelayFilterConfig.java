@@ -1,10 +1,11 @@
 package org.budgetanalyzer.sessiongateway.config;
 
-import org.budgetanalyzer.sessiongateway.filter.OAuth2TokenRelayGlobalFilter;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
+
+import org.budgetanalyzer.sessiongateway.filter.OAuth2TokenRelayGlobalFilter;
 
 /**
  * Configuration for OAuth2 token relay functionality in Spring Cloud Gateway Server.
@@ -14,6 +15,7 @@ import org.springframework.security.oauth2.client.web.server.ServerOAuth2Authori
  * Gateway is not compatible with Spring Cloud Gateway Server (webflux-based).
  */
 @Configuration
+// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2TokenRelayFilterConfig {
 
   /**

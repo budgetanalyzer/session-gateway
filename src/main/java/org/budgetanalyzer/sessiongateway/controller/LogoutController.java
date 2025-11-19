@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
@@ -84,9 +83,9 @@ public class LogoutController {
    */
   private Mono<Void> removeAuthorizedClient(
       ServerWebExchange exchange, Authentication authentication) {
-
     if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
-      String registrationId = oauth2Token.getAuthorizedClientRegistrationId();
+      var registrationId = oauth2Token.getAuthorizedClientRegistrationId();
+
       logger.debug("Removing authorized client: {}", registrationId);
 
       return authorizedClientRepository.removeAuthorizedClient(
@@ -121,10 +120,10 @@ public class LogoutController {
    * @return completion signal
    */
   private Mono<Void> redirectToAuth0Logout(ServerWebExchange exchange) {
-    ServerHttpResponse response = exchange.getResponse();
+    var response = exchange.getResponse();
 
     // Build Auth0 logout URL
-    String auth0LogoutUrl =
+    var auth0LogoutUrl =
         String.format(
             "%s/v2/logout?returnTo=%s&client_id=%s", auth0IssuerUri, returnToUrl, clientId);
 

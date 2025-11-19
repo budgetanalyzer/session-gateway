@@ -53,23 +53,24 @@ import reactor.core.publisher.Mono;
 public class SecurityConfig {
 
   private final ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
-  private final OAuth2LoginDebugger oAuth2LoginDebugger;
+  private final OAuth2LoginDebugger loginDebugger;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
   private final ReactiveClientRegistrationRepository clientRegistrationRepository;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
-      OAuth2LoginDebugger oAuth2LoginDebugger,
+      OAuth2LoginDebugger loginDebugger,
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
       ReactiveClientRegistrationRepository clientRegistrationRepository) {
     this.authorizationRequestResolver = authorizationRequestResolver;
-    this.oAuth2LoginDebugger = oAuth2LoginDebugger;
+    this.loginDebugger = loginDebugger;
     this.authorizedClientRepository = authorizedClientRepository;
     this.clientRegistrationRepository = clientRegistrationRepository;
   }
 
   @Bean
   public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+    // TODO: use loginDebugger
     System.err.println("==== CREATING SECURITY WEB FILTER CHAIN ====");
     System.err.println("==== THIS PROVES THE BEAN IS BEING CREATED ====");
 
@@ -173,6 +174,7 @@ public class SecurityConfig {
             (exchange, chain) -> {
               System.err.println("==== FORCE SESSION CREATION FILTER ====");
               System.err.println("Path: " + exchange.getRequest().getPath().value());
+
               return exchange
                   .getSession()
                   .doOnNext(
@@ -200,6 +202,7 @@ public class SecurityConfig {
    *
    * @return configured authentication success handler
    */
+  // CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
   private ServerAuthenticationSuccessHandler createOAuth2SuccessHandler() {
     return new ServerAuthenticationSuccessHandler() {
       @Override
@@ -218,8 +221,8 @@ public class SecurityConfig {
               .onAuthenticationSuccess(webFilterExchange, authentication);
         }
 
-        OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
-        String clientRegistrationId = oauthToken.getAuthorizedClientRegistrationId();
+        var oauthToken = (OAuth2AuthenticationToken) authentication;
+        var clientRegistrationId = oauthToken.getAuthorizedClientRegistrationId();
 
         System.err.println("Client Registration ID: " + clientRegistrationId);
         System.err.println("Attempting to load/save OAuth2AuthorizedClient...");
@@ -257,17 +260,17 @@ public class SecurityConfig {
                       System.err.println("OAuth2AuthorizedClient NOT found in repository!");
                       System.err.println("Checking exchange attributes...");
 
-                      // Spring Security stores the authorized client in exchange attributes during
-                      // login
-                      // Try common attribute keys
+                      // Spring Security stores the authorized client in exchange attributes
+                      // during login. Try common attribute keys
                       String[] possibleKeys = {
-                        "org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken",
+                        "org.springframework.security.oauth2.client.authentication"
+                            + ".OAuth2AuthenticationToken",
                         "org.springframework.security.oauth2.client.OAuth2AuthorizedClient",
                         "SECURITY_CONTEXT_KEY"
                       };
 
                       for (String key : possibleKeys) {
-                        Object attr = exchange.getAttributes().get(key);
+                        var attr = exchange.getAttributes().get(key);
                         System.err.println("Checking attribute key: " + key + " = " + attr);
                       }
 
@@ -278,9 +281,11 @@ public class SecurityConfig {
                           .forEach((k, v) -> System.err.println("  " + k + " = " + v));
 
                       System.err.println(
-                          "ERROR: Cannot save OAuth2AuthorizedClient - not found in repository or exchange attributes");
+                          "ERROR: Cannot save OAuth2AuthorizedClient - not found in "
+                              + "repository or exchange attributes");
                       System.err.println(
-                          "This will cause TokenRelay to fail. Check Spring Security configuration.");
+                          "This will cause TokenRelay to fail. Check Spring Security "
+                              + "configuration.");
 
                       return Mono.empty();
                     }))

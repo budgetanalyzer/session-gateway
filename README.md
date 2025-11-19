@@ -108,7 +108,7 @@ curl http://localhost:8081/actuator/health
 ### Code Formatting
 
 ```bash
-./gradlew spotlessApply
+./gradlew clean spotlessApply
 ```
 
 ## References

@@ -48,7 +48,7 @@ public class UserController {
 
     logger.debug("User info requested for: {}", authentication.getName());
 
-    Map<String, Object> userInfo = new HashMap<>();
+    var userInfo = new HashMap<String, Object>();
 
     if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
       OAuth2User oauth2User = oauth2Token.getPrincipal();

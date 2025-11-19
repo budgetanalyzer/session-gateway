@@ -10,16 +10,18 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 @Component
+// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2LoginDebugger implements ServerAuthenticationEntryPoint {
+
   private static final Logger log = LoggerFactory.getLogger(OAuth2LoginDebugger.class);
 
   @Override
   public Mono<Void> commence(ServerWebExchange exchange, AuthenticationException ex) {
-    log.error("=== OAUTH2 AUTHENTICATION FAILED ===");
-    log.error("Exception type: {}", ex.getClass().getName());
-    log.error("Exception message: {}", ex.getMessage());
-    log.error("Stack trace:", ex);
-    log.error("====================================");
+    log.warn("=== OAUTH2 AUTHENTICATION FAILED ===");
+    log.warn("Exception type: {}", ex.getClass().getName());
+    log.warn("Exception message: {}", ex.getMessage());
+    log.warn("Stack trace:", ex);
+    log.warn("====================================");
 
     // Continue with default behavior
     return exchange

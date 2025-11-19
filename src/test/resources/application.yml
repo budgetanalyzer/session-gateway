@@ -1,0 +1,58 @@
+spring:
+  # Redis configuration (host/port auto-configured by @ServiceConnection)
+  data:
+    redis:
+      timeout: 2000ms
+
+  # Session configuration
+  session:
+    timeout: 30m
+    redis:
+      namespace: spring:session:test
+
+  # OAuth2 Client (issuer-uri will be overridden by @DynamicPropertySource)
+  security:
+    oauth2:
+      client:
+        registration:
+          auth0:
+            client-id: test-client-id
+            client-secret: test-client-secret
+            scope:
+              - openid
+              - profile
+              - email
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+        provider:
+          auth0:
+            # Will be overridden to point to WireMock
+            issuer-uri: http://localhost:8080/auth0
+
+  # Cloud Gateway routes
+  cloud:
+    gateway:
+      routes:
+        - id: api_route
+          uri: ${api.gateway.url:http://localhost:8080}
+          predicates:
+            - Path=/api/**
+          filters:
+            - TokenRelay=
+        - id: frontend_route
+          uri: ${api.gateway.url:http://localhost:8080}
+          predicates:
+            - Path=/**
+          filters:
+            - TokenRelay=
+
+# Logging
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.security.oauth2: DEBUG
+    org.budgetanalyzer.sessiongateway: DEBUG
+
+# Custom properties
+api:
+  gateway:
+    url: http://localhost:8080

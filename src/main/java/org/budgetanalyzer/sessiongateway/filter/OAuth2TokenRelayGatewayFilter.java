@@ -12,6 +12,7 @@ import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
+
 import reactor.core.publisher.Mono;
 
 /**
@@ -32,6 +33,7 @@ import reactor.core.publisher.Mono;
  *   <li>Adds "Authorization: Bearer {token}" header to the outgoing request
  * </ol>
  */
+// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2TokenRelayGatewayFilter implements WebFilter {
 
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
@@ -56,7 +58,11 @@ public class OAuth2TokenRelayGatewayFilter implements WebFilter {
                     .map(
                         authHeader -> {
                           ServerHttpRequest mutatedRequest =
-                              exchange.getRequest().mutate().header(HttpHeaders.AUTHORIZATION, authHeader).build();
+                              exchange
+                                  .getRequest()
+                                  .mutate()
+                                  .header(HttpHeaders.AUTHORIZATION, authHeader)
+                                  .build();
                           return exchange.mutate().request(mutatedRequest).build();
                         }))
         .defaultIfEmpty(exchange)
