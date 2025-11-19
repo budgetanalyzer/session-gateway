@@ -54,7 +54,7 @@ public class SessionConfig {
     resolver.addCookieInitializer(
         builder -> {
           builder.httpOnly(true); // Prevent JavaScript access (XSS protection)
-          builder.secure(false); // Set to true in production (HTTPS only)
+          builder.secure(true); // HTTPS required for local dev now
           builder.sameSite("Lax"); // Allow OAuth2 redirects while preventing CSRF
           builder.path("/"); // Available for entire application
           builder.maxAge(-1); // Session cookie (deleted when browser closes)

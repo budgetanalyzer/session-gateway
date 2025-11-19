@@ -1,9 +1,16 @@
 server:
-  port: 8081
+  port: 443
   # Phase 6 Fix: Enable forward headers strategy for WebFlux
   # This ensures Spring Security correctly constructs redirect URIs when behind proxies
   # Without this, the redirect_uri sent to Auth0 may be incorrect
   forward-headers-strategy: framework
+  # SSL Configuration for HTTPS
+  ssl:
+    enabled: true
+    key-store: classpath:certs/budgetanalyzer.p12
+    key-store-password: changeit
+    key-store-type: PKCS12
+    key-alias: budgetanalyzer
 
 logging:
   level:
@@ -66,7 +73,7 @@ spring:
           routes:
             # Route all /api/* requests to NGINX gateway (backend APIs)
             - id: api-route
-              uri: http://localhost:8080  # Use 'http://nginx-gateway:80' when running in Docker
+              uri: https://api.budgetanalyzer.localhost  # Use 'https://nginx-gateway:443' when running in Docker
               predicates:
                 - Path=/api/**
               filters:
@@ -79,7 +86,7 @@ spring:
             # All non-API requests (except /user, /logout, /oauth2/*) proxy to NGINX
             # NGINX handles WebSocket proxying to React dev server (Vite) in dev
             - id: frontend-route
-              uri: http://localhost:8080  # Use 'http://nginx-gateway:80' when running in Docker
+              uri: https://api.budgetanalyzer.localhost  # Use 'https://nginx-gateway:443' when running in Docker
               predicates:
                 - Path=/**
               filters:
@@ -91,7 +98,7 @@ spring:
 auth0:
   audience: ${AUTH0_AUDIENCE:https://api.budgetanalyzer.org}
   logout:
-    return-to: ${AUTH0_LOGOUT_RETURN_TO:http://localhost:8081}  # Where to redirect after logout (Session Gateway)
+    return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost}  # Where to redirect after logout (Session Gateway)
 
 # Budget Analyzer Common Configuration
 budgetanalyzer:
