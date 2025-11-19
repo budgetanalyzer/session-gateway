@@ -29,6 +29,10 @@ dependencyManagement {
 }
 
 dependencies {
+    // Budget Analyzer Common Libraries
+    // Provides: exception handling, HTTP logging, correlation IDs, safe logging utilities
+    implementation(libs.service.web)
+
     // Spring Cloud Gateway
     implementation(libs.spring.cloud.starter.gateway.server.webflux)
 

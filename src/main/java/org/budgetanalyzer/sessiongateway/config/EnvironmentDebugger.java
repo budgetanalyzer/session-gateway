@@ -1,11 +1,16 @@
 package org.budgetanalyzer.sessiongateway.config;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+
+import org.budgetanalyzer.core.logging.SafeLogger;
 
 @Component
 public class EnvironmentDebugger {
@@ -19,17 +24,18 @@ public class EnvironmentDebugger {
 
   @EventListener(ApplicationReadyEvent.class)
   public void debugEnvironment() {
-    // TODO: Use SafeLogger
-    log.debug("=== ENVIRONMENT VARIABLES DEBUG ===");
-    log.debug("AUTH0_CLIENT_ID: {}", maskValue(env.getProperty("AUTH0_CLIENT_ID")));
-    log.debug("AUTH0_CLIENT_SECRET: {}", maskValue(env.getProperty("AUTH0_CLIENT_SECRET")));
-    log.debug("AUTH0_ISSUER_URI: {}", env.getProperty("AUTH0_ISSUER_URI"));
-    log.debug("AUTH0_AUDIENCE: {}", env.getProperty("AUTH0_AUDIENCE"));
-    log.debug("AUTH0_LOGOUT_RETURN_TO: {}", env.getProperty("AUTH0_LOGOUT_RETURN_TO"));
-    log.debug("===================================");
+    Map<String, String> auth0Config = new LinkedHashMap<>();
+    auth0Config.put("AUTH0_CLIENT_ID", getPropertyValue("AUTH0_CLIENT_ID"));
+    auth0Config.put("AUTH0_CLIENT_SECRET", getPropertyValue("AUTH0_CLIENT_SECRET"));
+    auth0Config.put("AUTH0_ISSUER_URI", getPropertyValue("AUTH0_ISSUER_URI"));
+    auth0Config.put("AUTH0_AUDIENCE", getPropertyValue("AUTH0_AUDIENCE"));
+    auth0Config.put("AUTH0_LOGOUT_RETURN_TO", getPropertyValue("AUTH0_LOGOUT_RETURN_TO"));
+
+    log.debug("Auth0 Configuration: {}", SafeLogger.toJson(auth0Config));
   }
 
-  private String maskValue(String value) {
+  private String getPropertyValue(String key) {
+    String value = env.getProperty(key);
     if (value == null) {
       return "NOT SET";
     }
@@ -38,6 +44,6 @@ public class EnvironmentDebugger {
       return value + " (PLACEHOLDER - NOT LOADED!)";
     }
 
-    return value.substring(0, Math.min(10, value.length())) + "...";
+    return value;
   }
 }

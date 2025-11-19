@@ -9,6 +9,7 @@ googleJavaFormat = "1.32.0"
 junitPlatform = "1.12.2"
 wiremock = "3.10.0"
 awaitility = "4.2.2"
+serviceCommon = "0.0.1-SNAPSHOT"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
@@ -16,6 +17,9 @@ spring-dependency-management = { id = "io.spring.dependency-management", version
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 
 [libraries]
+# Budget Analyzer Common Libraries
+service-web = { module = "org.budgetanalyzer:service-web", version.ref = "serviceCommon" }
+
 # Spring Cloud
 spring-cloud-dependencies = { module = "org.springframework.cloud:spring-cloud-dependencies", version.ref = "springCloud" }
 

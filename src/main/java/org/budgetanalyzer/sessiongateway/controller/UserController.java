@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -51,7 +50,7 @@ public class UserController {
     var userInfo = new HashMap<String, Object>();
 
     if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
-      OAuth2User oauth2User = oauth2Token.getPrincipal();
+      var oauth2User = oauth2Token.getPrincipal();
 
       // Extract common user attributes
       userInfo.put("sub", oauth2User.getAttribute("sub")); // User ID

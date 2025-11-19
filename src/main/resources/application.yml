@@ -93,6 +93,25 @@ auth0:
   logout:
     return-to: ${AUTH0_LOGOUT_RETURN_TO:http://localhost:8081}  # Where to redirect after logout (Session Gateway)
 
+# Budget Analyzer Common Configuration
+budgetanalyzer:
+  service:
+    http-logging:
+      enabled: true
+      log-level: DEBUG
+      include-request-body: true
+      include-response-body: true
+      include-request-headers: true
+      include-response-headers: true
+      include-query-params: true
+      include-client-ip: true
+      max-body-size: 10000  # 10KB max body size to log
+      # Exclude actuator endpoints from logging
+      exclude-patterns:
+        - /actuator/**
+      # Sensitive headers are automatically masked (Authorization, Cookie, Set-Cookie, etc.)
+      log-errors-only: false
+
 # Actuator configuration
 management:
   endpoints:

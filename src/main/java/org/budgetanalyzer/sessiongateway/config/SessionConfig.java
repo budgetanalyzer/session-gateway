@@ -72,12 +72,12 @@ public class SessionConfig {
           .getSession()
           .doOnNext(
               session -> {
-                log.info("==== SESSION DEBUG ====");
-                log.info("Path: {}", path);
-                log.info("Session ID: {}", session.getId());
-                log.info("Session creation time: {}", session.getCreationTime());
-                log.info("Session attributes: {}", session.getAttributes().keySet());
-                log.info("=======================");
+                log.debug("==== SESSION DEBUG ====");
+                log.debug("Path: {}", path);
+                log.debug("Session ID: {}", session.getId());
+                log.debug("Session creation time: {}", session.getCreationTime());
+                log.debug("Session attributes: {}", session.getAttributes().keySet());
+                log.debug("=======================");
               })
           .then(chain.filter(exchange));
     };
