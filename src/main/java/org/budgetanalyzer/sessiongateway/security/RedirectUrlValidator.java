@@ -71,7 +71,7 @@ public final class RedirectUrlValidator {
     }
 
     // Reject JavaScript and data URLs
-    String lowerUrl = url.toLowerCase();
+    var lowerUrl = url.toLowerCase();
     if (lowerUrl.startsWith("javascript:") || lowerUrl.startsWith("data:")) {
       log.warn("Rejected redirect URL (dangerous protocol): {}", sanitizeForLog(url));
       return false;
@@ -93,7 +93,7 @@ public final class RedirectUrlValidator {
     }
 
     // Truncate very long URLs
-    String truncated = url.length() > 200 ? url.substring(0, 200) + "..." : url;
+    var truncated = url.length() > 200 ? url.substring(0, 200) + "..." : url;
 
     // Remove control characters that could mess with logs
     return truncated.replaceAll("\\p{Cntrl}", "");

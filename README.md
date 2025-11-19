@@ -26,6 +26,7 @@ Browser → Session Gateway (8081) → NGINX (8080) → Backend Services
 - **Spring Cloud Gateway**: Reactive gateway for routing and filtering
 - **Spring Security OAuth2 Client**: Auth0 integration
 - **Spring Session**: Redis-backed session storage
+- **Service Common (service-web)**: Reactive HTTP logging, correlation IDs, safe logging, exception handling
 - **Redis**: Session store (shared with other services)
 
 ## Configuration
@@ -63,21 +64,6 @@ Browser → Session Gateway (8081) → NGINX (8080) → Backend Services
 curl http://localhost:8081/actuator/health
 ```
 
-## Implementation Status
-
-### Phase 1: Infrastructure Setup ✅
-- [x] Basic Spring Cloud Gateway setup
-- [x] Redis session management
-- [x] Basic routing to NGINX
-- [x] Health check endpoint
-
-### Phase 2: OAuth2 Integration (Pending)
-- [ ] Configure Auth0 OAuth2 client (Task 2.1)
-- [ ] Implement session management (Task 2.2)
-- [ ] Add TokenRelay filter (Task 2.3)
-- [ ] Implement proactive token refresh (Task 2.4)
-- [ ] Create logout endpoint (Task 2.5)
-
 ## Security Features
 
 ### Session Cookies
@@ -90,6 +76,19 @@ curl http://localhost:8081/actuator/health
 - JWTs stored server-side in Redis
 - Never exposed to browser JavaScript
 - Automatic refresh before expiration
+
+### Return URL Support
+- **Automatic saved requests**: Users return to originally requested page after login
+- **Explicit parameter**: `/oauth2/authorization/auth0?returnUrl=/settings`
+- **Security validation**: All redirects validated to prevent open redirect attacks
+- **Priority order**: Explicit returnUrl → Saved request → Default `/`
+
+After authentication, users are redirected based on priority:
+1. Explicit `?returnUrl=` parameter if provided
+2. Original requested URL if redirected to login from a protected resource
+3. Default `/` homepage
+
+All returnUrl values are validated by `RedirectUrlValidator` to ensure same-origin only, preventing open redirect vulnerabilities.
 
 ## Development
 
