@@ -2,6 +2,8 @@ package org.budgetanalyzer.sessiongateway.config;
 
 import java.util.function.Consumer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,7 +26,10 @@ import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequ
  * <p>Phase 2 Task 2.1: Configure OAuth2 Client in Session Gateway
  */
 @Configuration
+// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2ClientConfig {
+
+  private static final Logger log = LoggerFactory.getLogger(OAuth2ClientConfig.class);
 
   @Value("${auth0.audience:}")
   private String audience;
@@ -42,7 +47,7 @@ public class OAuth2ClientConfig {
   public ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver(
       ReactiveClientRegistrationRepository clientRegistrationRepository) {
 
-    DefaultServerOAuth2AuthorizationRequestResolver resolver =
+    var resolver =
         new DefaultServerOAuth2AuthorizationRequestResolver(clientRegistrationRepository);
 
     // Customize authorization request to add audience parameter
@@ -53,6 +58,7 @@ public class OAuth2ClientConfig {
   }
 
   /** Wrapper that logs authorization requests for debugging. */
+  // CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
   private static class LoggingServerOAuth2AuthorizationRequestResolver
       implements ServerOAuth2AuthorizationRequestResolver {
 
@@ -77,14 +83,14 @@ public class OAuth2ClientConfig {
 
     private void logRequest(OAuth2AuthorizationRequest request) {
       if (request != null) {
-        System.err.println("==== FINAL AUTHORIZATION REQUEST TO AUTH0 ====");
-        System.err.println("Authorization URI: " + request.getAuthorizationUri());
-        System.err.println("Redirect URI: " + request.getRedirectUri());
-        System.err.println("Client ID: " + request.getClientId());
-        System.err.println("Scopes: " + request.getScopes());
-        System.err.println("State: " + request.getState());
-        System.err.println("Additional params: " + request.getAdditionalParameters());
-        System.err.println("==============================================");
+        log.debug("==== FINAL AUTHORIZATION REQUEST TO AUTH0 ====");
+        log.debug("Authorization URI: " + request.getAuthorizationUri());
+        log.debug("Redirect URI: " + request.getRedirectUri());
+        log.debug("Client ID: " + request.getClientId());
+        log.debug("Scopes: " + request.getScopes());
+        log.debug("State: " + request.getState());
+        log.debug("Additional params: " + request.getAdditionalParameters());
+        log.debug("==============================================");
       }
     }
   }
@@ -105,10 +111,10 @@ public class OAuth2ClientConfig {
       // No additional configuration needed
 
       // Debug logging to see what redirect_uri is being sent to Auth0
-      System.err.println("==== OAUTH2 AUTHORIZATION REQUEST ====");
-      System.err.println("Redirect URI will be set by resolver based on request");
-      System.err.println("Audience: " + audience);
-      System.err.println("=====================================");
+      log.debug("==== OAUTH2 AUTHORIZATION REQUEST ====");
+      log.debug("Redirect URI will be set by resolver based on request");
+      log.debug("Audience: " + audience);
+      log.debug("=====================================");
     };
   }
 }

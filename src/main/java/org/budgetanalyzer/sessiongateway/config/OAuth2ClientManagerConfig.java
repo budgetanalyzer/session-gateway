@@ -3,7 +3,6 @@ package org.budgetanalyzer.sessiongateway.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientManager;
-import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientProvider;
 import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientProviderBuilder;
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.DefaultReactiveOAuth2AuthorizedClientManager;
@@ -18,6 +17,7 @@ import org.springframework.security.oauth2.client.web.server.ServerOAuth2Authori
  * automatic token refresh when tokens are nearing expiration.
  */
 @Configuration
+// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2ClientManagerConfig {
 
   /**
@@ -36,14 +36,14 @@ public class OAuth2ClientManagerConfig {
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
 
     // Configure authorized client provider with refresh token support
-    ReactiveOAuth2AuthorizedClientProvider authorizedClientProvider =
+    var authorizedClientProvider =
         ReactiveOAuth2AuthorizedClientProviderBuilder.builder()
             .authorizationCode() // Support authorization code flow
             .refreshToken() // Enable refresh token support
             .build();
 
     // Create the manager
-    DefaultReactiveOAuth2AuthorizedClientManager authorizedClientManager =
+    var authorizedClientManager =
         new DefaultReactiveOAuth2AuthorizedClientManager(
             clientRegistrationRepository, authorizedClientRepository);
 

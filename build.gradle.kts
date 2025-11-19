@@ -45,6 +45,11 @@ dependencies {
     // Test dependencies
     testImplementation(libs.spring.boot.starter.test)
     testRuntimeOnly(libs.junit.platform.launcher)
+    testImplementation(libs.spring.boot.testcontainers)
+    testImplementation(libs.testcontainers)
+    testImplementation(libs.testcontainers.junit.jupiter)
+    testImplementation(libs.wiremock.standalone)
+    testImplementation(libs.awaitility)
 }
 
 spotless {

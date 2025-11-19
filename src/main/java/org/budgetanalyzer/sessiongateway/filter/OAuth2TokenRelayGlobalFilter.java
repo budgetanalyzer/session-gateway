@@ -15,6 +15,7 @@ import org.springframework.security.oauth2.client.authentication.OAuth2Authentic
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.web.server.ServerWebExchange;
+
 import reactor.core.publisher.Mono;
 
 /**
@@ -37,6 +38,7 @@ import reactor.core.publisher.Mono;
  * <p>This filter has a high order (similar to Netty Write filters) to ensure it executes after
  * security filters but before the routing filter.
  */
+// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2TokenRelayGlobalFilter implements GlobalFilter, Ordered {
 
   private static final Logger log = LoggerFactory.getLogger(OAuth2TokenRelayGlobalFilter.class);
@@ -49,26 +51,41 @@ public class OAuth2TokenRelayGlobalFilter implements GlobalFilter, Ordered {
 
   @Override
   public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-    String path = exchange.getRequest().getPath().toString();
+    var path = exchange.getRequest().getPath().toString();
     log.debug("OAuth2TokenRelayGlobalFilter executing for path: {}", path);
 
     return ReactiveSecurityContextHolder.getContext()
         .map(SecurityContext::getAuthentication)
-        .doOnNext(auth -> log.debug("Authentication found: {}, isAuthenticated: {}",
-            auth.getClass().getSimpleName(), auth.isAuthenticated()))
+        .doOnNext(
+            auth ->
+                log.debug(
+                    "Authentication found: {}, isAuthenticated: {}",
+                    auth.getClass().getSimpleName(),
+                    auth.isAuthenticated()))
         .filter(Authentication::isAuthenticated)
         .filter(authentication -> authentication instanceof OAuth2AuthenticationToken)
         .cast(OAuth2AuthenticationToken.class)
-        .doOnNext(token -> log.debug("OAuth2AuthenticationToken found for client: {}",
-            token.getAuthorizedClientRegistrationId()))
+        .doOnNext(
+            token ->
+                log.debug(
+                    "OAuth2AuthenticationToken found for client: {}",
+                    token.getAuthorizedClientRegistrationId()))
         .flatMap(
             authenticationToken ->
                 loadAuthorizedClient(authenticationToken, exchange)
-                    .doOnNext(client -> log.info("OAuth2AuthorizedClient loaded, adding Authorization header for path: {}", path))
+                    .doOnNext(
+                        client ->
+                            log.info(
+                                "OAuth2AuthorizedClient loaded, adding Authorization header "
+                                    + "for path: {}",
+                                path))
                     .map(OAuth2AuthorizedClient::getAccessToken)
                     .map(this::createAuthorizationHeader)
-                    .doOnNext(authHeader -> log.info("Authorization header created: Bearer [token length={}]",
-                        authHeader.substring(7).length()))
+                    .doOnNext(
+                        authHeader ->
+                            log.info(
+                                "Authorization header created: Bearer [token length={}]",
+                                authHeader.substring(7).length()))
                     .map(
                         authHeader -> {
                           ServerHttpRequest mutatedRequest =
@@ -80,7 +97,9 @@ public class OAuth2TokenRelayGlobalFilter implements GlobalFilter, Ordered {
                           log.info("Authorization header added to request for path: {}", path);
                           return exchange.mutate().request(mutatedRequest).build();
                         }))
-        .doOnError(error -> log.error("Error in OAuth2TokenRelayGlobalFilter: {}", error.getMessage(), error))
+        .doOnError(
+            error ->
+                log.error("Error in OAuth2TokenRelayGlobalFilter: {}", error.getMessage(), error))
         .defaultIfEmpty(exchange)
         .doOnSuccess(v -> log.debug("OAuth2TokenRelayGlobalFilter completed for path: {}", path))
         .flatMap(chain::filter);
@@ -88,7 +107,7 @@ public class OAuth2TokenRelayGlobalFilter implements GlobalFilter, Ordered {
 
   private Mono<OAuth2AuthorizedClient> loadAuthorizedClient(
       OAuth2AuthenticationToken authenticationToken, ServerWebExchange exchange) {
-    String clientRegistrationId = authenticationToken.getAuthorizedClientRegistrationId();
+    var clientRegistrationId = authenticationToken.getAuthorizedClientRegistrationId();
     return authorizedClientRepository.loadAuthorizedClient(
         clientRegistrationId, authenticationToken, exchange);
   }

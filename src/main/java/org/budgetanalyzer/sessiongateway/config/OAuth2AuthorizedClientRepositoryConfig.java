@@ -8,9 +8,10 @@ import org.springframework.security.oauth2.client.web.server.WebSessionServerOAu
 /**
  * Configuration for OAuth2 Authorized Client Repository.
  *
- * <p>This configuration explicitly creates a {@link WebSessionServerOAuth2AuthorizedClientRepository}
- * bean to ensure OAuth2AuthorizedClient objects (containing access tokens, refresh tokens, etc.)
- * are properly persisted to the WebSession, which is backed by Redis.
+ * <p>This configuration explicitly creates a {@link
+ * WebSessionServerOAuth2AuthorizedClientRepository} bean to ensure OAuth2AuthorizedClient objects
+ * (containing access tokens, refresh tokens, etc.) are properly persisted to the WebSession, which
+ * is backed by Redis.
  *
  * <p><strong>Why this is needed:</strong>
  *
@@ -35,18 +36,19 @@ import org.springframework.security.oauth2.client.web.server.WebSessionServerOAu
  *   <li>TokenRelay adds the access token as an Authorization header to proxied requests
  * </ol>
  *
- * @see org.springframework.security.oauth2.client.web.server.WebSessionServerOAuth2AuthorizedClientRepository
  * @see SessionConfig
  */
 @Configuration
+// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2AuthorizedClientRepositoryConfig {
 
   /**
    * Creates a session-based repository for storing OAuth2 authorized clients.
    *
    * <p>The WebSessionServerOAuth2AuthorizedClientRepository stores OAuth2AuthorizedClient objects
-   * in the WebSession under the attribute key:
-   * {@code org.springframework.security.oauth2.client.web.server.WebSessionServerOAuth2AuthorizedClientRepository}.
+   * in the WebSession under the attribute key: {@code
+   * org.springframework.security.oauth2.client.web.server
+   * .WebSessionServerOAuth2AuthorizedClientRepository}.
    *
    * <p>Since WebSession is backed by Spring Session Redis (via @EnableRedisWebSession), the
    * OAuth2AuthorizedClient will be persisted to Redis and available across requests.
