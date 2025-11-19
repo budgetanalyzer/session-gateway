@@ -1,5 +1,7 @@
 package org.budgetanalyzer.sessiongateway.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -52,6 +54,8 @@ import reactor.core.publisher.Mono;
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
+  private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+
   private final ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
   private final OAuth2LoginDebugger loginDebugger;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
@@ -70,9 +74,7 @@ public class SecurityConfig {
 
   @Bean
   public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-    // TODO: use loginDebugger
-    System.err.println("==== CREATING SECURITY WEB FILTER CHAIN ====");
-    System.err.println("==== THIS PROVES THE BEAN IS BEING CREATED ====");
+    logger.info("Creating security web filter chain");
 
     return http.authorizeExchange(
             exchanges ->
@@ -112,13 +114,11 @@ public class SecurityConfig {
               // Add failure handler for debugging
               oauth2.authenticationFailureHandler(
                   (webFilterExchange, ex) -> {
-                    System.err.println("==== OAuth2 Login Failed ====");
-                    System.err.println(
-                        "Request URI: " + webFilterExchange.getExchange().getRequest().getURI());
-                    System.err.println("Error: " + ex.getClass().getName());
-                    System.err.println("Message: " + ex.getMessage());
-                    ex.printStackTrace();
-                    System.err.println("==============================");
+                    logger.error(
+                        "OAuth2 login failed for URI: {}, error: {}",
+                        webFilterExchange.getExchange().getRequest().getURI(),
+                        ex.getMessage(),
+                        ex);
                     return Mono.error(ex);
                   });
             })
@@ -132,7 +132,7 @@ public class SecurityConfig {
         // redirect ALL unauthenticated requests (including API XHR calls) to Auth0
         .exceptionHandling(
             exceptions -> {
-              System.err.println("==== CONFIGURING EXCEPTION HANDLING ====");
+              logger.debug("Configuring exception handling with delegating entry point");
 
               // Create delegating entry point to route based on request path
               DelegatingServerAuthenticationEntryPoint delegatingEntryPoint =
@@ -142,13 +142,12 @@ public class SecurityConfig {
                       new DelegatingServerAuthenticationEntryPoint.DelegateEntry(
                           ServerWebExchangeMatchers.pathMatchers("/api/**"),
                           (exchange, ex) -> {
-                            System.err.println("==== API PATH MATCHED - RETURNING 401 ====");
-                            System.err.println("Path: " + exchange.getRequest().getPath().value());
-                            System.err.println("Exception: " + ex.getClass().getName());
+                            logger.debug(
+                                "API path matched, returning 401 for: {}",
+                                exchange.getRequest().getPath().value());
                             // Set 401 status and commit the response
                             // This prevents OAuth2 filters from overriding with redirect
                             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-                            System.err.println("==== COMMITTING RESPONSE ====");
                             return exchange.getResponse().setComplete();
                           }));
 
@@ -156,14 +155,14 @@ public class SecurityConfig {
               // This is the default for all requests that don't match the above matcher
               delegatingEntryPoint.setDefaultEntryPoint(
                   (exchange, ex) -> {
-                    System.err.println("==== DEFAULT ENTRY POINT - REDIRECTING TO OAUTH2 ====");
-                    System.err.println("Path: " + exchange.getRequest().getPath().value());
-                    System.err.println("Exception: " + ex.getClass().getName());
+                    logger.debug(
+                        "Default entry point triggered, redirecting to OAuth2 for: {}",
+                        exchange.getRequest().getPath().value());
                     return new RedirectServerAuthenticationEntryPoint("/oauth2/authorization/auth0")
                         .commence(exchange, ex);
                   });
 
-              System.err.println("==== DELEGATING ENTRY POINT CONFIGURED ====");
+              logger.debug("Delegating entry point configured successfully");
               exceptions.authenticationEntryPoint(delegatingEntryPoint);
             })
         // Phase 6 Fix: Force session creation before OAuth2 authorization
@@ -172,18 +171,20 @@ public class SecurityConfig {
         // when Auth0 redirects back, causing [authorization_request_not_found]
         .addFilterBefore(
             (exchange, chain) -> {
-              System.err.println("==== FORCE SESSION CREATION FILTER ====");
-              System.err.println("Path: " + exchange.getRequest().getPath().value());
+              logger.debug(
+                  "Force session creation filter for path: {}",
+                  exchange.getRequest().getPath().value());
 
               return exchange
                   .getSession()
                   .doOnNext(
                       session -> {
-                        System.err.println("Session ID: " + session.getId());
-                        System.err.println("Session creation time: " + session.getCreationTime());
+                        logger.debug(
+                            "Session created - ID: {}, creation time: {}",
+                            session.getId(),
+                            session.getCreationTime());
                         // Force session to be created and saved
                         session.getAttributes().put("FORCE_CREATE", true);
-                        System.err.println("Forced session creation");
                       })
                   .then(chain.filter(exchange));
             },
@@ -208,15 +209,16 @@ public class SecurityConfig {
       @Override
       public Mono<Void> onAuthenticationSuccess(
           WebFilterExchange webFilterExchange, Authentication authentication) {
-        System.err.println("==== OAuth2 Login Success Handler ====");
-        System.err.println("Authentication: " + authentication.getClass().getName());
-        System.err.println("Principal: " + authentication.getName());
-        System.err.println("Request URI: " + webFilterExchange.getExchange().getRequest().getURI());
+        logger.debug(
+            "OAuth2 login success - Principal: {}, URI: {}",
+            authentication.getName(),
+            webFilterExchange.getExchange().getRequest().getURI());
 
         // Verify this is OAuth2 authentication
         if (!(authentication instanceof OAuth2AuthenticationToken)) {
-          System.err.println(
-              "ERROR: Not an OAuth2AuthenticationToken, cannot save authorized client");
+          logger.warn(
+              "Not an OAuth2AuthenticationToken, cannot save authorized client. Type: {}",
+              authentication.getClass().getName());
           return new RedirectServerAuthenticationSuccessHandler("/")
               .onAuthenticationSuccess(webFilterExchange, authentication);
         }
@@ -224,8 +226,9 @@ public class SecurityConfig {
         var oauthToken = (OAuth2AuthenticationToken) authentication;
         var clientRegistrationId = oauthToken.getAuthorizedClientRegistrationId();
 
-        System.err.println("Client Registration ID: " + clientRegistrationId);
-        System.err.println("Attempting to load/save OAuth2AuthorizedClient...");
+        logger.debug(
+            "Attempting to load/save OAuth2AuthorizedClient for registration ID: {}",
+            clientRegistrationId);
 
         // Get the exchange for repository operations
         var exchange = webFilterExchange.getExchange();
@@ -236,17 +239,14 @@ public class SecurityConfig {
             .flatMap(
                 authorizedClient -> {
                   // Client exists, explicitly save it to ensure persistence
-                  System.err.println("Found OAuth2AuthorizedClient, explicitly saving...");
-                  System.err.println(
-                      "Access Token: "
-                          + (authorizedClient.getAccessToken() != null
-                              ? "present (expires: "
-                                  + authorizedClient.getAccessToken().getExpiresAt()
-                                  + ")"
-                              : "MISSING"));
-                  System.err.println(
-                      "Refresh Token: "
-                          + (authorizedClient.getRefreshToken() != null ? "present" : "MISSING"));
+                  var accessToken = authorizedClient.getAccessToken();
+                  var refreshToken = authorizedClient.getRefreshToken();
+                  logger.debug(
+                      "Found OAuth2AuthorizedClient - Access Token: {}, Refresh Token: {}",
+                      accessToken != null
+                          ? "present (expires: " + accessToken.getExpiresAt() + ")"
+                          : "MISSING",
+                      refreshToken != null ? "present" : "MISSING");
 
                   return authorizedClientRepository.saveAuthorizedClient(
                       authorizedClient, authentication, exchange);
@@ -257,8 +257,8 @@ public class SecurityConfig {
                 // it
                 Mono.defer(
                     () -> {
-                      System.err.println("OAuth2AuthorizedClient NOT found in repository!");
-                      System.err.println("Checking exchange attributes...");
+                      logger.warn("OAuth2AuthorizedClient NOT found in repository");
+                      logger.debug("Checking exchange attributes for authorized client...");
 
                       // Spring Security stores the authorized client in exchange attributes
                       // during login. Try common attribute keys
@@ -271,44 +271,35 @@ public class SecurityConfig {
 
                       for (String key : possibleKeys) {
                         var attr = exchange.getAttributes().get(key);
-                        System.err.println("Checking attribute key: " + key + " = " + attr);
+                        logger.debug("Checking attribute key: {} = {}", key, attr);
                       }
 
                       // Log all exchange attributes for debugging
-                      System.err.println("All exchange attributes:");
-                      exchange
-                          .getAttributes()
-                          .forEach((k, v) -> System.err.println("  " + k + " = " + v));
+                      if (logger.isDebugEnabled()) {
+                        logger.debug("All exchange attributes:");
+                        exchange.getAttributes().forEach((k, v) -> logger.debug("  {} = {}", k, v));
+                      }
 
-                      System.err.println(
-                          "ERROR: Cannot save OAuth2AuthorizedClient - not found in "
-                              + "repository or exchange attributes");
-                      System.err.println(
-                          "This will cause TokenRelay to fail. Check Spring Security "
-                              + "configuration.");
+                      logger.error(
+                          "Cannot save OAuth2AuthorizedClient - not found in repository or "
+                              + "exchange attributes. This will cause TokenRelay to fail. "
+                              + "Check Spring Security configuration.");
 
                       return Mono.empty();
                     }))
-            .doOnSuccess(
-                v ->
-                    System.err.println(
-                        "OAuth2AuthorizedClient save operation completed (check for errors above)"))
+            .doOnSuccess(v -> logger.debug("OAuth2AuthorizedClient save operation completed"))
             .doOnError(
-                e ->
-                    System.err.println(
-                        "ERROR during OAuth2AuthorizedClient save: " + e.getMessage()))
+                e -> logger.error("Error during OAuth2AuthorizedClient save: {}", e.getMessage()))
             .onErrorResume(
                 e -> {
                   // Log error but don't fail the login
-                  System.err.println("Continuing with redirect despite save error");
-                  e.printStackTrace();
+                  logger.warn("Continuing with redirect despite save error", e);
                   return Mono.empty();
                 })
             .then(
                 Mono.defer(
                     () -> {
-                      System.err.println("Redirecting to: /");
-                      System.err.println("===============================");
+                      logger.debug("Redirecting to: /");
                       return new RedirectServerAuthenticationSuccessHandler("/")
                           .onAuthenticationSuccess(webFilterExchange, authentication);
                     }));
