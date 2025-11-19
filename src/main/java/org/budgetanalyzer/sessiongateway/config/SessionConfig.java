@@ -4,10 +4,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.security.jackson2.SecurityJackson2Modules;
 import org.springframework.session.data.redis.config.annotation.web.server.EnableRedisWebSession;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.session.CookieWebSessionIdResolver;
 import org.springframework.web.server.session.WebSessionIdResolver;
+
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 /**
  * Session management configuration.
@@ -53,6 +61,38 @@ public class SessionConfig {
         });
 
     return resolver;
+  }
+
+  /**
+   * Configures Redis serializer with Spring Security Jackson modules.
+   *
+   * <p>This bean configures Jackson to properly serialize Spring Security objects (including
+   * HttpMethod, OAuth2 authorization requests, etc.) when storing them in Redis sessions.
+   *
+   * <p>Registered modules:
+   *
+   * <ul>
+   *   <li>SecurityJackson2Modules: Spring Security class serializers
+   *   <li>JavaTimeModule: Java 8 date/time serializers
+   * </ul>
+   *
+   * @return Redis serializer with Spring Security support
+   */
+  @Bean
+  public RedisSerializer<Object> springSessionDefaultRedisSerializer() {
+    var mapper = new ObjectMapper();
+
+    // Register Spring Security Jackson modules to handle security classes (HttpMethod, etc.)
+    mapper.registerModules(SecurityJackson2Modules.getModules(getClass().getClassLoader()));
+
+    // Register Java 8 date/time module for proper LocalDateTime/Instant serialization
+    mapper.registerModule(new JavaTimeModule());
+
+    // Enable polymorphic type handling for proper deserialization
+    mapper.activateDefaultTyping(
+        mapper.getPolymorphicTypeValidator(), DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+
+    return new GenericJackson2JsonRedisSerializer(mapper);
   }
 
   /**
