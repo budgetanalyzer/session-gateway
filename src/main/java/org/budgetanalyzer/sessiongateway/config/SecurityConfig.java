@@ -19,9 +19,13 @@ import org.springframework.security.web.server.WebFilterExchange;
 import org.springframework.security.web.server.authentication.RedirectServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.authentication.RedirectServerAuthenticationSuccessHandler;
 import org.springframework.security.web.server.authentication.ServerAuthenticationSuccessHandler;
+import org.springframework.security.web.server.savedrequest.ServerRequestCache;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 
 import reactor.core.publisher.Mono;
+
+import org.budgetanalyzer.sessiongateway.security.RedirectUrlValidator;
+import org.budgetanalyzer.sessiongateway.security.RedisServerRequestCache;
 
 /**
  * Security configuration for Session Gateway.
@@ -72,8 +76,24 @@ public class SecurityConfig {
     this.clientRegistrationRepository = clientRegistrationRepository;
   }
 
+  /**
+   * Creates a Redis-backed ServerRequestCache for saving original request URIs.
+   *
+   * <p>This custom implementation addresses Spring Security WebFlux issue #8967 where {@code
+   * SPRING_SECURITY_SAVED_REQUEST} is not properly saved during OAuth2 login. By storing request
+   * URIs in Redis sessions, we can redirect users to their originally requested page after
+   * authentication.
+   *
+   * @return Redis-backed request cache
+   */
   @Bean
-  public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
+  public ServerRequestCache serverRequestCache() {
+    return new RedisServerRequestCache();
+  }
+
+  @Bean
+  public SecurityWebFilterChain securityWebFilterChain(
+      ServerHttpSecurity http, ServerRequestCache serverRequestCache) {
     logger.info("Creating security web filter chain");
 
     return http.authorizeExchange(
@@ -110,7 +130,7 @@ public class SecurityConfig {
               // Phase 6 Fix: Custom authentication success handler that explicitly saves
               // OAuth2AuthorizedClient
               // This ensures the TokenRelay filter can find the access token
-              oauth2.authenticationSuccessHandler(createOAuth2SuccessHandler());
+              oauth2.authenticationSuccessHandler(createOAuth2SuccessHandler(serverRequestCache));
               // Add failure handler for debugging
               oauth2.authenticationFailureHandler(
                   (webFilterExchange, ex) -> {
@@ -122,6 +142,8 @@ public class SecurityConfig {
                     return Mono.error(ex);
                   });
             })
+        // Configure request cache for saving original request URIs
+        .requestCache(requestCache -> requestCache.requestCache(serverRequestCache))
         // Disable CSRF for API gateway
         // Session cookies with SameSite=Lax + OAuth2 state parameter provide CSRF protection
         // OAuth2 endpoints (login/logout) don't need additional CSRF tokens
@@ -193,18 +215,32 @@ public class SecurityConfig {
   }
 
   /**
-   * Creates a custom authentication success handler that explicitly saves the
-   * OAuth2AuthorizedClient.
+   * Creates a custom authentication success handler that saves the OAuth2AuthorizedClient and
+   * redirects to the originally requested URL.
    *
    * <p>Phase 6 Fix: The default OAuth2 login process should automatically save the authorized
    * client, but in our Spring Security WebFlux + Spring Cloud Gateway + Redis Session
    * configuration, the authorized client is not being persisted. This custom handler explicitly
    * loads and saves it to ensure TokenRelay filter can access the access token.
    *
+   * <p>Return URL Support: After successful authentication, this handler checks for a return URL in
+   * the following priority order:
+   *
+   * <ol>
+   *   <li>Explicit {@code returnUrl} from session (CUSTOM_RETURN_URL attribute)
+   *   <li>Saved request from {@link ServerRequestCache} (original requested URL)
+   *   <li>Default redirect to {@code /}
+   * </ol>
+   *
+   * <p>All URLs are validated using {@link RedirectUrlValidator} to prevent open redirect
+   * vulnerabilities.
+   *
+   * @param serverRequestCache the request cache for retrieving saved request URIs
    * @return configured authentication success handler
    */
   // CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
-  private ServerAuthenticationSuccessHandler createOAuth2SuccessHandler() {
+  private ServerAuthenticationSuccessHandler createOAuth2SuccessHandler(
+      ServerRequestCache serverRequestCache) {
     return new ServerAuthenticationSuccessHandler() {
       @Override
       public Mono<Void> onAuthenticationSuccess(
@@ -219,8 +255,7 @@ public class SecurityConfig {
           logger.warn(
               "Not an OAuth2AuthenticationToken, cannot save authorized client. Type: {}",
               authentication.getClass().getName());
-          return new RedirectServerAuthenticationSuccessHandler("/")
-              .onAuthenticationSuccess(webFilterExchange, authentication);
+          return redirectToUrl("/", webFilterExchange, authentication);
         }
 
         var oauthToken = (OAuth2AuthenticationToken) authentication;
@@ -296,14 +331,104 @@ public class SecurityConfig {
                   logger.warn("Continuing with redirect despite save error", e);
                   return Mono.empty();
                 })
-            .then(
-                Mono.defer(
-                    () -> {
-                      logger.debug("Redirecting to: /");
-                      return new RedirectServerAuthenticationSuccessHandler("/")
-                          .onAuthenticationSuccess(webFilterExchange, authentication);
-                    }));
+            .then(determineRedirectUrl(webFilterExchange, authentication, serverRequestCache));
       }
     };
+  }
+
+  /**
+   * Determines the redirect URL after successful OAuth2 authentication.
+   *
+   * <p>Priority order:
+   *
+   * <ol>
+   *   <li>Explicit returnUrl from session (CUSTOM_RETURN_URL)
+   *   <li>Saved request from ServerRequestCache
+   *   <li>Default to "/"
+   * </ol>
+   *
+   * @param webFilterExchange the web filter exchange
+   * @param authentication the authentication
+   * @param serverRequestCache the request cache for retrieving saved request URIs
+   * @return Mono that completes the redirect
+   */
+  private Mono<Void> determineRedirectUrl(
+      WebFilterExchange webFilterExchange,
+      Authentication authentication,
+      ServerRequestCache serverRequestCache) {
+    var exchange = webFilterExchange.getExchange();
+
+    return exchange
+        .getSession()
+        .flatMap(
+            session -> {
+              // Priority 1: Check for explicit returnUrl in session
+              String explicitReturnUrl = session.getAttribute("CUSTOM_RETURN_URL");
+              if (explicitReturnUrl != null) {
+                logger.info("Found explicit return URL in session: {}", explicitReturnUrl);
+                session.getAttributes().remove("CUSTOM_RETURN_URL");
+                return validateAndRedirect(explicitReturnUrl, webFilterExchange, authentication);
+              }
+
+              // Priority 2: Check ServerRequestCache for saved request
+              return serverRequestCache
+                  .getRedirectUri(exchange)
+                  .flatMap(
+                      uri -> {
+                        logger.info("Found saved request URI: {}", uri);
+                        // Clear the saved request to prevent reuse
+                        return serverRequestCache
+                            .removeMatchingRequest(exchange)
+                            .then(
+                                validateAndRedirect(
+                                    uri.toString(), webFilterExchange, authentication));
+                      })
+                  .switchIfEmpty(
+                      Mono.defer(
+                          () -> {
+                            // Priority 3: Default to "/"
+                            logger.debug("No return URL found, using default: /");
+                            return redirectToUrl("/", webFilterExchange, authentication);
+                          }));
+            });
+  }
+
+  /**
+   * Validates a redirect URL and performs the redirect if valid.
+   *
+   * <p>Uses {@link RedirectUrlValidator} to ensure the URL is safe (same-origin only). If the URL
+   * is invalid or potentially malicious, redirects to the safe default "/" instead.
+   *
+   * @param redirectUrl the URL to validate and redirect to
+   * @param webFilterExchange the web filter exchange
+   * @param authentication the authentication
+   * @return Mono that completes the redirect
+   */
+  private Mono<Void> validateAndRedirect(
+      String redirectUrl, WebFilterExchange webFilterExchange, Authentication authentication) {
+
+    if (RedirectUrlValidator.isValidRedirectUrl(redirectUrl)) {
+      logger.info("Redirecting authenticated user to: {}", redirectUrl);
+      return redirectToUrl(redirectUrl, webFilterExchange, authentication);
+    } else {
+      logger.warn(
+          "Invalid or potentially malicious redirect URL rejected: {}, using safe default: /",
+          redirectUrl);
+      return redirectToUrl("/", webFilterExchange, authentication);
+    }
+  }
+
+  /**
+   * Performs a redirect to the specified URL.
+   *
+   * @param url the URL to redirect to
+   * @param webFilterExchange the web filter exchange
+   * @param authentication the authentication
+   * @return Mono that completes the redirect
+   */
+  private Mono<Void> redirectToUrl(
+      String url, WebFilterExchange webFilterExchange, Authentication authentication) {
+    return new RedirectServerAuthenticationSuccessHandler(url)
+        .onAuthenticationSuccess(webFilterExchange, authentication);
   }
 }

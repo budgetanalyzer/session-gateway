@@ -96,7 +96,20 @@ public class OAuth2ClientConfig {
   }
 
   /**
-   * Customizer that adds Auth0 audience parameter to authorization requests.
+   * Customizer that adds Auth0 audience parameter and captures explicit returnUrl for post-login
+   * redirect.
+   *
+   * <p>This customizer performs two functions:
+   *
+   * <ol>
+   *   <li>Adds Auth0 'audience' parameter to get JWT access tokens (not opaque tokens)
+   *   <li>Captures explicit {@code ?returnUrl=} query parameter and stores it in session for
+   *       post-authentication redirect
+   * </ol>
+   *
+   * <p>The returnUrl parameter allows users to specify where they should be redirected after
+   * successful OAuth2 authentication. For example: {@code
+   * /oauth2/authorization/auth0?returnUrl=/settings}
    *
    * @return authorization request customizer
    */
@@ -109,6 +122,34 @@ public class OAuth2ClientConfig {
 
       // PKCE is enabled by default in Spring Security 6+ for authorization_code flow
       // No additional configuration needed
+
+      // Capture explicit returnUrl parameter for post-login redirect
+      // This is done via a custom attributes consumer
+      customizer.attributes(
+          attributes -> {
+            var exchange =
+                (org.springframework.web.server.ServerWebExchange)
+                    attributes.get(
+                        org.springframework.web.server.ServerWebExchange.class.getName());
+
+            if (exchange != null) {
+              String returnUrl = exchange.getRequest().getQueryParams().getFirst("returnUrl");
+
+              if (returnUrl != null && !returnUrl.isEmpty()) {
+                log.info(
+                    "Capturing explicit returnUrl parameter for post-auth redirect: {}", returnUrl);
+
+                // Store in session for retrieval after OAuth2 callback
+                exchange
+                    .getSession()
+                    .subscribe(
+                        session -> {
+                          session.getAttributes().put("CUSTOM_RETURN_URL", returnUrl);
+                          log.debug("Stored returnUrl in session: {}", returnUrl);
+                        });
+              }
+            }
+          });
 
       // Debug logging to see what redirect_uri is being sent to Auth0
       log.debug("==== OAUTH2 AUTHORIZATION REQUEST ====");

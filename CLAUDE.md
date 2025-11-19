@@ -74,9 +74,16 @@ grep "implementation" build.gradle.kts
 - **Gateway**: Spring Cloud Gateway (reactive, WebFlux-based)
 - **Security**: Spring Security OAuth2 Client
 - **Sessions**: Spring Session Data Redis
+- **Service Common (service-web)**: Reactive HTTP logging, correlation IDs, safe logging, exception handling
 - **Build**: Gradle with Kotlin DSL
 - **Cache**: Redis (AOF persistence)
 - **Identity Provider**: Auth0 (OAuth2/OIDC)
+
+**Service-Common Integration**:
+- Auto-configured reactive utilities from `org.budgetanalyzer:service-web:0.0.1-SNAPSHOT`
+- Provides: HTTP request/response logging, distributed tracing correlation IDs, safe logging with sensitive data masking, global exception handling
+- OAuth2ResourceServerSecurityConfig explicitly excluded (Session Gateway is OAuth2 Client, not Resource Server)
+- DataSource/JPA auto-configuration excluded (no database required)
 
 ## Key Components
 
@@ -98,19 +105,28 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 **Component Types**:
 
 **Configuration** (src/main/java/.../config/):
-- SecurityConfig: OAuth2 login, authorization, entry points
+- SecurityConfig: OAuth2 login, authorization, entry points, return URL handling
 - SessionConfig: Redis session management
-- OAuth2Client*: OAuth2 client and repository configuration
+- OAuth2ClientConfig: OAuth2 client and repository configuration
 - *FilterConfig: Gateway filter registration
 
 **Controllers** (src/main/java/.../controller/):
 - UserController: Returns current authenticated user info
 - LogoutController: Session invalidation and Auth0 logout
 
+**Security** (src/main/java/.../security/):
+- RedirectUrlValidator: Validates redirect URLs to prevent open redirect attacks
+- RedisServerRequestCache: Custom ServerRequestCache implementation for saving/retrieving original request URIs
+
 **Filters** (src/main/java/.../filter/):
 - TokenRefreshGatewayFilterFactory: Proactive token refresh before expiry
 - OAuth2TokenRelayGatewayFilter: Injects JWT into proxied requests
-- RequestLoggingWebFilter: Debug logging for request flow
+
+**Service-Common Utilities** (auto-configured from service-web):
+- ReactiveHttpLoggingFilter: HTTP request/response logging (replaces RequestLoggingWebFilter)
+- ReactiveCorrelationIdFilter: Adds correlation IDs for distributed tracing
+- ReactiveApiExceptionHandler: Global exception handling for WebFlux
+- SafeLogger (org.budgetanalyzer.core.logging): Safe logging with sensitive data masking
 
 ## API Endpoints
 
@@ -125,8 +141,23 @@ cat src/main/resources/application.yml | grep -A 5 "routes:"
 
 **Authentication Flow Endpoints**:
 - `GET /oauth2/authorization/auth0` - Initiates OAuth2 login (auto-configured)
+  - Optional `?returnUrl=` parameter: Specifies where to redirect after successful authentication
+  - Example: `/oauth2/authorization/auth0?returnUrl=/dashboard`
+  - Security: All returnUrl values validated by RedirectUrlValidator (same-origin only)
 - `GET /login/oauth2/code/auth0` - OAuth2 callback (receives code from Auth0)
 - `POST /logout` - Invalidates session, clears cookies, redirects to Auth0 logout
+
+**Return URL Flow**:
+After successful authentication, the redirect priority is:
+1. **Explicit returnUrl parameter**: If `?returnUrl=/path` was provided to `/oauth2/authorization/auth0`
+2. **Saved request**: If user was redirected to login from a protected resource (automatic via RedisServerRequestCache)
+3. **Default**: Redirects to `/` if no returnUrl or saved request exists
+
+**Return URL Security**:
+- All redirect URLs validated by `RedirectUrlValidator` (src/main/java/.../security/RedirectUrlValidator.java:27)
+- Only same-origin URLs allowed (prevents open redirect attacks)
+- Rejects: external URLs, protocol-relative URLs, `javascript:`, `data:`, and other malicious schemes
+- Invalid URLs safely default to `/` redirect
 
 **User Endpoints**:
 - `GET /user` - Returns current authenticated user information
@@ -170,6 +201,33 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - OAuth2 client debug logging
 - Gateway filter logging
 - Session management logging
+
+**HTTP Logging** (from service-common):
+- `budgetanalyzer.service.http-logging.enabled`: Enable/disable HTTP logging
+- `budgetanalyzer.service.http-logging.log-level`: Log level (DEBUG, INFO, etc.)
+- `budgetanalyzer.service.http-logging.include-request-body`: Log request bodies
+- `budgetanalyzer.service.http-logging.include-response-body`: Log response bodies
+- `budgetanalyzer.service.http-logging.include-request-headers`: Log request headers
+- `budgetanalyzer.service.http-logging.include-response-headers`: Log response headers
+- `budgetanalyzer.service.http-logging.include-query-params`: Log query parameters
+- `budgetanalyzer.service.http-logging.include-client-ip`: Log client IP addresses
+- `budgetanalyzer.service.http-logging.max-body-size`: Maximum body size to log (bytes)
+- `budgetanalyzer.service.http-logging.exclude-patterns`: List of path patterns to exclude (e.g., `/actuator/**`)
+- `budgetanalyzer.service.http-logging.log-errors-only`: Only log requests that result in errors
+
+Example configuration (application.yml lines 97-113):
+```yaml
+budgetanalyzer:
+  service:
+    http-logging:
+      enabled: true
+      log-level: DEBUG
+      include-request-body: true
+      include-response-body: true
+      max-body-size: 10000
+      exclude-patterns:
+        - /actuator/**
+```
 
 ## Development Workflow
 
@@ -358,6 +416,9 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 5. **Graceful Logout**: Clear both session and Auth0 session on logout
 6. **Health Checks**: Monitor Redis connectivity and Auth0 availability
 7. **Environment Parity**: Use same Auth0 tenant structure for dev/staging/prod
+8. **Return URL Validation**: All returnUrl redirects automatically validated by RedirectUrlValidator - no additional validation needed
+9. **Safe Logging**: Use `SafeLogger.toJson()` from service-common when logging objects that may contain sensitive data
+10. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production
 
 ## Notes for Claude Code
 
