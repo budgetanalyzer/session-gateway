@@ -1,16 +1,12 @@
 server:
-  port: 443
-  # Phase 6 Fix: Enable forward headers strategy for WebFlux
-  # This ensures Spring Security correctly constructs redirect URIs when behind proxies
+  port: 8081
+  # Listen on all interfaces so NGINX container can reach us via host.docker.internal
+  address: 0.0.0.0
+  # Enable forward headers strategy for WebFlux
+  # This ensures Spring Security correctly constructs redirect URIs when behind NGINX proxy
   # Without this, the redirect_uri sent to Auth0 may be incorrect
   forward-headers-strategy: framework
-  # SSL Configuration for HTTPS
-  ssl:
-    enabled: true
-    key-store: classpath:certs/budgetanalyzer.p12
-    key-store-password: changeit
-    key-store-type: PKCS12
-    key-alias: budgetanalyzer
+  # Note: SSL is handled by NGINX - Session Gateway runs on HTTP internally
 
 logging:
   level:
@@ -82,7 +78,6 @@ spring:
                 - StripPrefix=0  # Keep the /api prefix when forwarding
 
             # Route all frontend requests to NGINX gateway (static files and React app)
-            # Phase 5 Task 5.4: Frontend base URL configuration
             # All non-API requests (except /user, /logout, /oauth2/*) proxy to NGINX
             # NGINX handles WebSocket proxying to React dev server (Vite) in dev
             - id: frontend-route
