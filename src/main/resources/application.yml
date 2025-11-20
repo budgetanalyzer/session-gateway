@@ -1,9 +1,12 @@
 server:
   port: 8081
-  # Phase 6 Fix: Enable forward headers strategy for WebFlux
-  # This ensures Spring Security correctly constructs redirect URIs when behind proxies
+  # Listen on all interfaces so NGINX container can reach us via host.docker.internal
+  address: 0.0.0.0
+  # Enable forward headers strategy for WebFlux
+  # This ensures Spring Security correctly constructs redirect URIs when behind NGINX proxy
   # Without this, the redirect_uri sent to Auth0 may be incorrect
   forward-headers-strategy: framework
+  # Note: SSL is handled by NGINX - Session Gateway runs on HTTP internally
 
 logging:
   level:
@@ -66,7 +69,7 @@ spring:
           routes:
             # Route all /api/* requests to NGINX gateway (backend APIs)
             - id: api-route
-              uri: http://localhost:8080  # Use 'http://nginx-gateway:80' when running in Docker
+              uri: https://api.budgetanalyzer.localhost  # Use 'https://nginx-gateway:443' when running in Docker
               predicates:
                 - Path=/api/**
               filters:
@@ -75,11 +78,10 @@ spring:
                 - StripPrefix=0  # Keep the /api prefix when forwarding
 
             # Route all frontend requests to NGINX gateway (static files and React app)
-            # Phase 5 Task 5.4: Frontend base URL configuration
             # All non-API requests (except /user, /logout, /oauth2/*) proxy to NGINX
             # NGINX handles WebSocket proxying to React dev server (Vite) in dev
             - id: frontend-route
-              uri: http://localhost:8080  # Use 'http://nginx-gateway:80' when running in Docker
+              uri: https://api.budgetanalyzer.localhost  # Use 'https://nginx-gateway:443' when running in Docker
               predicates:
                 - Path=/**
               filters:
@@ -91,7 +93,7 @@ spring:
 auth0:
   audience: ${AUTH0_AUDIENCE:https://api.budgetanalyzer.org}
   logout:
-    return-to: ${AUTH0_LOGOUT_RETURN_TO:http://localhost:8081}  # Where to redirect after logout (Session Gateway)
+    return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost}  # Where to redirect after logout (Session Gateway)
 
 # Budget Analyzer Common Configuration
 budgetanalyzer:

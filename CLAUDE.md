@@ -15,10 +15,10 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 
 ## Architecture Principles
 
-- **Defense-in-Depth Security**: First layer in multi-tier security architecture
+- **Defense-in-Depth Security**: Second layer in multi-tier security architecture (NGINX → Session Gateway → Services)
 - **Token Protection**: JWTs stored server-side only (XSS/CSRF protection)
 - **Session-Based Auth**: Browser clients use cookies, not tokens
-- **Single Entry Point**: All browser traffic enters through port 8081
+- **Behind NGINX**: All browser traffic enters through NGINX (port 443) which proxies to Session Gateway (port 8081)
 - **Stateful Sessions**: Redis provides distributed session storage
 - **Browser-Only**: Machine-to-machine clients bypass this service
 
@@ -28,13 +28,13 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 
 **Architecture Flow**:
 ```
-Browser (:8081)
-    ↓ Session Cookie
-Session Gateway (:8081) ← OAuth2 → Auth0
-    ↓ JWT + Proxy          ↓ Session Data
-NGINX Gateway (:8080)     Redis (:6379)
-    ↓ JWT Validation
-Backend Services (:8082+)
+Browser → NGINX (:443)
+              ↓ Proxy to Session Gateway
+         Session Gateway (:8081) ← OAuth2 → Auth0
+              ↓ JWT + Proxy              ↓ Session Data
+         NGINX Gateway (:443)           Redis (:6379)
+              ↓ JWT Validation
+         Backend Services (:8082+)
 ```
 
 **Discovery**:
@@ -50,8 +50,8 @@ grep -r "oauth2" src/main/resources/
 ```
 
 **Port Summary**:
-- **8081**: Session Gateway (browser entry point)
-- **8080**: NGINX Gateway (downstream proxy target)
+- **443**: NGINX Gateway (browser entry point, SSL termination)
+- **8081**: Session Gateway (behind NGINX, receives proxied requests)
 - **6379**: Redis (session storage)
 
 ## Technology Stack
@@ -233,9 +233,9 @@ budgetanalyzer:
 
 ### Prerequisites
 - JDK 17+
-- Docker and Docker Compose (for Redis)
+- Docker and Docker Compose (for Redis and NGINX)
 - Auth0 account with configured application
-- NGINX Gateway running on port 8080
+- NGINX Gateway running on port 443 (handles SSL termination)
 
 ### Build and Test
 
@@ -315,27 +315,28 @@ curl -v http://localhost:8081/oauth2/authorization/auth0
 - Enable debug logging: `logging.level.org.springframework.security=DEBUG`
 
 **502 Bad Gateway**:
-- Ensure NGINX Gateway is running on port 8080
+- Ensure NGINX Gateway is running on port 443
 - Check gateway route configuration in application.yml
-- Verify network connectivity: `docker exec session-gateway curl http://api-gateway:8080/api/v1/health`
+- Verify network connectivity: `curl https://api.budgetanalyzer.localhost/health`
 
 ## Integration Points
 
 **Upstream (Receives From)**:
-- Browser clients on http://localhost:8081
-- React frontend making authenticated API calls
+- NGINX Gateway on port 8081 (proxied from https://app.budgetanalyzer.localhost)
+- React frontend making authenticated API calls (via NGINX)
 
 **Downstream (Sends To)**:
 - **Auth0**: OAuth2 authorization, token exchange, logout
 - **Redis**: Session storage and retrieval (stores JWTs, user info)
-- **NGINX Gateway** (port 8080): Proxies all requests with JWT injection
+- **NGINX Gateway** (port 443): Proxies all requests with JWT injection to https://api.budgetanalyzer.localhost
 
 **Data Flow**:
-1. Browser → Session Gateway (session cookie in request)
-2. Session Gateway → Redis (lookup JWT by session ID)
-3. Session Gateway → NGINX (proxy with Authorization: Bearer JWT)
-4. NGINX → Token Validation Service → Backend Services
-5. Response flows back through the chain
+1. Browser → NGINX (https://app.budgetanalyzer.localhost)
+2. NGINX → Session Gateway (session cookie in request)
+3. Session Gateway → Redis (lookup JWT by session ID)
+4. Session Gateway → NGINX (proxy with Authorization: Bearer JWT to api.budgetanalyzer.localhost)
+5. NGINX → Token Validation Service → Backend Services
+6. Response flows back through the chain
 
 **Architecture Documentation**:
 For detailed architecture diagrams and security design:
@@ -438,10 +439,10 @@ When working on this service:
 - This is a security-critical component - always consider threat models
 - BFF pattern means no CORS configuration needed (same-origin from browser perspective)
 - Session Gateway is browser-specific - M2M clients should use NGINX Gateway directly
-- All browser traffic flows through port 8081 (including frontend static assets)
+- All browser traffic flows through NGINX (port 443) to Session Gateway (port 8081)
 - Changes to OAuth2 configuration require Auth0 console updates
 - Redis is critical dependency - session loss means user re-authentication
 - Token refresh happens automatically via custom filter before expiry
 - Spring Cloud Gateway uses reactive WebFlux - avoid blocking operations
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
-- Follow the hybrid architecture: Session Gateway (BFF) → NGINX (API Gateway) → Services
+- Follow the hybrid architecture: NGINX (SSL termination) → Session Gateway (BFF) → NGINX (API Gateway) → Services
