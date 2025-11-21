@@ -1,0 +1,21 @@
+{
+  "name": "session-gateway",
+  "dockerComposeFile": "../../orchestration/claude-code-sandbox/docker-compose.yml",
+  "service": "claude-dev",
+  "workspaceFolder": "/workspace/session-gateway",
+  "shutdownAction": "none",
+
+  "initializeCommand": "bash ${localWorkspaceFolder}/../orchestration/claude-code-sandbox/setup-env.sh",
+
+  "remoteEnv": {
+    "SSH_AUTH_SOCK": ""
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code"
+      ]
+    }
+  }
+}
