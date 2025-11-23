@@ -193,9 +193,14 @@ public class SecurityConfig {
         // when Auth0 redirects back, causing [authorization_request_not_found]
         .addFilterBefore(
             (exchange, chain) -> {
-              logger.debug(
-                  "Force session creation filter for path: {}",
-                  exchange.getRequest().getPath().value());
+              var path = exchange.getRequest().getPath().value();
+
+              // Skip session creation for actuator endpoints to reduce noise
+              if (path.startsWith("/actuator")) {
+                return chain.filter(exchange);
+              }
+
+              logger.debug("Force session creation filter for path: {}", path);
 
               return exchange
                   .getSession()

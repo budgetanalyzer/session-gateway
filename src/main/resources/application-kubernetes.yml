@@ -2,6 +2,10 @@
 # Activated with: --spring.profiles.active=kubernetes
 
 spring:
+  # WebFlux codec configuration for file uploads
+  codec:
+    max-in-memory-size: 10MB
+
   # Redis configuration for Kubernetes
   data:
     redis:
@@ -10,6 +14,8 @@ spring:
   # Override gateway routes for Kubernetes environment
   cloud:
     gateway:
+      httpclient:
+        response-timeout: 60s  # Extended for file uploads
       server:
         webflux:
           routes:
@@ -34,3 +40,9 @@ spring:
 auth0:
   logout:
     return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost}
+
+# Disable request body logging to isolate POST timeout issue
+budgetanalyzer:
+  service:
+    http-logging:
+      include-request-body: false

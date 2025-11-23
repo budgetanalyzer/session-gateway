@@ -13,9 +13,9 @@ logging:
     root: WARN
     org.budgetanalyzer: TRACE
     org.springframework.cloud.gateway: DEBUG
-    org.springframework.security: DEBUG
-    org.springframework.security.oauth2: TRACE
-    org.springframework.web.reactive.function.client: TRACE
+    org.springframework.security: INFO
+    org.springframework.security.oauth2: DEBUG
+    org.springframework.web.reactive.function.client: DEBUG
 
 spring:
   application:
@@ -60,11 +60,9 @@ spring:
   # Spring Cloud Gateway routes
   cloud:
     gateway:
-      # Global configuration for all routes
       server:
         webflux:
           httpclient:
-            # Increase Wiretap logging to debug headers being sent
             wiretap: true
           routes:
             # Route all /api/* requests to NGINX gateway (backend APIs)
@@ -77,17 +75,33 @@ spring:
                 # TokenRelay and TokenRefresh filters are not compatible with Spring Cloud Gateway Server
                 - StripPrefix=0  # Keep the /api prefix when forwarding
 
-            # Route all frontend requests to NGINX gateway (static files and React app)
-            # All non-API requests (except /user, /logout, /oauth2/*) proxy to NGINX
-            # NGINX handles WebSocket proxying to React dev server (Vite) in dev
+            # Route all frontend requests to Vite dev server (static files and React app)
+            # All non-API requests (except /user, /logout, /oauth2/*) proxy to Vite
             - id: frontend-route
-              uri: https://api.budgetanalyzer.localhost  # Use 'https://nginx-gateway:443' when running in Docker
+              uri: http://budget-analyzer-web:3000  # Vite dev server in Kubernetes
               predicates:
                 - Path=/**
               filters:
                 - StripPrefix=0
               # Lower priority than api-route, /user, /logout, /oauth2/* routes
               order: 10000
+
+# Session cookie configuration
+session:
+  cookie:
+    # Domain override for session cookies.
+    #
+    # WORKAROUND: Envoy Gateway rewrites the Host header to pod IP addresses instead of
+    # preserving the original hostname (app.budgetanalyzer.localhost). This breaks dynamic
+    # domain extraction since IP addresses cannot be used as cookie domains.
+    #
+    # Expected: Host header = "app.budgetanalyzer.localhost" → extracted domain = "budgetanalyzer.localhost"
+    # Actual: Host header = "10.244.0.18:8081" → extracted domain = null (IPs not allowed)
+    #
+    # This override ensures cookies are correctly scoped to share across subdomains.
+    # When Envoy is fixed to preserve Host headers, this can be removed and dynamic
+    # extraction will work. Check logs for "DOMAIN MATCH" to verify.
+    domain-override: budgetanalyzer.localhost
 
 # Auth0 specific configuration
 auth0:
@@ -108,9 +122,7 @@ budgetanalyzer:
       include-query-params: true
       include-client-ip: true
       max-body-size: 10000  # 10KB max body size to log
-      # Exclude actuator endpoints from logging
-      exclude-patterns:
-        - /actuator/**
+      # Default exclude-patterns: /actuator/**, /swagger-ui/**, /v3/api-docs/**
       # Sensitive headers are automatically masked (Authorization, Cookie, Set-Cookie, etc.)
       log-errors-only: false
 
