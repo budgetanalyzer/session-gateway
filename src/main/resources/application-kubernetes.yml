@@ -1,0 +1,36 @@
+# Kubernetes-specific configuration for Session Gateway
+# Activated with: --spring.profiles.active=kubernetes
+
+spring:
+  # Redis configuration for Kubernetes
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+
+  # Override gateway routes for Kubernetes environment
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # Route all /api/* requests to NGINX gateway (backend APIs)
+            - id: api-route
+              uri: ${BACKEND_URI:http://nginx-gateway:8080}
+              predicates:
+                - Path=/api/**
+              filters:
+                - StripPrefix=0
+
+            # Route all frontend requests to NGINX gateway (static files and React app)
+            - id: frontend-route
+              uri: ${FRONTEND_URI:http://nginx-gateway:8080}
+              predicates:
+                - Path=/**
+              filters:
+                - StripPrefix=0
+              order: 10000
+
+# Kubernetes-specific Auth0 logout redirect
+auth0:
+  logout:
+    return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost}
