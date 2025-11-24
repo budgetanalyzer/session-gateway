@@ -8,6 +8,7 @@ import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSeriali
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.security.jackson2.SecurityJackson2Modules;
 import org.springframework.session.data.redis.config.annotation.web.server.EnableRedisWebSession;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.session.WebSessionIdResolver;
 
@@ -35,6 +36,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 public class SessionConfig {
 
   private static final Logger log = LoggerFactory.getLogger(SessionConfig.class);
+  private static final String ACTUATOR_PATTERN = "/actuator/**";
+  private static final AntPathMatcher pathMatcher = new AntPathMatcher();
 
   /**
    * Configures session cookie with security attributes.
@@ -96,7 +99,7 @@ public class SessionConfig {
       var path = exchange.getRequest().getPath().value();
 
       // Skip logging for actuator endpoints to reduce noise
-      if (path.startsWith("/actuator")) {
+      if (pathMatcher.match(ACTUATOR_PATTERN, path)) {
         return chain.filter(exchange);
       }
 

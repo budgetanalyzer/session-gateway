@@ -124,12 +124,12 @@ public class LogoutController {
 
     // Build Auth0 logout URL
     // Strip trailing slash from issuer URI to avoid double slashes
-    var issuerBase = auth0IssuerUri.endsWith("/")
-        ? auth0IssuerUri.substring(0, auth0IssuerUri.length() - 1)
-        : auth0IssuerUri;
+    var issuerBase =
+        auth0IssuerUri.endsWith("/")
+            ? auth0IssuerUri.substring(0, auth0IssuerUri.length() - 1)
+            : auth0IssuerUri;
     var auth0LogoutUrl =
-        String.format(
-            "%s/v2/logout?returnTo=%s&client_id=%s", issuerBase, returnToUrl, clientId);
+        String.format("%s/v2/logout?returnTo=%s&client_id=%s", issuerBase, returnToUrl, clientId);
 
     logger.debug("Redirecting to Auth0 logout: {}", auth0LogoutUrl);
 
