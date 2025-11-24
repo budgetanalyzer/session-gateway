@@ -1,5 +1,7 @@
 # Session Gateway (BFF)
 
+[![Build](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml)
+
 Backend-for-Frontend (BFF) service that manages OAuth2 authentication flows and protects tokens from browser exposure.
 
 ## Overview
