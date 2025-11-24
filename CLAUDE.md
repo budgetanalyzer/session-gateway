@@ -13,6 +13,19 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 - Proxies authenticated requests to the NGINX API Gateway with JWT injection
 - Implements proactive token refresh for seamless session continuity
 
+## Repository Scope
+
+**Boundary**: This repository only.
+
+**Allowed**:
+- Read `../service-common/` and `../orchestration/docs/`
+- All operations within this repository
+
+**Forbidden**:
+- Writing outside this repository
+
+Cross-service changes: coordinate through orchestration or service-common.
+
 ## Architecture Principles
 
 - **Defense-in-Depth Security**: Second layer in multi-tier security architecture (NGINX → Session Gateway → Services)
