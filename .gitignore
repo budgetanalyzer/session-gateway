@@ -267,6 +267,7 @@ terraform.tfvars
 # Kubernetes
 kubeconfig
 *.kubeconfig
+kubectl
 
 # AWS
 .aws/

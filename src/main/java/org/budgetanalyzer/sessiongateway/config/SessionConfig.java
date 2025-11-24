@@ -8,8 +8,8 @@ import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSeriali
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.security.jackson2.SecurityJackson2Modules;
 import org.springframework.session.data.redis.config.annotation.web.server.EnableRedisWebSession;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.server.WebFilter;
-import org.springframework.web.server.session.CookieWebSessionIdResolver;
 import org.springframework.web.server.session.WebSessionIdResolver;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -36,6 +36,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 public class SessionConfig {
 
   private static final Logger log = LoggerFactory.getLogger(SessionConfig.class);
+  private static final String ACTUATOR_PATTERN = "/actuator/**";
+  private static final AntPathMatcher pathMatcher = new AntPathMatcher();
 
   /**
    * Configures session cookie with security attributes.
@@ -46,20 +48,8 @@ public class SessionConfig {
    */
   @Bean
   public WebSessionIdResolver webSessionIdResolver() {
-    var resolver = new CookieWebSessionIdResolver();
-
+    var resolver = new DynamicDomainCookieWebSessionIdResolver();
     resolver.setCookieName("SESSION");
-
-    // Configure secure cookie attributes
-    resolver.addCookieInitializer(
-        builder -> {
-          builder.httpOnly(true); // Prevent JavaScript access (XSS protection)
-          builder.secure(true); // HTTPS required for local dev now
-          builder.sameSite("Lax"); // Allow OAuth2 redirects while preventing CSRF
-          builder.path("/"); // Available for entire application
-          builder.maxAge(-1); // Session cookie (deleted when browser closes)
-        });
-
     return resolver;
   }
 
@@ -107,6 +97,11 @@ public class SessionConfig {
   public WebFilter sessionLoggingFilter() {
     return (exchange, chain) -> {
       var path = exchange.getRequest().getPath().value();
+
+      // Skip logging for actuator endpoints to reduce noise
+      if (pathMatcher.match(ACTUATOR_PATTERN, path)) {
+        return chain.filter(exchange);
+      }
 
       return exchange
           .getSession()

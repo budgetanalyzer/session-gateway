@@ -21,6 +21,7 @@ import org.springframework.security.web.server.authentication.RedirectServerAuth
 import org.springframework.security.web.server.authentication.ServerAuthenticationSuccessHandler;
 import org.springframework.security.web.server.savedrequest.ServerRequestCache;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
+import org.springframework.util.AntPathMatcher;
 
 import reactor.core.publisher.Mono;
 
@@ -59,6 +60,8 @@ import org.budgetanalyzer.sessiongateway.security.RedisServerRequestCache;
 public class SecurityConfig {
 
   private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+  private static final String ACTUATOR_PATTERN = "/actuator/**";
+  private static final AntPathMatcher pathMatcher = new AntPathMatcher();
 
   private final ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
   private final OAuth2LoginDebugger loginDebugger;
@@ -193,9 +196,14 @@ public class SecurityConfig {
         // when Auth0 redirects back, causing [authorization_request_not_found]
         .addFilterBefore(
             (exchange, chain) -> {
-              logger.debug(
-                  "Force session creation filter for path: {}",
-                  exchange.getRequest().getPath().value());
+              var path = exchange.getRequest().getPath().value();
+
+              // Skip session creation for actuator endpoints to reduce noise
+              if (pathMatcher.match(ACTUATOR_PATTERN, path)) {
+                return chain.filter(exchange);
+              }
+
+              logger.debug("Force session creation filter for path: {}", path);
 
               return exchange
                   .getSession()

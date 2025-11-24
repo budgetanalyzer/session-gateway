@@ -429,6 +429,23 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 3. Do NOT attempt to hack around missing prerequisites - this leads to broken implementations that must be deleted
 4. Complete prerequisites first, then return to the original task
 
+### SSL/TLS Certificate Constraints
+
+**NEVER run SSL write operations** - Claude runs in a container with its own mkcert CA, but the user's browser trusts their host's mkcert CA. These are different CAs, so certificates generated in Claude's sandbox will cause browser SSL warnings.
+
+**Forbidden operations** (must be run by user on host):
+- `mkcert` (any certificate generation)
+- `openssl genrsa`, `openssl req -new`, `openssl x509 -req` (key/cert generation)
+- Any script that generates certificates (e.g., `setup-k8s-tls.sh`, `setup-local-https.sh`)
+
+**Allowed operations** (read-only):
+- `openssl x509 -text -noout` (inspect certificates)
+- `openssl verify` (verify certificate chains)
+- `kubectl get secret -o yaml` (view secrets)
+- Certificate file reads for debugging
+
+When SSL issues occur, guide the user to run certificate scripts on their host machine.
+
 ### Critical Rules
 
 **Always run build commands in sequence:**
