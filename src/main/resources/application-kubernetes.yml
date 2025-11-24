@@ -39,7 +39,7 @@ spring:
 # Kubernetes-specific Auth0 logout redirect
 auth0:
   logout:
-    return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost}
+    return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}
 
 # Disable request body logging to isolate POST timeout issue
 budgetanalyzer:

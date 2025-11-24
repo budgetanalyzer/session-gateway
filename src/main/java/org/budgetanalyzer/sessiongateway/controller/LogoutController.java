@@ -9,7 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 
@@ -63,7 +63,7 @@ public class LogoutController {
    * @param authentication the current authentication
    * @return redirect to Auth0 logout
    */
-  @PostMapping("/logout")
+  @GetMapping("/logout")
   public Mono<Void> logout(ServerWebExchange exchange, Authentication authentication) {
     logger.info("Processing logout request for user: {}", authentication.getName());
 
@@ -123,9 +123,13 @@ public class LogoutController {
     var response = exchange.getResponse();
 
     // Build Auth0 logout URL
+    // Strip trailing slash from issuer URI to avoid double slashes
+    var issuerBase = auth0IssuerUri.endsWith("/")
+        ? auth0IssuerUri.substring(0, auth0IssuerUri.length() - 1)
+        : auth0IssuerUri;
     var auth0LogoutUrl =
         String.format(
-            "%s/v2/logout?returnTo=%s&client_id=%s", auth0IssuerUri, returnToUrl, clientId);
+            "%s/v2/logout?returnTo=%s&client_id=%s", issuerBase, returnToUrl, clientId);
 
     logger.debug("Redirecting to Auth0 logout: {}", auth0LogoutUrl);
 

@@ -107,7 +107,7 @@ session:
 auth0:
   audience: ${AUTH0_AUDIENCE:https://api.budgetanalyzer.org}
   logout:
-    return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost}  # Where to redirect after logout (Session Gateway)
+    return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}  # Where to redirect after logout (Session Gateway)
 
 # Budget Analyzer Common Configuration
 budgetanalyzer:
