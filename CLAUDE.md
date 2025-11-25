@@ -482,3 +482,11 @@ When working on this service:
 - Spring Cloud Gateway uses reactive WebFlux - avoid blocking operations
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
 - Follow the hybrid architecture: NGINX (SSL termination) → Session Gateway (BFF) → NGINX (API Gateway) → Services
+
+### Web Search Year Awareness
+
+Claude's training data may default to an outdated year. When using WebSearch for best practices or current information:
+
+1. Check `<env>Today's date</env>` for the actual current year
+2. Include that year in searches (e.g., "Spring Boot best practices 2025" not 2024)
+3. This ensures results reflect current standards, not outdated patterns
