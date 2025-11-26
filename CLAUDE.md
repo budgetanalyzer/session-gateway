@@ -1,5 +1,29 @@
 # Budget Analyzer - Session Gateway
 
+## Tree Position
+
+**Archetype**: service
+**Scope**: budgetanalyzer ecosystem
+**Role**: BFF for browser authentication; manages OAuth2 flows and session cookies
+
+### Relationships
+- **Consumes**: service-common (patterns)
+- **Coordinated by**: orchestration
+- **Peers with**: Discover via `ls /workspace/*-service`
+- **Observed by**: architecture-conversations
+
+### Permissions
+- **Read**: `../service-common/`, `../orchestration/docs/`
+- **Write**: This repository only
+
+### Discovery
+```bash
+# My peers
+ls -d /workspace/*-service
+# My platform
+ls ../service-common/
+```
+
 ## Project Overview
 
 Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide secure authentication for browser-based clients in the Budget Analyzer application.
@@ -12,19 +36,6 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 - Issues HTTP-only, Secure, SameSite session cookies to browsers
 - Proxies authenticated requests to the NGINX API Gateway with JWT injection
 - Implements proactive token refresh for seamless session continuity
-
-## Repository Scope
-
-**Boundary**: This repository only.
-
-**Allowed**:
-- Read `../service-common/` and `../orchestration/docs/`
-- All operations within this repository
-
-**Forbidden**:
-- Writing outside this repository
-
-Cross-service changes: coordinate through orchestration or service-common.
 
 ## Architecture Principles
 
@@ -490,3 +501,7 @@ Claude's training data may default to an outdated year. When using WebSearch for
 1. Check `<env>Today's date</env>` for the actual current year
 2. Include that year in searches (e.g., "Spring Boot best practices 2025" not 2024)
 3. This ensures results reflect current standards, not outdated patterns
+
+## Conversation Capture
+
+When the user asks to save this conversation, write it to `/workspace/architecture-conversations/conversations/` following the format in INDEX.md.
