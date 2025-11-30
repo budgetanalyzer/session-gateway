@@ -1,5 +1,9 @@
 # Session Gateway (BFF)
 
+> "Archetype: service. Role: BFF for browser authentication; manages OAuth2 flows and session cookies."
+>
+> — [CLAUDE.md](CLAUDE.md#tree-position)
+
 [![Build](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml)
 
 Backend-for-Frontend (BFF) service that manages OAuth2 authentication flows and protects tokens from browser exposure.
