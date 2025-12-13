@@ -9,7 +9,9 @@ import org.springframework.security.config.annotation.web.reactive.EnableWebFlux
 import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
@@ -27,6 +29,7 @@ import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.sessiongateway.security.RedirectUrlValidator;
 import org.budgetanalyzer.sessiongateway.security.RedisServerRequestCache;
+import org.budgetanalyzer.sessiongateway.service.UserSyncClient;
 
 /**
  * Security configuration for Session Gateway.
@@ -67,16 +70,19 @@ public class SecurityConfig {
   private final OAuth2LoginDebugger loginDebugger;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
   private final ReactiveClientRegistrationRepository clientRegistrationRepository;
+  private final UserSyncClient userSyncClient;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
       OAuth2LoginDebugger loginDebugger,
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
-      ReactiveClientRegistrationRepository clientRegistrationRepository) {
+      ReactiveClientRegistrationRepository clientRegistrationRepository,
+      UserSyncClient userSyncClient) {
     this.authorizationRequestResolver = authorizationRequestResolver;
     this.loginDebugger = loginDebugger;
     this.authorizedClientRepository = authorizedClientRepository;
     this.clientRegistrationRepository = clientRegistrationRepository;
+    this.userSyncClient = userSyncClient;
   }
 
   /**
@@ -276,6 +282,9 @@ public class SecurityConfig {
         // Get the exchange for repository operations
         var exchange = webFilterExchange.getExchange();
 
+        // Extract OAuth2User for user sync
+        var oauth2User = (OAuth2User) oauthToken.getPrincipal();
+
         // Try to load the authorized client - Spring Security might have already created it
         return authorizedClientRepository
             .loadAuthorizedClient(clientRegistrationId, authentication, exchange)
@@ -291,8 +300,15 @@ public class SecurityConfig {
                           : "MISSING",
                       refreshToken != null ? "present" : "MISSING");
 
-                  return authorizedClientRepository.saveAuthorizedClient(
-                      authorizedClient, authentication, exchange);
+                  return authorizedClientRepository
+                      .saveAuthorizedClient(authorizedClient, authentication, exchange)
+                      .thenReturn(authorizedClient);
+                })
+            .flatMap(
+                authorizedClient -> {
+                  // Sync user to permission-service after saving authorized client
+                  return syncUserToPermissionService(oauth2User, authorizedClient)
+                      .then(Mono.just(authorizedClient));
                 })
             .switchIfEmpty(
                 // Client not found - this is the problem we're trying to fix
@@ -438,5 +454,36 @@ public class SecurityConfig {
       String url, WebFilterExchange webFilterExchange, Authentication authentication) {
     return new RedirectServerAuthenticationSuccessHandler(url)
         .onAuthenticationSuccess(webFilterExchange, authentication);
+  }
+
+  /**
+   * Syncs user to permission-service after successful OAuth2 login.
+   *
+   * <p>Extracts user attributes from OAuth2User and calls the permission-service sync endpoint.
+   * This ensures users exist in the permission database before accessing protected resources.
+   *
+   * <p>The sync operation is fire-and-forget - login succeeds even if sync fails. This prevents
+   * permission-service downtime from blocking user logins.
+   *
+   * @param oauth2User the OAuth2 user with attributes from identity provider
+   * @param authorizedClient the OAuth2 authorized client with access token
+   * @return Mono that completes when sync is done (or fails silently)
+   */
+  private Mono<Void> syncUserToPermissionService(
+      OAuth2User oauth2User, OAuth2AuthorizedClient authorizedClient) {
+    var auth0Sub = oauth2User.getAttribute("sub");
+    var email = oauth2User.getAttribute("email");
+    var name = oauth2User.getAttribute("name");
+    var accessToken = authorizedClient.getAccessToken().getTokenValue();
+
+    if (auth0Sub == null || email == null) {
+      logger.warn(
+          "Cannot sync user - missing required attributes: sub={}, email={}", auth0Sub, email);
+      return Mono.empty();
+    }
+
+    logger.debug("Syncing user to permission-service: email={}", email);
+    return userSyncClient.syncUser(auth0Sub.toString(), email.toString(),
+        name != null ? name.toString() : null, accessToken);
   }
 }
