@@ -115,9 +115,7 @@ class UserSyncClientTest {
       // Act & Assert - should complete without throwing
       assertDoesNotThrow(
           () ->
-              userSyncClient
-                  .syncUser(TEST_AUTH0_SUB, TEST_EMAIL, null, TEST_ACCESS_TOKEN)
-                  .block());
+              userSyncClient.syncUser(TEST_AUTH0_SUB, TEST_EMAIL, null, TEST_ACCESS_TOKEN).block());
     }
 
     @Test
@@ -126,10 +124,7 @@ class UserSyncClientTest {
       // Arrange - permission-service is down
       wireMockServer.stubFor(
           post(urlEqualTo("/v1/users/sync"))
-              .willReturn(
-                  aResponse()
-                      .withStatus(500)
-                      .withBody("Internal Server Error")));
+              .willReturn(aResponse().withStatus(500).withBody("Internal Server Error")));
 
       // Act & Assert - should complete (not fail) because sync failures shouldn't block login
       assertDoesNotThrow(
@@ -145,10 +140,7 @@ class UserSyncClientTest {
       // Arrange - token is invalid
       wireMockServer.stubFor(
           post(urlEqualTo("/v1/users/sync"))
-              .willReturn(
-                  aResponse()
-                      .withStatus(401)
-                      .withBody("Unauthorized")));
+              .willReturn(aResponse().withStatus(401).withBody("Unauthorized")));
 
       // Act & Assert - should complete (not fail) because sync failures shouldn't block login
       assertDoesNotThrow(
@@ -164,13 +156,11 @@ class UserSyncClientTest {
       // Arrange - permission-service doesn't respond
       wireMockServer.stubFor(
           post(urlEqualTo("/v1/users/sync"))
-              .willReturn(
-                  aResponse()
-                      .withStatus(200)
-                      .withFixedDelay(5000))); // 5 second delay
+              .willReturn(aResponse().withStatus(200).withFixedDelay(5000))); // 5 second delay
 
       // Act & Assert - should complete eventually (WebClient has default timeout)
-      // Note: This test verifies error resilience, actual timeout behavior depends on WebClient config
+      // Note: This test verifies error resilience, actual timeout behavior depends on WebClient
+      // config
       assertDoesNotThrow(
           () ->
               userSyncClient

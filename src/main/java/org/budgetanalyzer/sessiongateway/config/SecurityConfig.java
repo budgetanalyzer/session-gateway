@@ -11,10 +11,10 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.server.DelegatingServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.WebFilterExchange;
@@ -483,7 +483,7 @@ public class SecurityConfig {
     }
 
     logger.debug("Syncing user to permission-service: email={}", email);
-    return userSyncClient.syncUser(auth0Sub.toString(), email.toString(),
-        name != null ? name.toString() : null, accessToken);
+    return userSyncClient.syncUser(
+        auth0Sub.toString(), email.toString(), name != null ? name.toString() : null, accessToken);
   }
 }

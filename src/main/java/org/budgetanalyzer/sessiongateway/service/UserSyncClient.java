@@ -29,7 +29,8 @@ public class UserSyncClient {
    */
   public UserSyncClient(
       WebClient.Builder webClientBuilder,
-      @Value("${budgetanalyzer.permission-service.base-url:http://localhost:8086/permission-service}")
+      @Value(
+              "${budgetanalyzer.permission-service.base-url:http://localhost:8086/permission-service}")
           String baseUrl) {
     this.webClient = webClientBuilder.baseUrl(baseUrl).build();
     log.info("UserSyncClient initialized with base URL: {}", baseUrl);
@@ -38,9 +39,9 @@ public class UserSyncClient {
   /**
    * Syncs a user to permission-service.
    *
-   * <p>Creates or updates the user record based on Auth0 data. The sync operation is fire-and-forget
-   * - login succeeds even if sync fails. This prevents permission-service downtime from blocking
-   * user logins.
+   * <p>Creates or updates the user record based on Auth0 data. The sync operation is
+   * fire-and-forget - login succeeds even if sync fails. This prevents permission-service downtime
+   * from blocking user logins.
    *
    * @param auth0Sub the Auth0 subject identifier
    * @param email the user's email
@@ -48,7 +49,8 @@ public class UserSyncClient {
    * @param accessToken the OAuth2 access token for authentication
    * @return Mono that completes when sync is done (or fails silently)
    */
-  public Mono<Void> syncUser(String auth0Sub, String email, String displayName, String accessToken) {
+  public Mono<Void> syncUser(
+      String auth0Sub, String email, String displayName, String accessToken) {
     log.debug("Syncing user to permission-service: email={}", email);
 
     return webClient
@@ -58,14 +60,17 @@ public class UserSyncClient {
         .bodyValue(new UserSyncRequest(auth0Sub, email, displayName))
         .retrieve()
         .bodyToMono(UserSyncResponse.class)
-        .doOnSuccess(response -> log.info("User synced successfully: email={}, userId={}", email, response.userId()))
+        .doOnSuccess(
+            response ->
+                log.info("User synced successfully: email={}, userId={}", email, response.userId()))
         .doOnError(e -> log.error("Failed to sync user: email={}, error={}", email, e.getMessage()))
-        .onErrorResume(e -> {
-          // Don't fail login if sync fails - user can still access the app
-          // Sync will happen again on next login
-          log.warn("User sync failed but continuing with login: email={}", email);
-          return Mono.empty();
-        })
+        .onErrorResume(
+            e -> {
+              // Don't fail login if sync fails - user can still access the app
+              // Sync will happen again on next login
+              log.warn("User sync failed but continuing with login: email={}", email);
+              return Mono.empty();
+            })
         .then();
   }
 
