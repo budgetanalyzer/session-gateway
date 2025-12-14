@@ -39,17 +39,16 @@ public class UserSyncClient {
   /**
    * Syncs a user to permission-service.
    *
-   * <p>Creates or updates the user record based on Auth0 data. The sync operation is
-   * fire-and-forget - login succeeds even if sync fails. This prevents permission-service downtime
-   * from blocking user logins.
+   * <p>Creates or updates the user record based on Auth0 data. Returns the sync response containing
+   * the internal user ID, which should be stored in the session for use in downstream requests.
    *
    * @param auth0Sub the Auth0 subject identifier
    * @param email the user's email
    * @param displayName the user's display name
    * @param accessToken the OAuth2 access token for authentication
-   * @return Mono that completes when sync is done (or fails silently)
+   * @return Mono containing the sync response, or empty if sync fails
    */
-  public Mono<Void> syncUser(
+  public Mono<UserSyncResponse> syncUser(
       String auth0Sub, String email, String displayName, String accessToken) {
     log.debug("Syncing user to permission-service: email={}", email);
 
@@ -70,13 +69,12 @@ public class UserSyncClient {
               // Sync will happen again on next login
               log.warn("User sync failed but continuing with login: email={}", email);
               return Mono.empty();
-            })
-        .then();
+            });
   }
 
   /** Request DTO for user sync. */
   record UserSyncRequest(String auth0Sub, String email, String displayName) {}
 
-  /** Response DTO for user sync. */
-  record UserSyncResponse(String userId, String email, String displayName) {}
+  /** Response DTO for user sync containing the internal user ID from permission-service. */
+  public record UserSyncResponse(String userId, String email, String displayName) {}
 }

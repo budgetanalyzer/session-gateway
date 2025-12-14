@@ -62,6 +62,14 @@ import org.budgetanalyzer.sessiongateway.service.UserSyncClient;
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
+  /**
+   * Session attribute key for storing the internal user ID.
+   *
+   * <p>This ID is returned by permission-service during user sync and is vendor-independent (not
+   * the Auth0 subject). It's added to downstream requests via the X-Internal-User-Id header.
+   */
+  public static final String INTERNAL_USER_ID_SESSION_ATTR = "INTERNAL_USER_ID";
+
   private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
   private static final String ACTUATOR_PATTERN = "/actuator/**";
   private static final AntPathMatcher pathMatcher = new AntPathMatcher();
@@ -307,7 +315,8 @@ public class SecurityConfig {
             .flatMap(
                 authorizedClient -> {
                   // Sync user to permission-service after saving authorized client
-                  return syncUserToPermissionService(oauth2User, authorizedClient)
+                  // Store internal user ID in session for downstream request headers
+                  return syncUserToPermissionService(oauth2User, authorizedClient, exchange)
                       .then(Mono.just(authorizedClient));
                 })
             .switchIfEmpty(
@@ -462,15 +471,21 @@ public class SecurityConfig {
    * <p>Extracts user attributes from OAuth2User and calls the permission-service sync endpoint.
    * This ensures users exist in the permission database before accessing protected resources.
    *
+   * <p>On successful sync, stores the internal user ID in the session for use by the
+   * OAuth2TokenRelayGatewayFilter when adding the X-Internal-User-Id header to proxied requests.
+   *
    * <p>The sync operation is fire-and-forget - login succeeds even if sync fails. This prevents
    * permission-service downtime from blocking user logins.
    *
    * @param oauth2User the OAuth2 user with attributes from identity provider
    * @param authorizedClient the OAuth2 authorized client with access token
+   * @param exchange the server web exchange for session access
    * @return Mono that completes when sync is done (or fails silently)
    */
   private Mono<Void> syncUserToPermissionService(
-      OAuth2User oauth2User, OAuth2AuthorizedClient authorizedClient) {
+      OAuth2User oauth2User,
+      OAuth2AuthorizedClient authorizedClient,
+      org.springframework.web.server.ServerWebExchange exchange) {
     var auth0Sub = oauth2User.getAttribute("sub");
     var email = oauth2User.getAttribute("email");
     var name = oauth2User.getAttribute("name");
@@ -483,7 +498,25 @@ public class SecurityConfig {
     }
 
     logger.debug("Syncing user to permission-service: email={}", email);
-    return userSyncClient.syncUser(
-        auth0Sub.toString(), email.toString(), name != null ? name.toString() : null, accessToken);
+    return userSyncClient
+        .syncUser(
+            auth0Sub.toString(),
+            email.toString(),
+            name != null ? name.toString() : null,
+            accessToken)
+        .flatMap(
+            response ->
+                exchange
+                    .getSession()
+                    .doOnNext(
+                        session -> {
+                          session
+                              .getAttributes()
+                              .put(INTERNAL_USER_ID_SESSION_ATTR, response.userId());
+                          logger.info(
+                              "Stored internal user ID in session: userId={}", response.userId());
+                        })
+                    .then())
+        .then();
   }
 }
