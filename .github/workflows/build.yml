@@ -26,7 +26,7 @@ jobs:
 
       - name: Build service-common dependency
         run: |
-          git clone https://github.com/budgetanalyzer/service-common.git /tmp/service-common
+          git clone https://github.com/budgetanalyzerllc/service-common.git /tmp/service-common
           cd /tmp/service-common
           ./gradlew publishToMavenLocal
 

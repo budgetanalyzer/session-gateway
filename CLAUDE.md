@@ -429,8 +429,8 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 - **Budget Analyzer Web**: React frontend (served through NGINX)
 
 **Repository Links**:
-- Orchestration: https://github.com/budgetanalyzer/orchestration
-- Session Gateway: https://github.com/budgetanalyzer/session-gateway
+- Orchestration: https://github.com/budgetanalyzerllc/orchestration
+- Session Gateway: https://github.com/budgetanalyzerllc/session-gateway
 
 ## Best Practices
 
@@ -452,6 +452,17 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 2. If prerequisites are NOT satisfied, STOP immediately and inform the user
 3. Do NOT attempt to hack around missing prerequisites - this leads to broken implementations that must be deleted
 4. Complete prerequisites first, then return to the original task
+
+### Execution Bias
+
+When a task is clear and you have the tools to complete it, **do it** rather than describing what needs to be done.
+
+- Bad: "To verify this works, you'll need to run the build for each service..."
+- Good: "Let me run the builds and verify." [runs builds]
+
+The user can always ask for explanation afterward. But they can't un-waste time spent reading instructions for tasks you could have just done.
+
+**Exception — git operations**: Never run git commands (commit, push, checkout, reset, etc.) without explicit user request. The user controls git workflow entirely. You may suggest what to commit, but don't do it.
 
 ### SSL/TLS Certificate Constraints
 
