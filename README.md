@@ -4,7 +4,7 @@
 >
 > — [AGENTS.md](AGENTS.md#tree-position)
 
-[![Build](https://github.com/budgetanalyzerllc/session-gateway/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzerllc/session-gateway/actions/workflows/build.yml)
+[![Build](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml)
 
 Backend-for-Frontend (BFF) service that manages OAuth2 authentication flows and protects tokens from browser exposure.
 

@@ -439,8 +439,8 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 - **Budget Analyzer Web**: React frontend (served through NGINX)
 
 **Repository Links**:
-- Orchestration: https://github.com/budgetanalyzerllc/orchestration
-- Session Gateway: https://github.com/budgetanalyzerllc/session-gateway
+- Orchestration: https://github.com/budgetanalyzer/orchestration
+- Session Gateway: https://github.com/budgetanalyzer/session-gateway
 
 ## Best Practices
 

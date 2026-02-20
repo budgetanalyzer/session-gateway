@@ -111,10 +111,6 @@ auth0:
 
 # Budget Analyzer Common Configuration
 budgetanalyzer:
-  permission-service:
-    # URL for syncing users after OAuth2 login
-    # Uses NGINX gateway in production (https://api.budgetanalyzer.localhost/permission-service)
-    base-url: ${PERMISSION_SERVICE_URL:http://localhost:8086/permission-service}
   service:
     http-logging:
       enabled: true
