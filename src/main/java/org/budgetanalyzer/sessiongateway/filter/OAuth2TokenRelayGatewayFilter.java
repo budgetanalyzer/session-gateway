@@ -1,7 +1,6 @@
 package org.budgetanalyzer.sessiongateway.filter;
 
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
@@ -56,15 +55,16 @@ public class OAuth2TokenRelayGatewayFilter implements WebFilter {
                     .map(OAuth2AuthorizedClient::getAccessToken)
                     .map(this::createAuthorizationHeader)
                     .map(
-                        authHeader -> {
-                          ServerHttpRequest mutatedRequest =
-                              exchange
-                                  .getRequest()
-                                  .mutate()
-                                  .header(HttpHeaders.AUTHORIZATION, authHeader)
-                                  .build();
-                          return exchange.mutate().request(mutatedRequest).build();
-                        }))
+                        authHeader ->
+                            exchange
+                                .mutate()
+                                .request(
+                                    exchange
+                                        .getRequest()
+                                        .mutate()
+                                        .header(HttpHeaders.AUTHORIZATION, authHeader)
+                                        .build())
+                                .build()))
         .defaultIfEmpty(exchange)
         .flatMap(chain::filter);
   }

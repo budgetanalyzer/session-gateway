@@ -291,8 +291,9 @@ public class SecurityConfig {
                           : "MISSING",
                       refreshToken != null ? "present" : "MISSING");
 
-                  return authorizedClientRepository.saveAuthorizedClient(
-                      authorizedClient, authentication, exchange);
+                  return authorizedClientRepository
+                      .saveAuthorizedClient(authorizedClient, authentication, exchange)
+                      .thenReturn(authorizedClient);
                 })
             .switchIfEmpty(
                 // Client not found - this is the problem we're trying to fix

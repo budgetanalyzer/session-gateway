@@ -1,5 +1,9 @@
 import org.springframework.boot.gradle.tasks.run.BootRun
 
+// TC 1.21.4 fixes Docker 29.x compatibility (1.21.3 breaks with "client version 1.32 is too old").
+// Spring Boot 3.5.7 manages TC to 1.21.3, so we override it here.
+extra["testcontainers.version"] = "1.21.4"
+
 plugins {
     java
     checkstyle

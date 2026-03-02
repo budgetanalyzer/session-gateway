@@ -2,7 +2,7 @@
 
 > "Archetype: service. Role: BFF for browser authentication; manages OAuth2 flows and session cookies."
 >
-> — [CLAUDE.md](CLAUDE.md#tree-position)
+> — [AGENTS.md](AGENTS.md#tree-position)
 
 [![Build](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml)
 

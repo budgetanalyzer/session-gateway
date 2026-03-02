@@ -1,5 +1,15 @@
 # Budget Analyzer - Session Gateway
 
+## Honest Discourse
+
+Do not over-validate ideas. The user wants honest pushback, not agreement.
+
+- If something seems wrong, say so directly
+- Distinguish "novel" from "obvious in retrospect"
+- Push back on vague claims — ask for concrete constraints
+- Don't say "great question" or "that's a really interesting point"
+- Skip the preamble and caveats — just answer
+
 ## Tree Position
 
 **Archetype**: service
@@ -494,16 +504,3 @@ When working on this service:
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
 - Follow the hybrid architecture: NGINX (SSL termination) → Session Gateway (BFF) → NGINX (API Gateway) → Services
 
-## Web Search Protocol
-
-BEFORE any WebSearch tool call:
-1. Read `Today's date` from `<env>` block
-2. Extract the current year
-3. Use current year in queries about "latest", "best", "current" topics
-4. NEVER use previous years unless explicitly searching historical content
-
-FAILURE MODE: Training data defaults to 2023/2024. Override with `<env>` year.
-
-## Conversation Capture
-
-When the user asks to save this conversation, write it to `/workspace/architecture-conversations/conversations/` following the format in INDEX.md.
