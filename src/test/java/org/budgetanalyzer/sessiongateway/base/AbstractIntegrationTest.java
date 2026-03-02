@@ -4,7 +4,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
+
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,15 +44,18 @@ public abstract class AbstractIntegrationTest {
 
     // Point downstream gateway to WireMock
     registry.add("api.gateway.url", () -> wireMockUrl + "/api-gateway");
+
+    // Point permission-service to WireMock
+    registry.add("permission-service.base-url", () -> wireMockUrl);
   }
 
   @BeforeEach
   void resetWireMock() {
     wireMockServer.resetAll();
-    stubAuth0OidcDiscovery();
+    stubOidcDiscovery();
   }
 
-  protected void stubAuth0OidcDiscovery() {
+  protected void stubOidcDiscovery() {
     String baseUrl = "http://localhost:" + wireMockServer.port();
 
     wireMockServer.stubFor(
@@ -90,7 +96,7 @@ public abstract class AbstractIntegrationTest {
                     """)));
   }
 
-  protected void stubAuth0TokenEndpoint(String accessToken, String idToken) {
+  protected void stubOidcTokenEndpoint(String accessToken, String idToken) {
     wireMockServer.stubFor(
         post(urlEqualTo("/auth0/oauth/token"))
             .willReturn(
@@ -109,7 +115,7 @@ public abstract class AbstractIntegrationTest {
                             .formatted(accessToken, idToken))));
   }
 
-  protected void stubAuth0UserInfo(String sub, String email, String name) {
+  protected void stubOidcUserInfo(String sub, String email, String name) {
     wireMockServer.stubFor(
         get(urlEqualTo("/auth0/userinfo"))
             .willReturn(
@@ -125,5 +131,34 @@ public abstract class AbstractIntegrationTest {
                     }
                     """
                             .formatted(sub, email, name))));
+  }
+
+  protected void stubPermissionService(
+      String idpSub, String userId, List<String> roles, List<String> permissions) {
+    wireMockServer.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/" + idpSub + "/permissions"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        """
+                    {
+                        "userId": "%s",
+                        "roles": %s,
+                        "permissions": %s
+                    }
+                    """
+                            .formatted(userId, toJsonArray(roles), toJsonArray(permissions)))));
+  }
+
+  protected void stubPermissionServiceError(String idpSub, int status) {
+    wireMockServer.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/" + idpSub + "/permissions"))
+            .willReturn(aResponse().withStatus(status)));
+  }
+
+  private String toJsonArray(List<String> items) {
+    return "[" + String.join(", ", items.stream().map(s -> "\"" + s + "\"").toList()) + "]";
   }
 }

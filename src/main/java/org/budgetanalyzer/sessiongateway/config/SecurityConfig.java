@@ -1,5 +1,7 @@
 package org.budgetanalyzer.sessiongateway.config;
 
+import java.util.ArrayList;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -22,11 +24,14 @@ import org.springframework.security.web.server.authentication.ServerAuthenticati
 import org.springframework.security.web.server.savedrequest.ServerRequestCache;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import org.springframework.util.AntPathMatcher;
+import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.sessiongateway.security.RedirectUrlValidator;
 import org.budgetanalyzer.sessiongateway.security.RedisServerRequestCache;
+import org.budgetanalyzer.sessiongateway.service.InternalJwtService;
+import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 
 /**
  * Security configuration for Session Gateway.
@@ -67,16 +72,19 @@ public class SecurityConfig {
   private final OAuth2LoginDebugger loginDebugger;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
   private final ReactiveClientRegistrationRepository clientRegistrationRepository;
+  private final PermissionServiceClient permissionServiceClient;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
       OAuth2LoginDebugger loginDebugger,
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
-      ReactiveClientRegistrationRepository clientRegistrationRepository) {
+      ReactiveClientRegistrationRepository clientRegistrationRepository,
+      PermissionServiceClient permissionServiceClient) {
     this.authorizationRequestResolver = authorizationRequestResolver;
     this.loginDebugger = loginDebugger;
     this.authorizedClientRepository = authorizedClientRepository;
     this.clientRegistrationRepository = clientRegistrationRepository;
+    this.permissionServiceClient = permissionServiceClient;
   }
 
   /**
@@ -106,7 +114,7 @@ public class SecurityConfig {
                     .pathMatchers("/actuator/health/**")
                     .permitAll()
                     // Allow login and error pages
-                    .pathMatchers("/login/**", "/error", "/oauth2/**")
+                    .pathMatchers("/login/**", "/error", "/oauth2/**", "/.well-known/jwks.json")
                     .permitAll()
                     // Allow frontend routes (served by NGINX) without authentication
                     // Users can browse the app; API calls will require authentication
@@ -340,9 +348,60 @@ public class SecurityConfig {
                   logger.warn("Continuing with redirect despite save error", e);
                   return Mono.empty();
                 })
+            .then(fetchAndStorePermissions(exchange, authentication))
             .then(determineRedirectUrl(webFilterExchange, authentication, serverRequestCache));
       }
     };
+  }
+
+  /**
+   * Fetches permissions from the permission-service and stores them in the session.
+   *
+   * <p>Called after successful OAuth2 authentication. If the permission-service fails, the login
+   * fails — permissions are required for the application to function.
+   *
+   * @param exchange the server web exchange
+   * @param authentication the authentication
+   * @return Mono that completes when permissions are stored
+   */
+  private Mono<Void> fetchAndStorePermissions(
+      ServerWebExchange exchange, Authentication authentication) {
+    if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
+      return Mono.empty();
+    }
+
+    String idpSub = oauthToken.getName();
+    logger.debug("Fetching permissions for idpSub={}", idpSub);
+
+    return permissionServiceClient
+        .fetchPermissions(idpSub)
+        .flatMap(
+            response ->
+                exchange
+                    .getSession()
+                    .doOnNext(
+                        session -> {
+                          session
+                              .getAttributes()
+                              .put(InternalJwtService.SESSION_USER_ID, response.userId());
+                          session
+                              .getAttributes()
+                              .put(
+                                  InternalJwtService.SESSION_ROLES,
+                                  new ArrayList<>(response.roles()));
+                          session
+                              .getAttributes()
+                              .put(
+                                  InternalJwtService.SESSION_PERMISSIONS,
+                                  new ArrayList<>(response.permissions()));
+                          logger.info(
+                              "Stored permissions in session for userId={}, "
+                                  + "roles={}, permissions={}",
+                              response.userId(),
+                              response.roles().size(),
+                              response.permissions().size());
+                        })
+                    .then());
   }
 
   /**

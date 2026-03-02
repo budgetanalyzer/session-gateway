@@ -103,11 +103,11 @@ session:
     # extraction will work. Check logs for "DOMAIN MATCH" to verify.
     domain-override: budgetanalyzer.localhost
 
-# Auth0 specific configuration
-auth0:
-  audience: ${AUTH0_AUDIENCE:https://api.budgetanalyzer.org}
+# IDP configuration
+idp:
+  audience: ${IDP_AUDIENCE:https://api.budgetanalyzer.org}
   logout:
-    return-to: ${AUTH0_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}  # Where to redirect after logout (Session Gateway)
+    return-to: ${IDP_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}  # Where to redirect after logout (Session Gateway)
 
 # Budget Analyzer Common Configuration
 budgetanalyzer:
@@ -125,6 +125,16 @@ budgetanalyzer:
       # Default exclude-patterns: /actuator/**, /swagger-ui/**, /v3/api-docs/**
       # Sensitive headers are automatically masked (Authorization, Cookie, Set-Cookie, etc.)
       log-errors-only: false
+
+# Permission service configuration
+permission-service:
+  base-url: ${PERMISSION_SERVICE_URL:http://permission-service:8082}
+
+# JWT signing key (optional). If absent, an ephemeral key is generated at startup.
+# For multi-instance deployments, set this to a shared RSA private key in PEM format.
+# jwt:
+#   signing:
+#     private-key-pem: ${JWT_SIGNING_PRIVATE_KEY_PEM:}
 
 # Actuator configuration
 management:

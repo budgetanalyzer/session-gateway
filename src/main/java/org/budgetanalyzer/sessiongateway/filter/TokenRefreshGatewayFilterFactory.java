@@ -2,6 +2,7 @@ package org.budgetanalyzer.sessiongateway.filter;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,18 +19,14 @@ import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.sessiongateway.service.InternalJwtService;
+import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
+
 /**
  * Gateway filter that proactively refreshes OAuth2 access tokens before they expire.
  *
- * <p>Phase 2 Task 2.4: Proactive Token Refresh
- *
- * <ul>
- *   <li>Checks if access token expires within 5 minutes
- *   <li>Automatically refreshes using refresh token if needed
- *   <li>Updates session with new tokens
- *   <li>Handles refresh token rotation (Auth0)
- *   <li>Runs before TokenRelay filter to ensure fresh token
- * </ul>
+ * <p>When a token is refreshed, this filter also re-fetches the user's permissions from the
+ * permission-service and re-mints the internal JWT.
  */
 @Component
 public class TokenRefreshGatewayFilterFactory
@@ -41,14 +38,20 @@ public class TokenRefreshGatewayFilterFactory
 
   private final ReactiveOAuth2AuthorizedClientManager authorizedClientManager;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
+  private final PermissionServiceClient permissionServiceClient;
+  private final InternalJwtService internalJwtService;
   private final Clock clock;
 
   public TokenRefreshGatewayFilterFactory(
       ReactiveOAuth2AuthorizedClientManager authorizedClientManager,
-      ServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
+      ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
+      PermissionServiceClient permissionServiceClient,
+      InternalJwtService internalJwtService) {
     super(Config.class);
     this.authorizedClientManager = authorizedClientManager;
     this.authorizedClientRepository = authorizedClientRepository;
+    this.permissionServiceClient = permissionServiceClient;
+    this.internalJwtService = internalJwtService;
     this.clock = Clock.systemUTC();
   }
 
@@ -118,7 +121,7 @@ public class TokenRefreshGatewayFilterFactory
   }
 
   /**
-   * Refreshes the OAuth2 access token using the refresh token.
+   * Refreshes the OAuth2 access token and re-fetches permissions.
    *
    * @param authorizedClient current authorized client
    * @param authentication user authentication
@@ -143,9 +146,10 @@ public class TokenRefreshGatewayFilterFactory
                 logger.info(
                     "Successfully refreshed access token for user: {}", authentication.getName());
 
-                // Save the refreshed client to the session
+                // Save the refreshed client to the session, then refresh permissions
                 return authorizedClientRepository
                     .saveAuthorizedClient(refreshedClient, authentication, exchange)
+                    .then(refreshPermissionsAndRemint(exchange, authentication))
                     .thenReturn(refreshedClient);
               } else {
                 logger.warn("Token refresh returned null for user: {}", authentication.getName());
@@ -160,9 +164,71 @@ public class TokenRefreshGatewayFilterFactory
         .onErrorResume(
             error -> {
               // Return original client on error to avoid breaking the request
-              // The expired token will be caught by downstream services
               logger.warn("Falling back to existing token after refresh failure");
               return Mono.just(authorizedClient);
+            });
+  }
+
+  /**
+   * Re-fetches permissions from the permission-service and re-mints the internal JWT.
+   *
+   * <p>Errors are swallowed and logged. Unlike login, refresh failure should not break the active
+   * request. Cached permissions and JWT remain valid.
+   */
+  private Mono<Void> refreshPermissionsAndRemint(
+      ServerWebExchange exchange, Authentication authentication) {
+    if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
+      return Mono.empty();
+    }
+
+    String idpSub = oauthToken.getName();
+
+    return permissionServiceClient
+        .fetchPermissions(idpSub)
+        .flatMap(
+            response ->
+                exchange
+                    .getSession()
+                    .doOnNext(
+                        session -> {
+                          session
+                              .getAttributes()
+                              .put(InternalJwtService.SESSION_USER_ID, response.userId());
+                          session
+                              .getAttributes()
+                              .put(
+                                  InternalJwtService.SESSION_ROLES,
+                                  new ArrayList<>(response.roles()));
+                          session
+                              .getAttributes()
+                              .put(
+                                  InternalJwtService.SESSION_PERMISSIONS,
+                                  new ArrayList<>(response.permissions()));
+
+                          // Mint new internal JWT
+                          String newJwt =
+                              internalJwtService.mintToken(
+                                  idpSub,
+                                  response.userId(),
+                                  response.roles(),
+                                  response.permissions());
+                          session
+                              .getAttributes()
+                              .put(InternalJwtService.SESSION_INTERNAL_JWT, newJwt);
+
+                          logger.info(
+                              "Refreshed permissions and re-minted internal JWT for user: {}",
+                              authentication.getName());
+                        })
+                    .then())
+        .onErrorResume(
+            error -> {
+              logger.warn(
+                  "Failed to refresh permissions for user: {}, "
+                      + "cached permissions and JWT remain valid",
+                  authentication.getName(),
+                  error);
+              return Mono.empty();
             });
   }
 

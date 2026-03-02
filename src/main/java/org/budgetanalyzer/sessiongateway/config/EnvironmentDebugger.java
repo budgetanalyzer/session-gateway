@@ -24,14 +24,14 @@ public class EnvironmentDebugger {
 
   @EventListener(ApplicationReadyEvent.class)
   public void debugEnvironment() {
-    Map<String, String> auth0Config = new LinkedHashMap<>();
-    auth0Config.put("AUTH0_CLIENT_ID", getPropertyValue("AUTH0_CLIENT_ID"));
-    auth0Config.put("AUTH0_CLIENT_SECRET", getPropertyValue("AUTH0_CLIENT_SECRET"));
-    auth0Config.put("AUTH0_ISSUER_URI", getPropertyValue("AUTH0_ISSUER_URI"));
-    auth0Config.put("AUTH0_AUDIENCE", getPropertyValue("AUTH0_AUDIENCE"));
-    auth0Config.put("AUTH0_LOGOUT_RETURN_TO", getPropertyValue("AUTH0_LOGOUT_RETURN_TO"));
+    Map<String, String> idpConfig = new LinkedHashMap<>();
+    idpConfig.put("AUTH0_CLIENT_ID", getPropertyValue("AUTH0_CLIENT_ID"));
+    idpConfig.put("AUTH0_CLIENT_SECRET", getPropertyValue("AUTH0_CLIENT_SECRET"));
+    idpConfig.put("AUTH0_ISSUER_URI", getPropertyValue("AUTH0_ISSUER_URI"));
+    idpConfig.put("IDP_AUDIENCE", getPropertyValue("IDP_AUDIENCE"));
+    idpConfig.put("IDP_LOGOUT_RETURN_TO", getPropertyValue("IDP_LOGOUT_RETURN_TO"));
 
-    log.debug("Auth0 Configuration: {}", SafeLogger.toJson(auth0Config));
+    log.debug("IDP Configuration: {}", SafeLogger.toJson(idpConfig));
   }
 
   private String getPropertyValue(String key) {

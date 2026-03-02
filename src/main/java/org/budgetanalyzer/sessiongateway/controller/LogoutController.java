@@ -33,12 +33,12 @@ public class LogoutController {
   private static final Logger logger = LoggerFactory.getLogger(LogoutController.class);
 
   @Value("${spring.security.oauth2.client.provider.auth0.issuer-uri:}")
-  private String auth0IssuerUri;
+  private String idpIssuerUri;
 
   @Value("${spring.security.oauth2.client.registration.auth0.client-id:}")
   private String clientId;
 
-  @Value("${auth0.logout.return-to:http://localhost:8080}")
+  @Value("${idp.logout.return-to:http://localhost:8080}")
   private String returnToUrl;
 
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
@@ -69,7 +69,7 @@ public class LogoutController {
 
     return removeAuthorizedClient(exchange, authentication)
         .then(invalidateSession(exchange))
-        .then(redirectToAuth0Logout(exchange))
+        .then(redirectToIdpLogout(exchange))
         .doOnSuccess(v -> logger.info("Successfully logged out user: {}", authentication.getName()))
         .doOnError(error -> logger.error("Error during logout", error));
   }
@@ -112,29 +112,29 @@ public class LogoutController {
   }
 
   /**
-   * Redirects to Auth0 logout endpoint.
+   * Redirects to IDP logout endpoint.
    *
    * <p>Auth0 logout URL format: {issuer-uri}/v2/logout?returnTo={url}&client_id={client-id}
    *
    * @param exchange the server web exchange
    * @return completion signal
    */
-  private Mono<Void> redirectToAuth0Logout(ServerWebExchange exchange) {
+  private Mono<Void> redirectToIdpLogout(ServerWebExchange exchange) {
     var response = exchange.getResponse();
 
-    // Build Auth0 logout URL
+    // Build IDP logout URL
     // Strip trailing slash from issuer URI to avoid double slashes
     var issuerBase =
-        auth0IssuerUri.endsWith("/")
-            ? auth0IssuerUri.substring(0, auth0IssuerUri.length() - 1)
-            : auth0IssuerUri;
-    var auth0LogoutUrl =
+        idpIssuerUri.endsWith("/")
+            ? idpIssuerUri.substring(0, idpIssuerUri.length() - 1)
+            : idpIssuerUri;
+    var idpLogoutUrl =
         String.format("%s/v2/logout?returnTo=%s&client_id=%s", issuerBase, returnToUrl, clientId);
 
-    logger.debug("Redirecting to Auth0 logout: {}", auth0LogoutUrl);
+    logger.debug("Redirecting to IDP logout: {}", idpLogoutUrl);
 
     response.setStatusCode(HttpStatus.FOUND);
-    response.getHeaders().setLocation(URI.create(auth0LogoutUrl));
+    response.getHeaders().setLocation(URI.create(idpLogoutUrl));
 
     return response.setComplete();
   }

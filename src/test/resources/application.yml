@@ -56,3 +56,7 @@ logging:
 api:
   gateway:
     url: http://localhost:8080
+
+# Permission service (overridden by @DynamicPropertySource in tests)
+permission-service:
+  base-url: http://localhost:8080

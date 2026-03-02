@@ -31,7 +31,7 @@ public class OAuth2ClientConfig {
 
   private static final Logger log = LoggerFactory.getLogger(OAuth2ClientConfig.class);
 
-  @Value("${auth0.audience:}")
+  @Value("${idp.audience:}")
   private String audience;
 
   /**
