@@ -7,6 +7,8 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
@@ -69,7 +71,8 @@ public class InternalJwtService {
             .expiresAt(now.plus(1, ChronoUnit.MINUTES))
             .build();
 
-    var token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
+    var header = JwsHeader.with(SignatureAlgorithm.RS256).type("JWT").build();
+    var token = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     log.debug("Minted service JWT for gateway-to-service call");
     return token;
   }
@@ -98,7 +101,8 @@ public class InternalJwtService {
             .expiresAt(now.plus(TOKEN_LIFETIME_MINUTES, ChronoUnit.MINUTES))
             .build();
 
-    var token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
+    var header = JwsHeader.with(SignatureAlgorithm.RS256).type("JWT").build();
+    var token = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     log.debug("Minted internal JWT for userId={}", userId);
     return token;
   }

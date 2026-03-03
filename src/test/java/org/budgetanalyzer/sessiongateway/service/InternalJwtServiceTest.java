@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
+import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -97,11 +98,20 @@ class InternalJwtServiceTest {
   }
 
   @Test
-  void mintToken_usesRs256Algorithm() throws Exception {
+  void mintServiceToken_setsTypJwtHeader() throws Exception {
+    var token = internalJwtService.mintServiceToken();
+    var parsed = SignedJWT.parse(token);
+
+    assertThat(parsed.getHeader().getType()).isEqualTo(JOSEObjectType.JWT);
+  }
+
+  @Test
+  void mintToken_usesRs256AlgorithmAndTypJwtHeader() throws Exception {
     var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
     var parsed = SignedJWT.parse(token);
 
     assertThat(parsed.getHeader().getAlgorithm()).isEqualTo(JWSAlgorithm.RS256);
+    assertThat(parsed.getHeader().getType()).isEqualTo(JOSEObjectType.JWT);
   }
 
   @Test
