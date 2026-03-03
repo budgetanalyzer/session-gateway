@@ -15,7 +15,7 @@ spring:
     oauth2:
       client:
         registration:
-          auth0:
+          idp:
             client-id: test-client-id
             client-secret: test-client-secret
             scope:
@@ -24,9 +24,9 @@ spring:
               - email
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
         provider:
-          auth0:
+          idp:
             # Will be overridden to point to WireMock
-            issuer-uri: http://localhost:8080/auth0
+            issuer-uri: http://localhost:8080/idp
 
   # Cloud Gateway routes
   cloud:

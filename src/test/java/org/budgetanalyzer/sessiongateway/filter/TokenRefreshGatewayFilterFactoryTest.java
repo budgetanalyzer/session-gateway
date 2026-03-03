@@ -79,7 +79,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var oauth2User =
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
     oauth2AuthenticationToken =
-        new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "auth0");
+        new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
 
     sessionAttributes = new HashMap<>();
 
@@ -96,7 +96,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     // Expires in 10 min > 5 min threshold
     var client = buildClient(FIXED_NOW.plusSeconds(600));
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
 
     gatewayFilter.filter(exchange, chain).block();
@@ -112,7 +112,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
@@ -136,7 +136,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
@@ -159,7 +159,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(client.getAccessToken()).thenReturn(null);
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
 
     gatewayFilter.filter(exchange, chain).block();
@@ -177,7 +177,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var client = new OAuth2AuthorizedClient(registration, IDP_SUB, token);
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
 
     gatewayFilter.filter(exchange, chain).block();
@@ -193,7 +193,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
@@ -216,7 +216,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
@@ -238,7 +238,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
@@ -265,7 +265,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
@@ -290,7 +290,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var client = buildClient(FIXED_NOW.plusSeconds(180));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any()))
         .thenReturn(Mono.error(new RuntimeException("refresh failed")));
@@ -306,7 +306,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var client = buildClient(FIXED_NOW.plusSeconds(180));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.empty());
 
@@ -321,7 +321,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
@@ -341,7 +341,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
-            "auth0", oauth2AuthenticationToken, exchange))
+            "idp", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
@@ -386,7 +386,7 @@ class TokenRefreshGatewayFilterFactoryTest {
   }
 
   private ClientRegistration buildRegistration() {
-    return ClientRegistration.withRegistrationId("auth0")
+    return ClientRegistration.withRegistrationId("idp")
         .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
         .clientId("test-client-id")
         .redirectUri("https://example.com/callback")

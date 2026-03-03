@@ -36,7 +36,7 @@ import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 /**
  * Security configuration for Session Gateway.
  *
- * <p>Phase 2 Task 2.1: Implements OAuth2 login with Auth0
+ * <p>Implements OAuth2 login with the configured IDP
  *
  * <ul>
  *   <li>OAuth2 login with Authorization Code + PKCE flow
@@ -49,7 +49,7 @@ import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
  *
  * <p><strong>Phase 6 Fix:</strong> Uses {@link DelegatingServerAuthenticationEntryPoint} to
  * properly route API requests vs browser navigation. API requests ({@code /api/**}) return 401
- * Unauthorized, while browser navigation redirects to OAuth2. This prevents CORS errors from Auth0
+ * Unauthorized, while browser navigation redirects to OAuth2. This prevents CORS errors from IDP
  * redirects on XHR/fetch API requests.
  *
  * <p><strong>Technical Note:</strong> Spring Security WebFlux's {@code .oauth2Login()}
@@ -162,7 +162,7 @@ public class SecurityConfig {
         // Configure exception handling with delegating entry point
         // Phase 6: Use DelegatingServerAuthenticationEntryPoint to properly handle API vs browser
         // This works around Spring Security WebFlux limitation where oauth2Login() would otherwise
-        // redirect ALL unauthenticated requests (including API XHR calls) to Auth0
+        // redirect ALL unauthenticated requests (including API XHR calls) to the IDP
         .exceptionHandling(
             exceptions -> {
               log.debug("Configuring exception handling with delegating entry point");
@@ -191,7 +191,7 @@ public class SecurityConfig {
                     log.debug(
                         "Default entry point triggered, redirecting to OAuth2 for: {}",
                         exchange.getRequest().getPath().value());
-                    return new RedirectServerAuthenticationEntryPoint("/oauth2/authorization/auth0")
+                    return new RedirectServerAuthenticationEntryPoint("/oauth2/authorization/idp")
                         .commence(exchange, ex);
                   });
 
@@ -200,8 +200,8 @@ public class SecurityConfig {
             })
         // Phase 6 Fix: Force session creation before OAuth2 authorization
         // This ensures the OAuth2 authorization request is persisted to Redis
-        // before redirecting to Auth0. Without this, the session may not exist
-        // when Auth0 redirects back, causing [authorization_request_not_found]
+        // before redirecting to the IDP. Without this, the session may not exist
+        // when the IDP redirects back, causing [authorization_request_not_found]
         .addFilterBefore(
             (exchange, chain) -> {
               var path = exchange.getRequest().getPath().value();

@@ -54,7 +54,7 @@ class OAuth2TokenRelayGlobalFilterTest {
     var oauth2User =
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
     oauth2AuthenticationToken =
-        new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "auth0");
+        new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
 
     lenient().when(chain.filter(any())).thenReturn(Mono.empty());
   }

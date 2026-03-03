@@ -34,7 +34,7 @@ class UserControllerTest {
 
     var oauth2User =
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "auth0");
+    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
 
     var result = userController.getCurrentUser(token).block();
 
@@ -45,7 +45,7 @@ class UserControllerTest {
         .containsEntry("picture", "https://example.com/photo.jpg")
         .containsEntry("emailVerified", true)
         .containsEntry("authenticated", true)
-        .containsEntry("registrationId", "auth0");
+        .containsEntry("registrationId", "idp");
   }
 
   @Test
@@ -53,7 +53,7 @@ class UserControllerTest {
     var attributes = Map.<String, Object>of("sub", "auth0|abc123");
     var oauth2User =
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "auth0");
+    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
 
     var result = userController.getCurrentUser(token).block();
 
@@ -94,7 +94,7 @@ class UserControllerTest {
     var attributes = Map.<String, Object>of("sub", "auth0|abc123");
     var oauth2User =
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "auth0");
+    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
 
     StepVerifier.create(userController.getCurrentUser(token)).expectNextCount(1).verifyComplete();
   }

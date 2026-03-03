@@ -8,7 +8,7 @@ class SessionGatewayApplicationTests extends AbstractIntegrationTest {
 
   @Test
   void contextLoads() {
-    // Context should load successfully with mocked Auth0 and Redis testcontainer
+    // Context should load successfully with mocked IDP and Redis testcontainer
   }
 
   @Test

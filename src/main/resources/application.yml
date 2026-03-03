@@ -4,7 +4,7 @@ server:
   address: 0.0.0.0
   # Enable forward headers strategy for WebFlux
   # This ensures Spring Security correctly constructs redirect URIs when behind NGINX proxy
-  # Without this, the redirect_uri sent to Auth0 may be incorrect
+  # Without this, the redirect_uri sent to the IDP may be incorrect
   forward-headers-strategy: framework
   # Note: SSL is handled by NGINX - Session Gateway runs on HTTP internally
 
@@ -36,13 +36,12 @@ spring:
       flush-mode: on_save
       namespace: spring:session
 
-  # OAuth2 Client configuration (Auth0)
-  # Phase 2 Task 2.1: Configure OAuth2 with PKCE flow
+  # OAuth2 Client configuration
   security:
     oauth2:
       client:
         registration:
-          auth0:
+          idp:
             client-id: ${AUTH0_CLIENT_ID:placeholder-client-id}
             client-secret: ${AUTH0_CLIENT_SECRET:placeholder-client-secret}
             scope:
@@ -51,10 +50,9 @@ spring:
               - email
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-            # Auth0 specific: request audience to get JWT access token
             client-authentication-method: client_secret_basic
         provider:
-          auth0:
+          idp:
             issuer-uri: ${AUTH0_ISSUER_URI:https://placeholder.auth0.com/}
 
   # Spring Cloud Gateway routes
@@ -108,7 +106,7 @@ idp:
   audience: ${IDP_AUDIENCE:https://api.budgetanalyzer.org}
   logout:
     return-to: ${IDP_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}  # Where to redirect after logout (Session Gateway)
-    url-template: ${IDP_LOGOUT_URL_TEMPLATE:${spring.security.oauth2.client.provider.auth0.issuer-uri}/v2/logout?returnTo={returnTo}&client_id={clientId}}
+    url-template: ${IDP_LOGOUT_URL_TEMPLATE:${spring.security.oauth2.client.provider.idp.issuer-uri}/v2/logout?returnTo={returnTo}&client_id={clientId}}
 
 # Budget Analyzer Common Configuration
 budgetanalyzer:

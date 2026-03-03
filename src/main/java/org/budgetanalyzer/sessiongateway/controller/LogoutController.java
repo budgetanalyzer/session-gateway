@@ -41,10 +41,10 @@ public class LogoutController {
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
       @Value(
               "${idp.logout.url-template:"
-                  + "${spring.security.oauth2.client.provider.auth0.issuer-uri:}"
+                  + "${spring.security.oauth2.client.provider.idp.issuer-uri:}"
                   + "/v2/logout?returnTo={returnTo}&client_id={clientId}}")
           String idpLogoutUrlTemplate,
-      @Value("${spring.security.oauth2.client.registration.auth0.client-id:}") String clientId,
+      @Value("${spring.security.oauth2.client.registration.idp.client-id:}") String clientId,
       @Value("${idp.logout.return-to:http://localhost:8080}") String returnToUrl) {
     this.authorizedClientRepository = authorizedClientRepository;
     this.idpLogoutUrlTemplate = idpLogoutUrlTemplate;

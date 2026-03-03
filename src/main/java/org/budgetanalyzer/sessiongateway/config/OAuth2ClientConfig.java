@@ -16,17 +16,15 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 /**
- * OAuth2 Client configuration for Auth0 integration.
+ * OAuth2 Client configuration for IDP integration.
  *
- * <p>Configures Authorization Code flow with PKCE and Auth0-specific parameters:
+ * <p>Configures Authorization Code flow with PKCE and IDP-specific parameters:
  *
  * <ul>
  *   <li>Adds 'audience' parameter to get JWT access tokens (not opaque tokens)
  *   <li>Enables PKCE for enhanced security
  *   <li>Configures proper scopes (openid, profile, email)
  * </ul>
- *
- * <p>Phase 2 Task 2.1: Configure OAuth2 Client in Session Gateway
  */
 @Configuration
 // CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
@@ -41,10 +39,10 @@ public class OAuth2ClientConfig {
   }
 
   /**
-   * Customizes OAuth2 authorization requests to add Auth0-specific parameters.
+   * Customizes OAuth2 authorization requests to add IDP-specific parameters.
    *
-   * <p>Auth0 requires an 'audience' parameter to return JWT access tokens. Without this, Auth0
-   * returns opaque access tokens that can't be validated by downstream services.
+   * <p>The IDP requires an 'audience' parameter to return JWT access tokens. Without this, the IDP
+   * may return opaque access tokens that can't be validated by downstream services.
    *
    * @param clientRegistrationRepository the client registration repository
    * @return customized authorization request resolver
@@ -88,7 +86,7 @@ public class OAuth2ClientConfig {
 
     private void logRequest(OAuth2AuthorizationRequest request) {
       if (request != null) {
-        log.debug("==== FINAL AUTHORIZATION REQUEST TO AUTH0 ====");
+        log.debug("==== FINAL AUTHORIZATION REQUEST TO IDP ====");
         log.debug("Authorization URI: {}", request.getAuthorizationUri());
         log.debug("Redirect URI: {}", request.getRedirectUri());
         log.debug("Client ID: {}", request.getClientId());
@@ -101,20 +99,20 @@ public class OAuth2ClientConfig {
   }
 
   /**
-   * Customizer that adds Auth0 audience parameter and captures explicit returnUrl for post-login
+   * Customizer that adds IDP audience parameter and captures explicit returnUrl for post-login
    * redirect.
    *
    * <p>This customizer performs two functions:
    *
    * <ol>
-   *   <li>Adds Auth0 'audience' parameter to get JWT access tokens (not opaque tokens)
+   *   <li>Adds IDP 'audience' parameter to get JWT access tokens (not opaque tokens)
    *   <li>Captures explicit {@code ?returnUrl=} query parameter and stores it in session for
    *       post-authentication redirect
    * </ol>
    *
    * <p>The returnUrl parameter allows users to specify where they should be redirected after
    * successful OAuth2 authentication. For example: {@code
-   * /oauth2/authorization/auth0?returnUrl=/settings}
+   * /oauth2/authorization/idp?returnUrl=/settings}
    *
    * @return authorization request customizer
    */
@@ -153,7 +151,7 @@ public class OAuth2ClientConfig {
             }
           });
 
-      // Debug logging to see what redirect_uri is being sent to Auth0
+      // Debug logging to see what redirect_uri is being sent to the IDP
       log.debug("==== OAUTH2 AUTHORIZATION REQUEST ====");
       log.debug("Redirect URI will be set by resolver based on request");
       log.debug("Audience: {}", audience);

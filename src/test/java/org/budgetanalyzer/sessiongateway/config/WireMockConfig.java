@@ -18,7 +18,7 @@ public class WireMockConfig {
   static {
     wireMockServer = new WireMockServer(WireMockConfiguration.options().dynamicPort());
     wireMockServer.start();
-    stubAuth0OidcDiscovery();
+    stubIdpOidcDiscovery();
   }
 
   @Bean(destroyMethod = "stop")
@@ -30,11 +30,11 @@ public class WireMockConfig {
     return wireMockServer;
   }
 
-  private static void stubAuth0OidcDiscovery() {
+  private static void stubIdpOidcDiscovery() {
     String baseUrl = "http://localhost:" + wireMockServer.port();
 
     wireMockServer.stubFor(
-        get(urlEqualTo("/auth0/.well-known/openid-configuration"))
+        get(urlEqualTo("/idp/.well-known/openid-configuration"))
             .willReturn(
                 aResponse()
                     .withStatus(200)
@@ -42,11 +42,11 @@ public class WireMockConfig {
                     .withBody(
                         """
                     {
-                        "issuer": "%s/auth0",
-                        "authorization_endpoint": "%s/auth0/authorize",
-                        "token_endpoint": "%s/auth0/oauth/token",
-                        "userinfo_endpoint": "%s/auth0/userinfo",
-                        "jwks_uri": "%s/auth0/.well-known/jwks.json",
+                        "issuer": "%s/idp",
+                        "authorization_endpoint": "%s/idp/authorize",
+                        "token_endpoint": "%s/idp/oauth/token",
+                        "userinfo_endpoint": "%s/idp/userinfo",
+                        "jwks_uri": "%s/idp/.well-known/jwks.json",
                         "response_types_supported": ["code"],
                         "grant_types_supported": ["authorization_code", "refresh_token"],
                         "subject_types_supported": ["public"],
@@ -58,7 +58,7 @@ public class WireMockConfig {
 
     // Stub JWKS endpoint (required for JWT validation)
     wireMockServer.stubFor(
-        get(urlEqualTo("/auth0/.well-known/jwks.json"))
+        get(urlEqualTo("/idp/.well-known/jwks.json"))
             .willReturn(
                 aResponse()
                     .withStatus(200)
