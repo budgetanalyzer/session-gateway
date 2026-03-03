@@ -20,6 +20,7 @@ The Session Gateway implements the BFF pattern to provide secure authentication 
 - Proxies API requests to NGINX gateway with internal JWT injection
 - Implements proactive token refresh with permission re-fetch and JWT re-mint
 - Exposes JWKS endpoint for backend JWT signature verification
+- Authenticates gateway-to-service calls with short-lived service JWTs (internal M2M without IdP coupling)
 
 ## Architecture
 
@@ -27,6 +28,7 @@ The Session Gateway implements the BFF pattern to provide secure authentication 
 Browser → Session Gateway (8081) → NGINX (443) → TVS (8088) → Backend Services
           ├─ OAuth2 flows (Auth0)          │ auth_request  │     ↑ verify via JWKS
           ├─ Permission fetch (:8082)      │ verify sig    │     │ + issuer check
+          │  (service JWT + email/name)    │               │     │
           ├─ Internal JWT minting (RS256)  │ via JWKS      │     │ via service-common
           ├─ Session management (Redis)    └───────────────┘
           └─ Internal JWT relay
@@ -99,10 +101,11 @@ curl http://localhost:8081/actuator/health
 
 ### Internal JWT
 - Signed with RS256 (RSA 2048-bit)
-- Claims: `iss` (session-gateway), `sub` (internal userId), `idp_sub` (Auth0 subject), `roles`, `permissions`
+- **User tokens** (30-min TTL, re-minted 5 min before expiry): `sub` (internal userId), `idp_sub`, `roles`, `permissions` — used for downstream service authorization
+- **Service tokens** (1-min TTL, per-call, never cached): `sub` (session-gateway), `type` (service) — used for gateway-to-permission-service authentication
+- Same RSA key pair signs both token types — no IdP client-credentials flow needed for internal M2M
 - JWKS endpoint: `GET /.well-known/jwks.json` (unauthenticated, public key only)
 - PEM-configured RSA key required — app fails to start without it; `kid` derived from SHA-256 thumbprint
-- TTL: 30 minutes, re-minted 5 minutes before expiry
 - Two-tier verification: TVS validates signature only (NGINX auth_request); backend services validate signature + issuer via service-common
 
 ### Return URL Support

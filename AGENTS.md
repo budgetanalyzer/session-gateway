@@ -75,7 +75,7 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 - **Session-Based Auth**: Browser clients use cookies, not tokens
 - **Behind NGINX**: All browser traffic enters through NGINX (port 443) which proxies to Session Gateway (port 8081)
 - **Stateful Sessions**: Redis provides distributed session storage (identity, roles, permissions, cached JWT)
-- **Browser-Only**: Machine-to-machine clients bypass this service
+- **Browser-Only**: External M2M clients bypass this service; the gateway itself authenticates to internal services using short-lived service JWTs signed with its own RSA key (no IdP involvement)
 
 ## Service Architecture
 
@@ -87,7 +87,7 @@ Browser → NGINX (:443)
               ↓ Proxy to Session Gateway
          Session Gateway (:8081) ← OAuth2 → Auth0
               │                           ↓ Session Data
-              ├─ Permissions ──→ Permission Service (:8082)
+              ├─ Permissions ──→ Permission Service (:8082) [service JWT + email/name]
               │                           ↓ userId, roles, permissions
               ├─ Mint Internal JWT (RS256)
               │                           ↓ Cached in Redis (:6379)
@@ -191,8 +191,8 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 - OAuth2TokenRelayGlobalFilter: Mints or retrieves cached internal JWT from session, injects as Authorization header into proxied requests
 
 **Services** (src/main/java/.../service/):
-- InternalJwtService: Mints RS256-signed JWTs with identity/roles/permissions claims; manages re-mint threshold logic
-- PermissionServiceClient: Reactive WebClient that fetches user roles and permissions from the permission-service
+- InternalJwtService: Mints RS256-signed JWTs — user tokens (30-min, identity/roles/permissions) for downstream authorization and service tokens (1-min, `sub: "session-gateway"`, `type: "service"`) for gateway-to-service calls; manages re-mint threshold logic
+- PermissionServiceClient: Reactive WebClient that fetches user roles and permissions from the permission-service; authenticates with a service JWT (Bearer token) and passes email/displayName as query params
 
 **Service-Common Utilities** (auto-configured from service-web):
 - ReactiveHttpLoggingFilter: HTTP request/response logging (replaces RequestLoggingWebFilter)
@@ -272,7 +272,8 @@ grep "SPRING_SECURITY_OAUTH2" .env
 
 **Permission Service**:
 - `permission-service.base-url` (`PERMISSION_SERVICE_URL`): Base URL for the permission-service (default: `http://permission-service:8082`)
-- Endpoint called: `GET /internal/v1/users/{idpSub}/permissions`
+- Endpoint called: `GET /internal/v1/users/{idpSub}/permissions?email={email}&displayName={displayName}`
+- Authenticated with a service JWT (`Authorization: Bearer <service-jwt>`) minted by InternalJwtService
 
 **Session Management**:
 - Redis connection (host, port)
@@ -435,7 +436,7 @@ curl -v http://localhost:8081/oauth2/authorization/auth0
 1. Browser → NGINX (https://app.budgetanalyzer.localhost)
 2. NGINX → Session Gateway (session cookie in request)
 3. Session Gateway → Redis (lookup session: identity, roles, permissions, cached JWT)
-4. Session Gateway → Permission Service (on login or token refresh: fetch userId, roles, permissions)
+4. Session Gateway → Permission Service (on login or token refresh: fetch userId, roles, permissions; authenticated with service JWT, passes email/displayName)
 5. Session Gateway mints internal JWT (RS256) with identity, roles, permissions claims
 6. Session Gateway → NGINX (proxy with Authorization: Bearer \<internal-jwt\> to api.budgetanalyzer.localhost)
 7. NGINX → Token Validation Service (auth_request: TVS verifies JWT signature via Session Gateway JWKS, no issuer/audience checks)
@@ -459,8 +460,9 @@ For detailed architecture diagrams and security design:
 **Internal JWT Security**:
 - Signed with RS256 (RSA 2048-bit minimum)
 - JWKS endpoint (`/.well-known/jwks.json`) exposes only the public key — private key never leaves the gateway
-- Short TTL (30 minutes), re-minted 5 minutes before expiry
-- Claims: `iss` (session-gateway), `sub` (internal userId), `idp_sub` (Auth0 subject), `roles`, `permissions`
+- **User tokens**: 30-min TTL, re-minted 5 minutes before expiry. Claims: `iss` (session-gateway), `sub` (internal userId), `idp_sub` (Auth0 subject), `roles`, `permissions`
+- **Service tokens**: 1-min TTL, minted per-call, never cached. Claims: `iss` (session-gateway), `sub` (session-gateway), `type` (service). Used for gateway-to-permission-service calls during bootstrap permission fetch
+- The RSA key pair serves double duty: signs both user JWTs (downstream authorization) and service JWTs (internal M2M) — no IdP client-credentials flow needed for service-to-service calls
 - PEM-configured RSA key required — app fails to start without it; `kid` derived from SHA-256 thumbprint (stable across restarts)
 - Two-tier verification: TVS validates signature only (NGINX auth_request); backend services validate signature + issuer via service-common
 
@@ -543,6 +545,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 10. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production
 11. **JWT Key Management**: PEM-configured RSA key is required — app fails to start without it; `kid` is derived from SHA-256 thumbprint for stability
 12. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required); token refresh degrades gracefully (existing permissions retained on failure)
+13. **Internal M2M Authentication**: Gateway-to-service calls use short-lived service JWTs signed with the same RSA key — no IdP client-credentials grant needed; internal services are fully decoupled from Auth0
 
 ## Notes for Claude Code
 
@@ -591,6 +594,7 @@ When working on this service:
 - PEM RSA key is required — app fails to start without `jwt.signing.private-key-pem`
 - JWKS endpoint (`/.well-known/jwks.json`) must be accessible without authentication — consumed by TVS and backend services
 - TVS validates JWT signature only (NGINX auth_request gate); backend services validate signature + issuer via service-common
+- Gateway authenticates to permission-service using short-lived service JWTs (not Auth0 M2M tokens) — internal services are fully decoupled from Auth0
 - Changes to OAuth2 configuration require Auth0 console updates
 - Redis is critical dependency - session loss means user re-authentication
 - Token refresh happens automatically via custom filter before expiry (includes permission re-fetch and JWT re-mint)
