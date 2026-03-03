@@ -58,6 +58,7 @@ dependencies {
     testImplementation(libs.testcontainers.junit.jupiter)
     testImplementation(libs.wiremock.standalone)
     testImplementation(libs.awaitility)
+    testImplementation(libs.reactor.test)
 }
 
 spotless {

@@ -38,3 +38,4 @@ testcontainers = { module = "org.testcontainers:testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter" }
 wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
 awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
+reactor-test = { module = "io.projectreactor:reactor-test" }

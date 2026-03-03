@@ -19,10 +19,20 @@ public class JwksController {
 
   private final String jwksJson;
 
+  /**
+   * Creates a new JwksController.
+   *
+   * @param rsaKey the RSA key whose public component is exposed via JWKS
+   */
   public JwksController(RSAKey rsaKey) {
     this.jwksJson = new JWKSet(rsaKey.toPublicJWK()).toString();
   }
 
+  /**
+   * Returns the JSON Web Key Set containing the gateway's public signing key.
+   *
+   * @return the JWKS JSON document
+   */
   @GetMapping(value = "/.well-known/jwks.json", produces = "application/json")
   public Mono<String> jwks() {
     return Mono.just(jwksJson);

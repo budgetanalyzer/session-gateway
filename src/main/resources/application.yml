@@ -108,6 +108,7 @@ idp:
   audience: ${IDP_AUDIENCE:https://api.budgetanalyzer.org}
   logout:
     return-to: ${IDP_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}  # Where to redirect after logout (Session Gateway)
+    url-template: ${IDP_LOGOUT_URL_TEMPLATE:${spring.security.oauth2.client.provider.auth0.issuer-uri}/v2/logout?returnTo={returnTo}&client_id={clientId}}
 
 # Budget Analyzer Common Configuration
 budgetanalyzer:
@@ -130,11 +131,10 @@ budgetanalyzer:
 permission-service:
   base-url: ${PERMISSION_SERVICE_URL:http://permission-service:8082}
 
-# JWT signing key (optional). If absent, an ephemeral key is generated at startup.
-# For multi-instance deployments, set this to a shared RSA private key in PEM format.
-# jwt:
-#   signing:
-#     private-key-pem: ${JWT_SIGNING_PRIVATE_KEY_PEM:}
+# JWT signing key (required). PEM-encoded RSA private key for internal JWT minting.
+jwt:
+  signing:
+    private-key-pem: ${JWT_SIGNING_PRIVATE_KEY_PEM:}
 
 # Actuator configuration
 management:

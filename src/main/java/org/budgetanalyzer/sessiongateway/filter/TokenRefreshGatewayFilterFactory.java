@@ -32,8 +32,7 @@ import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 public class TokenRefreshGatewayFilterFactory
     extends AbstractGatewayFilterFactory<TokenRefreshGatewayFilterFactory.Config> {
 
-  private static final Logger logger =
-      LoggerFactory.getLogger(TokenRefreshGatewayFilterFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(TokenRefreshGatewayFilterFactory.class);
   private static final Duration REFRESH_THRESHOLD = Duration.ofMinutes(5);
 
   private final ReactiveOAuth2AuthorizedClientManager authorizedClientManager;
@@ -46,13 +45,14 @@ public class TokenRefreshGatewayFilterFactory
       ReactiveOAuth2AuthorizedClientManager authorizedClientManager,
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
       PermissionServiceClient permissionServiceClient,
-      InternalJwtService internalJwtService) {
+      InternalJwtService internalJwtService,
+      Clock clock) {
     super(Config.class);
     this.authorizedClientManager = authorizedClientManager;
     this.authorizedClientRepository = authorizedClientRepository;
     this.permissionServiceClient = permissionServiceClient;
     this.internalJwtService = internalJwtService;
-    this.clock = Clock.systemUTC();
+    this.clock = clock;
   }
 
   @Override
@@ -73,12 +73,12 @@ public class TokenRefreshGatewayFilterFactory
                         authorizedClient -> {
                           // Check if token needs refresh
                           if (needsRefresh(authorizedClient)) {
-                            logger.debug(
+                            log.debug(
                                 "Access token expiring soon, initiating refresh for user: {}",
                                 authToken.getName());
                             return refreshToken(authorizedClient, authToken, exchange);
                           } else {
-                            logger.trace(
+                            log.trace(
                                 "Access token still valid for user: {}, no refresh needed",
                                 authToken.getName());
                             return Mono.just(authorizedClient);
@@ -99,7 +99,7 @@ public class TokenRefreshGatewayFilterFactory
     var accessToken = authorizedClient.getAccessToken();
 
     if (accessToken == null || accessToken.getExpiresAt() == null) {
-      logger.warn("Access token or expiration is null, skipping refresh check");
+      log.warn("Access token or expiration is null, skipping refresh check");
       return false;
     }
 
@@ -111,7 +111,7 @@ public class TokenRefreshGatewayFilterFactory
 
     if (needsRefresh) {
       var timeUntilExpiry = Duration.between(now, expiresAt);
-      logger.debug(
+      log.debug(
           "Token expires in {} seconds, threshold is {} seconds",
           timeUntilExpiry.getSeconds(),
           REFRESH_THRESHOLD.getSeconds());
@@ -143,7 +143,7 @@ public class TokenRefreshGatewayFilterFactory
         .flatMap(
             refreshedClient -> {
               if (refreshedClient != null) {
-                logger.info(
+                log.info(
                     "Successfully refreshed access token for user: {}", authentication.getName());
 
                 // Save the refreshed client to the session, then refresh permissions
@@ -152,19 +152,19 @@ public class TokenRefreshGatewayFilterFactory
                     .then(refreshPermissionsAndRemint(exchange, authentication))
                     .thenReturn(refreshedClient);
               } else {
-                logger.warn("Token refresh returned null for user: {}", authentication.getName());
+                log.warn("Token refresh returned null for user: {}", authentication.getName());
                 return Mono.just(authorizedClient);
               }
             })
         .doOnError(
             error -> {
-              logger.error(
+              log.error(
                   "Failed to refresh access token for user: {}", authentication.getName(), error);
             })
         .onErrorResume(
             error -> {
               // Return original client on error to avoid breaking the request
-              logger.warn("Falling back to existing token after refresh failure");
+              log.warn("Falling back to existing token after refresh failure");
               return Mono.just(authorizedClient);
             });
   }
@@ -216,14 +216,14 @@ public class TokenRefreshGatewayFilterFactory
                               .getAttributes()
                               .put(InternalJwtService.SESSION_INTERNAL_JWT, newJwt);
 
-                          logger.info(
+                          log.info(
                               "Refreshed permissions and re-minted internal JWT for user: {}",
                               authentication.getName());
                         })
                     .then())
         .onErrorResume(
             error -> {
-              logger.warn(
+              log.warn(
                   "Failed to refresh permissions for user: {}, "
                       + "cached permissions and JWT remain valid",
                   authentication.getName(),

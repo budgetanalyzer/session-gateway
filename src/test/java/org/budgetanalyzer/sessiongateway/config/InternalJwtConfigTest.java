@@ -13,43 +13,65 @@ import com.nimbusds.jose.jwk.RSAKey;
 
 class InternalJwtConfigTest {
 
-  private final InternalJwtConfig config = new InternalJwtConfig();
+  private final InternalJwtConfig internalJwtConfig = new InternalJwtConfig();
 
   @Test
-  void generatedMode_producesValidRsaKeyWithKid() {
-    RSAKey rsaKey = config.rsaKey("");
-
-    assertThat(rsaKey).isNotNull();
-    assertThat(rsaKey.getKeyID()).isNotNull().isNotBlank();
-    assertThat(rsaKey.isPrivate()).isTrue();
+  void rsaKey_throwsWhenPemIsBlank() {
+    assertThatThrownBy(() -> internalJwtConfig.rsaKey(""))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("jwt.signing.private-key-pem must be set");
   }
 
   @Test
-  void generatedMode_producesKeyWhenPropertyIsNull() {
-    RSAKey rsaKey = config.rsaKey(null);
-
-    assertThat(rsaKey).isNotNull();
-    assertThat(rsaKey.getKeyID()).isNotNull();
-    assertThat(rsaKey.isPrivate()).isTrue();
-  }
-
-  @Test
-  void generatedMode_producesUniqueKeysEachTime() {
-    RSAKey key1 = config.rsaKey("");
-    RSAKey key2 = config.rsaKey("");
-
-    assertThat(key1.getKeyID()).isNotEqualTo(key2.getKeyID());
+  void rsaKey_throwsWhenPemIsNull() {
+    assertThatThrownBy(() -> internalJwtConfig.rsaKey(null))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("jwt.signing.private-key-pem must be set");
   }
 
   @Test
   void configuredMode_loadsFromPemString() throws Exception {
-    // Generate an RSA key pair using JCA
+    String pem = generateTestPem();
+
+    RSAKey loaded = internalJwtConfig.rsaKey(pem);
+
+    assertThat(loaded).isNotNull();
+    assertThat(loaded.getKeyID()).isNotNull();
+    assertThat(loaded.isPrivate()).isTrue();
+  }
+
+  @Test
+  void configuredMode_producesDeterministicKid() throws Exception {
+    String pem = generateTestPem();
+
+    RSAKey first = internalJwtConfig.rsaKey(pem);
+    RSAKey second = internalJwtConfig.rsaKey(pem);
+
+    assertThat(first.getKeyID()).isEqualTo(second.getKeyID());
+  }
+
+  @Test
+  void configuredMode_throwsForInvalidPem() {
+    assertThatThrownBy(() -> internalJwtConfig.rsaKey("not-a-valid-pem"))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Failed to parse RSA private key");
+  }
+
+  @Test
+  void jwtEncoder_isCreatedFromRsaKey() throws Exception {
+    String pem = generateTestPem();
+    RSAKey rsaKey = internalJwtConfig.rsaKey(pem);
+    var encoder = internalJwtConfig.jwtEncoder(rsaKey);
+
+    assertThat(encoder).isNotNull();
+  }
+
+  private static String generateTestPem() throws Exception {
     KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
     keyGen.initialize(2048);
     var keyPair = keyGen.generateKeyPair();
     RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
 
-    // Build PEM from PKCS#8 encoded private key
     String base64 = Base64.getEncoder().encodeToString(privateKey.getEncoded());
     StringBuilder pem = new StringBuilder();
     pem.append("-----BEGIN PRIVATE KEY-----\n");
@@ -58,26 +80,6 @@ class InternalJwtConfigTest {
       pem.append("\n");
     }
     pem.append("-----END PRIVATE KEY-----");
-
-    RSAKey loaded = config.rsaKey(pem.toString());
-
-    assertThat(loaded).isNotNull();
-    assertThat(loaded.getKeyID()).isNotNull();
-    assertThat(loaded.isPrivate()).isTrue();
-  }
-
-  @Test
-  void configuredMode_throwsForInvalidPem() {
-    assertThatThrownBy(() -> config.rsaKey("not-a-valid-pem"))
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Failed to parse RSA private key");
-  }
-
-  @Test
-  void jwtEncoder_isCreatedFromRsaKey() {
-    RSAKey rsaKey = config.rsaKey("");
-    var encoder = config.jwtEncoder(rsaKey);
-
-    assertThat(encoder).isNotNull();
+    return pem.toString();
   }
 }

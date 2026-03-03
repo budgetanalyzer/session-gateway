@@ -31,7 +31,7 @@ public class InternalJwtService {
   /** Session attribute key for the cached internal JWT. */
   public static final String SESSION_INTERNAL_JWT = "INTERNAL_JWT";
 
-  private static final Logger logger = LoggerFactory.getLogger(InternalJwtService.class);
+  private static final Logger log = LoggerFactory.getLogger(InternalJwtService.class);
   private static final long TOKEN_LIFETIME_MINUTES = 30;
   private static final long REMINT_THRESHOLD_MINUTES = 5;
 
@@ -65,6 +65,7 @@ public class InternalJwtService {
         JwtClaimsSet.builder()
             .issuer("session-gateway")
             .subject(userId)
+            .audience(List.of("budgetanalyzer-internal"))
             .claim("idp_sub", idpSub)
             .claim("roles", roles)
             .claim("permissions", permissions)
@@ -73,7 +74,7 @@ public class InternalJwtService {
             .build();
 
     String token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
-    logger.debug("Minted internal JWT for userId={}", userId);
+    log.debug("Minted internal JWT for userId={}", userId);
     return token;
   }
 
@@ -98,7 +99,7 @@ public class InternalJwtService {
       Instant threshold = clock.instant().plus(REMINT_THRESHOLD_MINUTES, ChronoUnit.MINUTES);
       return expiry.isBefore(threshold);
     } catch (ParseException e) {
-      logger.warn("Failed to parse cached internal JWT, will remint", e);
+      log.warn("Failed to parse cached internal JWT, will remint", e);
       return true;
     }
   }

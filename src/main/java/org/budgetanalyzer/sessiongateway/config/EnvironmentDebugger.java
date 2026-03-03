@@ -12,21 +12,22 @@ import org.springframework.stereotype.Component;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
 
+/** Logs IDP configuration at startup for diagnostics. */
 @Component
 public class EnvironmentDebugger {
 
   private static final Logger log = LoggerFactory.getLogger(EnvironmentDebugger.class);
-  private final Environment env;
+  private final Environment environment;
 
-  public EnvironmentDebugger(Environment env) {
-    this.env = env;
+  public EnvironmentDebugger(Environment environment) {
+    this.environment = environment;
   }
 
   @EventListener(ApplicationReadyEvent.class)
   public void debugEnvironment() {
     Map<String, String> idpConfig = new LinkedHashMap<>();
     idpConfig.put("AUTH0_CLIENT_ID", getPropertyValue("AUTH0_CLIENT_ID"));
-    idpConfig.put("AUTH0_CLIENT_SECRET", getPropertyValue("AUTH0_CLIENT_SECRET"));
+    idpConfig.put("AUTH0_CLIENT_SECRET", SafeLogger.mask(getPropertyValue("AUTH0_CLIENT_SECRET")));
     idpConfig.put("AUTH0_ISSUER_URI", getPropertyValue("AUTH0_ISSUER_URI"));
     idpConfig.put("IDP_AUDIENCE", getPropertyValue("IDP_AUDIENCE"));
     idpConfig.put("IDP_LOGOUT_RETURN_TO", getPropertyValue("IDP_LOGOUT_RETURN_TO"));
@@ -35,7 +36,7 @@ public class EnvironmentDebugger {
   }
 
   private String getPropertyValue(String key) {
-    String value = env.getProperty(key);
+    String value = environment.getProperty(key);
     if (value == null) {
       return "NOT SET";
     }

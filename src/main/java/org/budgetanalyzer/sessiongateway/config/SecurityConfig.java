@@ -64,24 +64,24 @@ import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
-  private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+  private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
   private static final String ACTUATOR_PATTERN = "/actuator/**";
-  private static final AntPathMatcher pathMatcher = new AntPathMatcher();
+  private static final AntPathMatcher antPathMatcher = new AntPathMatcher();
 
   private final ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
-  private final OAuth2LoginDebugger loginDebugger;
+  private final OAuth2LoginDebugger oauth2LoginDebugger;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
   private final ReactiveClientRegistrationRepository clientRegistrationRepository;
   private final PermissionServiceClient permissionServiceClient;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
-      OAuth2LoginDebugger loginDebugger,
+      OAuth2LoginDebugger oauth2LoginDebugger,
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
       ReactiveClientRegistrationRepository clientRegistrationRepository,
       PermissionServiceClient permissionServiceClient) {
     this.authorizationRequestResolver = authorizationRequestResolver;
-    this.loginDebugger = loginDebugger;
+    this.oauth2LoginDebugger = oauth2LoginDebugger;
     this.authorizedClientRepository = authorizedClientRepository;
     this.clientRegistrationRepository = clientRegistrationRepository;
     this.permissionServiceClient = permissionServiceClient;
@@ -105,7 +105,7 @@ public class SecurityConfig {
   @Bean
   public SecurityWebFilterChain securityWebFilterChain(
       ServerHttpSecurity http, ServerRequestCache serverRequestCache) {
-    logger.info("Creating security web filter chain");
+    log.info("Creating security web filter chain");
 
     return http.authorizeExchange(
             exchanges ->
@@ -145,7 +145,7 @@ public class SecurityConfig {
               // Add failure handler for debugging
               oauth2.authenticationFailureHandler(
                   (webFilterExchange, ex) -> {
-                    logger.error(
+                    log.error(
                         "OAuth2 login failed for URI: {}, error: {}",
                         webFilterExchange.getExchange().getRequest().getURI(),
                         ex.getMessage(),
@@ -165,7 +165,7 @@ public class SecurityConfig {
         // redirect ALL unauthenticated requests (including API XHR calls) to Auth0
         .exceptionHandling(
             exceptions -> {
-              logger.debug("Configuring exception handling with delegating entry point");
+              log.debug("Configuring exception handling with delegating entry point");
 
               // Create delegating entry point to route based on request path
               DelegatingServerAuthenticationEntryPoint delegatingEntryPoint =
@@ -175,7 +175,7 @@ public class SecurityConfig {
                       new DelegatingServerAuthenticationEntryPoint.DelegateEntry(
                           ServerWebExchangeMatchers.pathMatchers("/api/**"),
                           (exchange, ex) -> {
-                            logger.debug(
+                            log.debug(
                                 "API path matched, returning 401 for: {}",
                                 exchange.getRequest().getPath().value());
                             // Set 401 status and commit the response
@@ -188,14 +188,14 @@ public class SecurityConfig {
               // This is the default for all requests that don't match the above matcher
               delegatingEntryPoint.setDefaultEntryPoint(
                   (exchange, ex) -> {
-                    logger.debug(
+                    log.debug(
                         "Default entry point triggered, redirecting to OAuth2 for: {}",
                         exchange.getRequest().getPath().value());
                     return new RedirectServerAuthenticationEntryPoint("/oauth2/authorization/auth0")
                         .commence(exchange, ex);
                   });
 
-              logger.debug("Delegating entry point configured successfully");
+              log.debug("Delegating entry point configured successfully");
               exceptions.authenticationEntryPoint(delegatingEntryPoint);
             })
         // Phase 6 Fix: Force session creation before OAuth2 authorization
@@ -207,17 +207,17 @@ public class SecurityConfig {
               var path = exchange.getRequest().getPath().value();
 
               // Skip session creation for actuator endpoints to reduce noise
-              if (pathMatcher.match(ACTUATOR_PATTERN, path)) {
+              if (antPathMatcher.match(ACTUATOR_PATTERN, path)) {
                 return chain.filter(exchange);
               }
 
-              logger.debug("Force session creation filter for path: {}", path);
+              log.debug("Force session creation filter for path: {}", path);
 
               return exchange
                   .getSession()
                   .doOnNext(
                       session -> {
-                        logger.debug(
+                        log.debug(
                             "Session created - ID: {}, creation time: {}",
                             session.getId(),
                             session.getCreationTime());
@@ -261,14 +261,14 @@ public class SecurityConfig {
       @Override
       public Mono<Void> onAuthenticationSuccess(
           WebFilterExchange webFilterExchange, Authentication authentication) {
-        logger.debug(
+        log.debug(
             "OAuth2 login success - Principal: {}, URI: {}",
             authentication.getName(),
             webFilterExchange.getExchange().getRequest().getURI());
 
         // Verify this is OAuth2 authentication
         if (!(authentication instanceof OAuth2AuthenticationToken)) {
-          logger.warn(
+          log.warn(
               "Not an OAuth2AuthenticationToken, cannot save authorized client. Type: {}",
               authentication.getClass().getName());
           return redirectToUrl("/", webFilterExchange, authentication);
@@ -277,7 +277,7 @@ public class SecurityConfig {
         var oauthToken = (OAuth2AuthenticationToken) authentication;
         var clientRegistrationId = oauthToken.getAuthorizedClientRegistrationId();
 
-        logger.debug(
+        log.debug(
             "Attempting to load/save OAuth2AuthorizedClient for registration ID: {}",
             clientRegistrationId);
 
@@ -292,7 +292,7 @@ public class SecurityConfig {
                   // Client exists, explicitly save it to ensure persistence
                   var accessToken = authorizedClient.getAccessToken();
                   var refreshToken = authorizedClient.getRefreshToken();
-                  logger.debug(
+                  log.debug(
                       "Found OAuth2AuthorizedClient - Access Token: {}, Refresh Token: {}",
                       accessToken != null
                           ? "present (expires: " + accessToken.getExpiresAt() + ")"
@@ -309,8 +309,8 @@ public class SecurityConfig {
                 // it
                 Mono.defer(
                     () -> {
-                      logger.warn("OAuth2AuthorizedClient NOT found in repository");
-                      logger.debug("Checking exchange attributes for authorized client...");
+                      log.warn("OAuth2AuthorizedClient NOT found in repository");
+                      log.debug("Checking exchange attributes for authorized client...");
 
                       // Spring Security stores the authorized client in exchange attributes
                       // during login. Try common attribute keys
@@ -323,29 +323,29 @@ public class SecurityConfig {
 
                       for (String key : possibleKeys) {
                         var attr = exchange.getAttributes().get(key);
-                        logger.debug("Checking attribute key: {} = {}", key, attr);
+                        log.debug("Checking attribute key: {} = {}", key, attr);
                       }
 
                       // Log all exchange attributes for debugging
-                      if (logger.isDebugEnabled()) {
-                        logger.debug("All exchange attributes:");
-                        exchange.getAttributes().forEach((k, v) -> logger.debug("  {} = {}", k, v));
+                      if (log.isDebugEnabled()) {
+                        log.debug("All exchange attributes:");
+                        exchange.getAttributes().forEach((k, v) -> log.debug("  {} = {}", k, v));
                       }
 
-                      logger.error(
+                      log.error(
                           "Cannot save OAuth2AuthorizedClient - not found in repository or "
                               + "exchange attributes. This will cause TokenRelay to fail. "
                               + "Check Spring Security configuration.");
 
                       return Mono.empty();
                     }))
-            .doOnSuccess(v -> logger.debug("OAuth2AuthorizedClient save operation completed"))
+            .doOnSuccess(v -> log.debug("OAuth2AuthorizedClient save operation completed"))
             .doOnError(
-                e -> logger.error("Error during OAuth2AuthorizedClient save: {}", e.getMessage()))
+                e -> log.error("Error during OAuth2AuthorizedClient save: {}", e.getMessage()))
             .onErrorResume(
                 e -> {
                   // Log error but don't fail the login
-                  logger.warn("Continuing with redirect despite save error", e);
+                  log.warn("Continuing with redirect despite save error", e);
                   return Mono.empty();
                 })
             .then(fetchAndStorePermissions(exchange, authentication))
@@ -371,7 +371,7 @@ public class SecurityConfig {
     }
 
     String idpSub = oauthToken.getName();
-    logger.debug("Fetching permissions for idpSub={}", idpSub);
+    log.debug("Fetching permissions for idpSub={}", idpSub);
 
     return permissionServiceClient
         .fetchPermissions(idpSub)
@@ -394,7 +394,7 @@ public class SecurityConfig {
                               .put(
                                   InternalJwtService.SESSION_PERMISSIONS,
                                   new ArrayList<>(response.permissions()));
-                          logger.info(
+                          log.info(
                               "Stored permissions in session for userId={}, "
                                   + "roles={}, permissions={}",
                               response.userId(),
@@ -433,7 +433,7 @@ public class SecurityConfig {
               // Priority 1: Check for explicit returnUrl in session
               String explicitReturnUrl = session.getAttribute("CUSTOM_RETURN_URL");
               if (explicitReturnUrl != null) {
-                logger.info("Found explicit return URL in session: {}", explicitReturnUrl);
+                log.info("Found explicit return URL in session: {}", explicitReturnUrl);
                 session.getAttributes().remove("CUSTOM_RETURN_URL");
                 return validateAndRedirect(explicitReturnUrl, webFilterExchange, authentication);
               }
@@ -443,7 +443,7 @@ public class SecurityConfig {
                   .getRedirectUri(exchange)
                   .flatMap(
                       uri -> {
-                        logger.info("Found saved request URI: {}", uri);
+                        log.info("Found saved request URI: {}", uri);
                         // Clear the saved request to prevent reuse
                         return serverRequestCache
                             .removeMatchingRequest(exchange)
@@ -455,7 +455,7 @@ public class SecurityConfig {
                       Mono.defer(
                           () -> {
                             // Priority 3: Default to "/"
-                            logger.debug("No return URL found, using default: /");
+                            log.debug("No return URL found, using default: /");
                             return redirectToUrl("/", webFilterExchange, authentication);
                           }));
             });
@@ -476,10 +476,10 @@ public class SecurityConfig {
       String redirectUrl, WebFilterExchange webFilterExchange, Authentication authentication) {
 
     if (RedirectUrlValidator.isValidRedirectUrl(redirectUrl)) {
-      logger.info("Redirecting authenticated user to: {}", redirectUrl);
+      log.info("Redirecting authenticated user to: {}", redirectUrl);
       return redirectToUrl(redirectUrl, webFilterExchange, authentication);
     } else {
-      logger.warn(
+      log.warn(
           "Invalid or potentially malicious redirect URL rejected: {}, using safe default: /",
           redirectUrl);
       return redirectToUrl("/", webFilterExchange, authentication);

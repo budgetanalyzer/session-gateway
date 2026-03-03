@@ -31,7 +31,7 @@ class InternalJwtServiceTest {
       List.of("transactions:read", "transactions:write");
 
   private RSAKey rsaKey;
-  private InternalJwtService service;
+  private InternalJwtService internalJwtService;
   private Clock fixedClock;
 
   @BeforeEach
@@ -40,18 +40,19 @@ class InternalJwtServiceTest {
     ImmutableJWKSet<SecurityContext> jwkSource = new ImmutableJWKSet<>(new JWKSet(rsaKey));
     JwtEncoder encoder = new NimbusJwtEncoder(jwkSource);
     fixedClock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
-    service = new InternalJwtService(encoder, fixedClock);
+    internalJwtService = new InternalJwtService(encoder, fixedClock);
   }
 
   @Test
   void mintToken_producesValidJwtWithCorrectClaims() throws Exception {
-    String token = service.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     SignedJWT parsed = SignedJWT.parse(token);
     var claims = parsed.getJWTClaimsSet();
 
     assertThat(claims.getIssuer()).isEqualTo("session-gateway");
     assertThat(claims.getSubject()).isEqualTo(USER_ID);
+    assertThat(claims.getAudience()).containsExactly("budgetanalyzer-internal");
     assertThat(claims.getStringClaim("idp_sub")).isEqualTo(IDP_SUB);
     assertThat(claims.getStringListClaim("roles")).containsExactly("ROLE_USER", "ROLE_ADMIN");
     assertThat(claims.getStringListClaim("permissions"))
@@ -63,7 +64,7 @@ class InternalJwtServiceTest {
 
   @Test
   void mintToken_usesRs256Algorithm() throws Exception {
-    String token = service.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     SignedJWT parsed = SignedJWT.parse(token);
     assertThat(parsed.getHeader().getAlgorithm()).isEqualTo(JWSAlgorithm.RS256);
@@ -71,7 +72,7 @@ class InternalJwtServiceTest {
 
   @Test
   void mintToken_signatureVerifiesWithPublicKey() throws Exception {
-    String token = service.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     SignedJWT parsed = SignedJWT.parse(token);
     var verifier = new com.nimbusds.jose.crypto.RSASSAVerifier(rsaKey.toRSAPublicKey());
@@ -80,28 +81,28 @@ class InternalJwtServiceTest {
 
   @Test
   void needsRemint_returnsTrueForNull() {
-    assertThat(service.needsRemint(null)).isTrue();
+    assertThat(internalJwtService.needsRemint(null)).isTrue();
   }
 
   @Test
   void needsRemint_returnsTrueForEmpty() {
-    assertThat(service.needsRemint("")).isTrue();
+    assertThat(internalJwtService.needsRemint("")).isTrue();
   }
 
   @Test
   void needsRemint_returnsTrueForBlank() {
-    assertThat(service.needsRemint("   ")).isTrue();
+    assertThat(internalJwtService.needsRemint("   ")).isTrue();
   }
 
   @Test
   void needsRemint_returnsTrueForMalformedToken() {
-    assertThat(service.needsRemint("not-a-jwt")).isTrue();
+    assertThat(internalJwtService.needsRemint("not-a-jwt")).isTrue();
   }
 
   @Test
   void needsRemint_returnsTrueForExpiredToken() {
     // Mint a token, then advance clock past expiry
-    String token = service.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     Clock expiredClock = Clock.fixed(FIXED_NOW.plus(31, ChronoUnit.MINUTES), ZoneOffset.UTC);
     InternalJwtService laterService = new InternalJwtService(null, expiredClock);
@@ -112,7 +113,7 @@ class InternalJwtServiceTest {
   @Test
   void needsRemint_returnsTrueForNearExpiryToken() {
     // Mint a token, then advance clock to within 5 min of expiry
-    String token = service.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     // Token expires at FIXED_NOW + 30min. Clock at FIXED_NOW + 26min means 4 min left < 5 min
     // threshold
@@ -124,14 +125,14 @@ class InternalJwtServiceTest {
 
   @Test
   void needsRemint_returnsFalseForFreshToken() {
-    String token = service.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
-    assertThat(service.needsRemint(token)).isFalse();
+    assertThat(internalJwtService.needsRemint(token)).isFalse();
   }
 
   @Test
   void needsRemint_returnsFalseWhenMoreThan5MinRemaining() {
-    String token = service.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     // Token expires at FIXED_NOW + 30min. Clock at FIXED_NOW + 20min means 10 min left > 5 min
     Clock midLifeClock = Clock.fixed(FIXED_NOW.plus(20, ChronoUnit.MINUTES), ZoneOffset.UTC);

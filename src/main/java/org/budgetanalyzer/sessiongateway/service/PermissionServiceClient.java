@@ -15,7 +15,7 @@ import reactor.core.publisher.Mono;
 @Service
 public class PermissionServiceClient {
 
-  private static final Logger logger = LoggerFactory.getLogger(PermissionServiceClient.class);
+  private static final Logger log = LoggerFactory.getLogger(PermissionServiceClient.class);
 
   private final WebClient webClient;
 
@@ -35,7 +35,7 @@ public class PermissionServiceClient {
    * @return the user's permissions response
    */
   public Mono<PermissionResponse> fetchPermissions(String idpSub) {
-    logger.debug("Fetching permissions for idpSub={}", idpSub);
+    log.debug("Fetching permissions for idpSub={}", idpSub);
 
     return webClient
         .get()
@@ -56,7 +56,7 @@ public class PermissionServiceClient {
                                         + ": "
                                         + body))))
         .bodyToMono(PermissionResponse.class)
-        .doOnSuccess(r -> logger.debug("Fetched permissions for idpSub={}: {}", idpSub, r));
+        .doOnSuccess(r -> log.debug("Fetched permissions for idpSub={}: {}", idpSub, r));
   }
 
   /**

@@ -11,6 +11,9 @@ import org.springframework.security.oauth2.client.registration.ReactiveClientReg
 import org.springframework.security.oauth2.client.web.server.DefaultServerOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.web.server.ServerWebExchange;
+
+import reactor.core.publisher.Mono;
 
 /**
  * OAuth2 Client configuration for Auth0 integration.
@@ -31,8 +34,11 @@ public class OAuth2ClientConfig {
 
   private static final Logger log = LoggerFactory.getLogger(OAuth2ClientConfig.class);
 
-  @Value("${idp.audience:}")
-  private String audience;
+  private final String audience;
+
+  public OAuth2ClientConfig(@Value("${idp.audience:}") String audience) {
+    this.audience = audience;
+  }
 
   /**
    * Customizes OAuth2 authorization requests to add Auth0-specific parameters.
@@ -70,26 +76,25 @@ public class OAuth2ClientConfig {
     }
 
     @Override
-    public reactor.core.publisher.Mono<OAuth2AuthorizationRequest> resolve(
-        org.springframework.web.server.ServerWebExchange exchange) {
+    public Mono<OAuth2AuthorizationRequest> resolve(ServerWebExchange exchange) {
       return delegate.resolve(exchange).doOnNext(this::logRequest);
     }
 
     @Override
-    public reactor.core.publisher.Mono<OAuth2AuthorizationRequest> resolve(
-        org.springframework.web.server.ServerWebExchange exchange, String clientRegistrationId) {
+    public Mono<OAuth2AuthorizationRequest> resolve(
+        ServerWebExchange exchange, String clientRegistrationId) {
       return delegate.resolve(exchange, clientRegistrationId).doOnNext(this::logRequest);
     }
 
     private void logRequest(OAuth2AuthorizationRequest request) {
       if (request != null) {
         log.debug("==== FINAL AUTHORIZATION REQUEST TO AUTH0 ====");
-        log.debug("Authorization URI: " + request.getAuthorizationUri());
-        log.debug("Redirect URI: " + request.getRedirectUri());
-        log.debug("Client ID: " + request.getClientId());
-        log.debug("Scopes: " + request.getScopes());
-        log.debug("State: " + request.getState());
-        log.debug("Additional params: " + request.getAdditionalParameters());
+        log.debug("Authorization URI: {}", request.getAuthorizationUri());
+        log.debug("Redirect URI: {}", request.getRedirectUri());
+        log.debug("Client ID: {}", request.getClientId());
+        log.debug("Scopes: {}", request.getScopes());
+        log.debug("State: {}", request.getState());
+        log.debug("Additional params: {}", request.getAdditionalParameters());
         log.debug("==============================================");
       }
     }
@@ -127,10 +132,7 @@ public class OAuth2ClientConfig {
       // This is done via a custom attributes consumer
       customizer.attributes(
           attributes -> {
-            var exchange =
-                (org.springframework.web.server.ServerWebExchange)
-                    attributes.get(
-                        org.springframework.web.server.ServerWebExchange.class.getName());
+            var exchange = (ServerWebExchange) attributes.get(ServerWebExchange.class.getName());
 
             if (exchange != null) {
               String returnUrl = exchange.getRequest().getQueryParams().getFirst("returnUrl");
@@ -154,7 +156,7 @@ public class OAuth2ClientConfig {
       // Debug logging to see what redirect_uri is being sent to Auth0
       log.debug("==== OAUTH2 AUTHORIZATION REQUEST ====");
       log.debug("Redirect URI will be set by resolver based on request");
-      log.debug("Audience: " + audience);
+      log.debug("Audience: {}", audience);
       log.debug("=====================================");
     };
   }

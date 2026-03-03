@@ -24,31 +24,36 @@ import reactor.core.publisher.Mono;
  *   <li>Invalidates Redis session
  *   <li>Clears session cookie
  *   <li>Removes OAuth2 authorized client from session
- *   <li>Redirects to Auth0 logout (with returnTo parameter)
+ *   <li>Redirects to IDP logout (with returnTo parameter)
  * </ul>
  */
 @RestController
 public class LogoutController {
 
-  private static final Logger logger = LoggerFactory.getLogger(LogoutController.class);
+  private static final Logger log = LoggerFactory.getLogger(LogoutController.class);
 
-  @Value("${spring.security.oauth2.client.provider.auth0.issuer-uri:}")
-  private String idpIssuerUri;
-
-  @Value("${spring.security.oauth2.client.registration.auth0.client-id:}")
-  private String clientId;
-
-  @Value("${idp.logout.return-to:http://localhost:8080}")
-  private String returnToUrl;
-
+  private final String idpLogoutUrlTemplate;
+  private final String clientId;
+  private final String returnToUrl;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
 
-  public LogoutController(ServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
+  public LogoutController(
+      ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
+      @Value(
+              "${idp.logout.url-template:"
+                  + "${spring.security.oauth2.client.provider.auth0.issuer-uri:}"
+                  + "/v2/logout?returnTo={returnTo}&client_id={clientId}}")
+          String idpLogoutUrlTemplate,
+      @Value("${spring.security.oauth2.client.registration.auth0.client-id:}") String clientId,
+      @Value("${idp.logout.return-to:http://localhost:8080}") String returnToUrl) {
     this.authorizedClientRepository = authorizedClientRepository;
+    this.idpLogoutUrlTemplate = idpLogoutUrlTemplate;
+    this.clientId = clientId;
+    this.returnToUrl = returnToUrl;
   }
 
   /**
-   * Logout endpoint that invalidates the session and redirects to Auth0 logout.
+   * Logout endpoint that invalidates the session and redirects to IDP logout.
    *
    * <p>Steps:
    *
@@ -56,22 +61,22 @@ public class LogoutController {
    *   <li>Remove OAuth2 authorized client (clears tokens from session)
    *   <li>Invalidate the session (clears Redis session)
    *   <li>Clear session cookie
-   *   <li>Redirect to Auth0 logout (which redirects back to returnTo URL)
+   *   <li>Redirect to IDP logout (which redirects back to returnTo URL)
    * </ol>
    *
    * @param exchange the server web exchange
    * @param authentication the current authentication
-   * @return redirect to Auth0 logout
+   * @return redirect to IDP logout
    */
   @GetMapping("/logout")
   public Mono<Void> logout(ServerWebExchange exchange, Authentication authentication) {
-    logger.info("Processing logout request for user: {}", authentication.getName());
+    log.info("Processing logout request for user: {}", authentication.getName());
 
     return removeAuthorizedClient(exchange, authentication)
         .then(invalidateSession(exchange))
         .then(redirectToIdpLogout(exchange))
-        .doOnSuccess(v -> logger.info("Successfully logged out user: {}", authentication.getName()))
-        .doOnError(error -> logger.error("Error during logout", error));
+        .doOnSuccess(v -> log.info("Successfully logged out user: {}", authentication.getName()))
+        .doOnError(error -> log.error("Error during logout", error));
   }
 
   /**
@@ -86,7 +91,7 @@ public class LogoutController {
     if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
       var registrationId = oauth2Token.getAuthorizedClientRegistrationId();
 
-      logger.debug("Removing authorized client: {}", registrationId);
+      log.debug("Removing authorized client: {}", registrationId);
 
       return authorizedClientRepository.removeAuthorizedClient(
           registrationId, authentication, exchange);
@@ -106,7 +111,7 @@ public class LogoutController {
         .getSession()
         .flatMap(
             session -> {
-              logger.debug("Invalidating session: {}", session.getId());
+              log.debug("Invalidating session: {}", session.getId());
               return session.invalidate();
             });
   }
@@ -114,7 +119,8 @@ public class LogoutController {
   /**
    * Redirects to IDP logout endpoint.
    *
-   * <p>Auth0 logout URL format: {issuer-uri}/v2/logout?returnTo={url}&client_id={client-id}
+   * <p>The logout URL is built from the configurable {@code idp.logout.url-template} property,
+   * replacing {@code {returnTo}} and {@code {clientId}} placeholders.
    *
    * @param exchange the server web exchange
    * @return completion signal
@@ -122,16 +128,10 @@ public class LogoutController {
   private Mono<Void> redirectToIdpLogout(ServerWebExchange exchange) {
     var response = exchange.getResponse();
 
-    // Build IDP logout URL
-    // Strip trailing slash from issuer URI to avoid double slashes
-    var issuerBase =
-        idpIssuerUri.endsWith("/")
-            ? idpIssuerUri.substring(0, idpIssuerUri.length() - 1)
-            : idpIssuerUri;
     var idpLogoutUrl =
-        String.format("%s/v2/logout?returnTo=%s&client_id=%s", issuerBase, returnToUrl, clientId);
+        idpLogoutUrlTemplate.replace("{returnTo}", returnToUrl).replace("{clientId}", clientId);
 
-    logger.debug("Redirecting to IDP logout: {}", idpLogoutUrl);
+    log.debug("Redirecting to IDP logout: {}", idpLogoutUrl);
 
     response.setStatusCode(HttpStatus.FOUND);
     response.getHeaders().setLocation(URI.create(idpLogoutUrl));

@@ -31,10 +31,25 @@ public class OAuth2TokenRelayGlobalFilter implements GlobalFilter, Ordered {
   private static final Logger log = LoggerFactory.getLogger(OAuth2TokenRelayGlobalFilter.class);
   private final InternalJwtService internalJwtService;
 
+  /**
+   * Creates a new OAuth2TokenRelayGlobalFilter.
+   *
+   * @param internalJwtService the service for minting internal JWTs
+   */
   public OAuth2TokenRelayGlobalFilter(InternalJwtService internalJwtService) {
     this.internalJwtService = internalJwtService;
   }
 
+  /**
+   * Adds an internal JWT Authorization header to downstream requests for authenticated users.
+   *
+   * <p>Uses the cached JWT from the session when available, otherwise re-mints from session
+   * permission data.
+   *
+   * @param exchange the current server exchange
+   * @param chain the gateway filter chain
+   * @return completion signal
+   */
   @Override
   public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
     var path = exchange.getRequest().getPath().toString();
@@ -98,6 +113,13 @@ public class OAuth2TokenRelayGlobalFilter implements GlobalFilter, Ordered {
         .flatMap(chain::filter);
   }
 
+  /**
+   * Returns the filter order.
+   *
+   * <p>Runs early in the filter chain to ensure downstream services receive the internal JWT.
+   *
+   * @return the filter order
+   */
   @Override
   public int getOrder() {
     return Ordered.HIGHEST_PRECEDENCE + 100;

@@ -23,7 +23,7 @@ import reactor.core.publisher.Mono;
 @RestController
 public class UserController {
 
-  private static final Logger logger = LoggerFactory.getLogger(UserController.class);
+  private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
   /**
    * Returns the current authenticated user's information.
@@ -41,11 +41,11 @@ public class UserController {
   @GetMapping("/user")
   public Mono<Map<String, Object>> getCurrentUser(Authentication authentication) {
     if (authentication == null) {
-      logger.debug("No authentication found for /user request");
+      log.debug("No authentication found for /user request");
       return Mono.empty();
     }
 
-    logger.debug("User info requested for: {}", authentication.getName());
+    log.debug("User info requested for: {}", authentication.getName());
 
     var userInfo = new HashMap<String, Object>();
 
@@ -63,7 +63,7 @@ public class UserController {
       userInfo.put("authenticated", true);
       userInfo.put("registrationId", oauth2Token.getAuthorizedClientRegistrationId());
 
-      logger.debug("Returning user info for: {}", authentication.getName());
+      log.debug("Returning user info for: {}", authentication.getName());
     } else {
       // Fallback for non-OAuth2 authentication (shouldn't happen in this app)
       userInfo.put("name", authentication.getName());
