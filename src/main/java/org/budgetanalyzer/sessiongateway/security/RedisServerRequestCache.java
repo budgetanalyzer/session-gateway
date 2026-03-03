@@ -24,7 +24,7 @@ import reactor.core.publisher.Mono;
  * <ol>
  *   <li>User requests protected resource: {@code /dashboard}
  *   <li>{@link #saveRequest} stores {@code /dashboard} in Redis session
- *   <li>User redirected to OAuth2 authorization (Auth0)
+ *   <li>User redirected to OAuth2 authorization (IDP)
  *   <li>After successful auth, {@link #getRedirectUri} retrieves {@code /dashboard}
  *   <li>User redirected to original destination
  * </ol>

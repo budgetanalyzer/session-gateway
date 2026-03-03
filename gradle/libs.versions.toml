@@ -7,6 +7,7 @@ spotless = "8.0.0"
 checkstyle = "12.0.1"
 googleJavaFormat = "1.32.0"
 junitPlatform = "1.12.2"
+springdoc = "2.8.13"
 wiremock = "3.10.0"
 awaitility = "4.2.2"
 serviceCommon = "0.0.1-SNAPSHOT"
@@ -31,6 +32,9 @@ spring-session-data-redis = { module = "org.springframework.session:spring-sessi
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 
+# SpringDoc OpenAPI
+springdoc-openapi = { module = "org.springdoc:springdoc-openapi-starter-webflux-ui", version.ref = "springdoc" }
+
 # Test dependencies
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
@@ -38,3 +42,4 @@ testcontainers = { module = "org.testcontainers:testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter" }
 wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
 awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
+reactor-test = { module = "io.projectreactor:reactor-test" }

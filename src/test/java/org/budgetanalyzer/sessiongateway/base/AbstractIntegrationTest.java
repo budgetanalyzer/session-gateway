@@ -4,7 +4,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
+
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,25 +38,28 @@ public abstract class AbstractIntegrationTest {
   static void configureProperties(DynamicPropertyRegistry registry) {
     String wireMockUrl = "http://localhost:" + WireMockConfig.getWireMockServer().port();
 
-    // Point Auth0 OAuth2 configuration to WireMock
+    // Point IDP OAuth2 configuration to WireMock
     registry.add(
-        "spring.security.oauth2.client.provider.auth0.issuer-uri", () -> wireMockUrl + "/auth0");
+        "spring.security.oauth2.client.provider.idp.issuer-uri", () -> wireMockUrl + "/idp");
 
     // Point downstream gateway to WireMock
     registry.add("api.gateway.url", () -> wireMockUrl + "/api-gateway");
+
+    // Point permission-service to WireMock
+    registry.add("permission-service.base-url", () -> wireMockUrl);
   }
 
   @BeforeEach
   void resetWireMock() {
     wireMockServer.resetAll();
-    stubAuth0OidcDiscovery();
+    stubOidcDiscovery();
   }
 
-  protected void stubAuth0OidcDiscovery() {
+  protected void stubOidcDiscovery() {
     String baseUrl = "http://localhost:" + wireMockServer.port();
 
     wireMockServer.stubFor(
-        get(urlEqualTo("/auth0/.well-known/openid-configuration"))
+        get(urlEqualTo("/idp/.well-known/openid-configuration"))
             .willReturn(
                 aResponse()
                     .withStatus(200)
@@ -61,11 +67,11 @@ public abstract class AbstractIntegrationTest {
                     .withBody(
                         """
                     {
-                        "issuer": "%s/auth0",
-                        "authorization_endpoint": "%s/auth0/authorize",
-                        "token_endpoint": "%s/auth0/oauth/token",
-                        "userinfo_endpoint": "%s/auth0/userinfo",
-                        "jwks_uri": "%s/auth0/.well-known/jwks.json",
+                        "issuer": "%s/idp",
+                        "authorization_endpoint": "%s/idp/authorize",
+                        "token_endpoint": "%s/idp/oauth/token",
+                        "userinfo_endpoint": "%s/idp/userinfo",
+                        "jwks_uri": "%s/idp/.well-known/jwks.json",
                         "response_types_supported": ["code"],
                         "grant_types_supported": ["authorization_code", "refresh_token"],
                         "subject_types_supported": ["public"],
@@ -77,7 +83,7 @@ public abstract class AbstractIntegrationTest {
 
     // Stub JWKS endpoint (required for JWT validation)
     wireMockServer.stubFor(
-        get(urlEqualTo("/auth0/.well-known/jwks.json"))
+        get(urlEqualTo("/idp/.well-known/jwks.json"))
             .willReturn(
                 aResponse()
                     .withStatus(200)
@@ -90,9 +96,9 @@ public abstract class AbstractIntegrationTest {
                     """)));
   }
 
-  protected void stubAuth0TokenEndpoint(String accessToken, String idToken) {
+  protected void stubOidcTokenEndpoint(String accessToken, String idToken) {
     wireMockServer.stubFor(
-        post(urlEqualTo("/auth0/oauth/token"))
+        post(urlEqualTo("/idp/oauth/token"))
             .willReturn(
                 aResponse()
                     .withStatus(200)
@@ -109,9 +115,9 @@ public abstract class AbstractIntegrationTest {
                             .formatted(accessToken, idToken))));
   }
 
-  protected void stubAuth0UserInfo(String sub, String email, String name) {
+  protected void stubOidcUserInfo(String sub, String email, String name) {
     wireMockServer.stubFor(
-        get(urlEqualTo("/auth0/userinfo"))
+        get(urlEqualTo("/idp/userinfo"))
             .willReturn(
                 aResponse()
                     .withStatus(200)
@@ -125,5 +131,34 @@ public abstract class AbstractIntegrationTest {
                     }
                     """
                             .formatted(sub, email, name))));
+  }
+
+  protected void stubPermissionService(
+      String idpSub, String userId, List<String> roles, List<String> permissions) {
+    wireMockServer.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/" + idpSub + "/permissions"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        """
+                    {
+                        "userId": "%s",
+                        "roles": %s,
+                        "permissions": %s
+                    }
+                    """
+                            .formatted(userId, toJsonArray(roles), toJsonArray(permissions)))));
+  }
+
+  protected void stubPermissionServiceError(String idpSub, int status) {
+    wireMockServer.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/" + idpSub + "/permissions"))
+            .willReturn(aResponse().withStatus(status)));
+  }
+
+  private String toJsonArray(List<String> items) {
+    return "[" + String.join(", ", items.stream().map(s -> "\"" + s + "\"").toList()) + "]";
   }
 }
