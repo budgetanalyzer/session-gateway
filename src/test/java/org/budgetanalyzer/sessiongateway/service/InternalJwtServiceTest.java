@@ -44,6 +44,41 @@ class InternalJwtServiceTest {
   }
 
   @Test
+  void mintServiceToken_producesValidJwtWithServiceClaims() throws Exception {
+    var token = internalJwtService.mintServiceToken();
+    var parsed = SignedJWT.parse(token);
+    var claims = parsed.getJWTClaimsSet();
+
+    assertThat(claims.getIssuer()).isEqualTo("session-gateway");
+    assertThat(claims.getSubject()).isEqualTo("session-gateway");
+    assertThat(claims.getAudience()).containsExactly("budgetanalyzer-internal");
+    assertThat(claims.getStringClaim("type")).isEqualTo("service");
+    assertThat(claims.getIssueTime().toInstant()).isEqualTo(FIXED_NOW);
+    assertThat(claims.getExpirationTime().toInstant())
+        .isEqualTo(FIXED_NOW.plus(1, ChronoUnit.MINUTES));
+  }
+
+  @Test
+  void mintServiceToken_hasNoUserClaims() throws Exception {
+    var token = internalJwtService.mintServiceToken();
+    var parsed = SignedJWT.parse(token);
+    var claims = parsed.getJWTClaimsSet();
+
+    assertThat(claims.getClaim("idp_sub")).isNull();
+    assertThat(claims.getClaim("roles")).isNull();
+    assertThat(claims.getClaim("permissions")).isNull();
+  }
+
+  @Test
+  void mintServiceToken_signatureVerifiesWithPublicKey() throws Exception {
+    var token = internalJwtService.mintServiceToken();
+    var parsed = SignedJWT.parse(token);
+    var verifier = new RSASSAVerifier(rsaKey.toRSAPublicKey());
+
+    assertThat(parsed.verify(verifier)).isTrue();
+  }
+
+  @Test
   void mintToken_producesValidJwtWithCorrectClaims() throws Exception {
     var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
     var parsed = SignedJWT.parse(token);

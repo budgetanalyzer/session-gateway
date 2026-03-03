@@ -181,10 +181,13 @@ public class TokenRefreshGatewayFilterFactory
       return Mono.empty();
     }
 
-    String idpSub = oauthToken.getName();
+    var idpSub = oauthToken.getName();
+    var principal = oauthToken.getPrincipal();
+    var email = (String) principal.getAttributes().getOrDefault("email", "");
+    var displayName = (String) principal.getAttributes().getOrDefault("name", "");
 
     return permissionServiceClient
-        .fetchPermissions(idpSub)
+        .fetchPermissions(idpSub, email, displayName)
         .flatMap(
             response ->
                 exchange

@@ -371,10 +371,13 @@ public class SecurityConfig {
     }
 
     var idpSub = oauthToken.getName();
-    log.debug("Fetching permissions for idpSub={}", idpSub);
+    var principal = oauthToken.getPrincipal();
+    var email = (String) principal.getAttributes().getOrDefault("email", "");
+    var displayName = (String) principal.getAttributes().getOrDefault("name", "");
+    log.debug("Fetching permissions for idpSub={}, email={}", idpSub, email);
 
     return permissionServiceClient
-        .fetchPermissions(idpSub)
+        .fetchPermissions(idpSub, email, displayName)
         .flatMap(
             response ->
                 exchange

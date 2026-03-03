@@ -49,6 +49,32 @@ public class InternalJwtService {
   }
 
   /**
+   * Mints a short-lived service-identity JWT for gateway-to-service calls.
+   *
+   * <p>Used for the bootstrap permission fetch where no user JWT exists yet. The token identifies
+   * the gateway as the caller with a {@code type: "service"} claim. Lifetime is 1 minute since the
+   * token is used immediately and never cached.
+   *
+   * @return signed service JWT string
+   */
+  public String mintServiceToken() {
+    var now = clock.instant();
+    var claims =
+        JwtClaimsSet.builder()
+            .issuer("session-gateway")
+            .subject("session-gateway")
+            .audience(List.of("budgetanalyzer-internal"))
+            .claim("type", "service")
+            .issuedAt(now)
+            .expiresAt(now.plus(1, ChronoUnit.MINUTES))
+            .build();
+
+    var token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
+    log.debug("Minted service JWT for gateway-to-service call");
+    return token;
+  }
+
+  /**
    * Mints a new internal JWT with the given claims.
    *
    * @param idpSub the IDP subject identifier

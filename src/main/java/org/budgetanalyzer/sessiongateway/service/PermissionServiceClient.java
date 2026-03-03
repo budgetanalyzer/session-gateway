@@ -18,28 +18,44 @@ public class PermissionServiceClient {
   private static final Logger log = LoggerFactory.getLogger(PermissionServiceClient.class);
 
   private final WebClient webClient;
+  private final InternalJwtService internalJwtService;
 
   /**
    * Creates a new PermissionServiceClient.
    *
    * @param webClient the WebClient configured for the permission-service
+   * @param internalJwtService the service for minting internal JWTs
    */
-  public PermissionServiceClient(@Qualifier("permissionServiceWebClient") WebClient webClient) {
+  public PermissionServiceClient(
+      @Qualifier("permissionServiceWebClient") WebClient webClient,
+      InternalJwtService internalJwtService) {
     this.webClient = webClient;
+    this.internalJwtService = internalJwtService;
   }
 
   /**
    * Fetches permissions for a user identified by their IDP subject.
    *
    * @param idpSub the IDP subject identifier
+   * @param email the user's email address from the IDP
+   * @param displayName the user's display name from the IDP
    * @return the user's permissions response
    */
-  public Mono<PermissionResponse> fetchPermissions(String idpSub) {
+  public Mono<PermissionResponse> fetchPermissions(
+      String idpSub, String email, String displayName) {
     log.debug("Fetching permissions for idpSub={}", idpSub);
+    var serviceToken = internalJwtService.mintServiceToken();
 
     return webClient
         .get()
-        .uri("/internal/v1/users/{idpSub}/permissions", idpSub)
+        .uri(
+            uriBuilder ->
+                uriBuilder
+                    .path("/internal/v1/users/{idpSub}/permissions")
+                    .queryParam("email", email)
+                    .queryParam("displayName", displayName)
+                    .build(idpSub))
+        .headers(h -> h.setBearerAuth(serviceToken))
         .retrieve()
         .onStatus(
             HttpStatusCode::isError,

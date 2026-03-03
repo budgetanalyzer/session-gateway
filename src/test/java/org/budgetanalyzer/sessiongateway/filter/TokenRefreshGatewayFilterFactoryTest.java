@@ -50,6 +50,8 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   private static final Instant FIXED_NOW = Instant.parse("2025-06-15T12:00:00Z");
   private static final String IDP_SUB = "auth0|abc123";
+  private static final String EMAIL = "user@example.com";
+  private static final String DISPLAY_NAME = "Test User";
 
   @Mock private ReactiveOAuth2AuthorizedClientManager authorizedClientManager;
   @Mock private ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
@@ -75,7 +77,7 @@ class TokenRefreshGatewayFilterFactoryTest {
             fixedClock);
     gatewayFilter = factory.apply(new TokenRefreshGatewayFilterFactory.Config());
 
-    var attributes = Map.<String, Object>of("sub", IDP_SUB);
+    var attributes = Map.<String, Object>of("sub", IDP_SUB, "email", EMAIL, "name", DISPLAY_NAME);
     var oauth2User =
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
     oauth2AuthenticationToken =
@@ -117,7 +119,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
-    when(permissionServiceClient.fetchPermissions(IDP_SUB))
+    when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
     when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
@@ -141,7 +143,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
-    when(permissionServiceClient.fetchPermissions(IDP_SUB))
+    when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
     when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
@@ -198,7 +200,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
-    when(permissionServiceClient.fetchPermissions(IDP_SUB))
+    when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
     when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
@@ -221,7 +223,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
-    when(permissionServiceClient.fetchPermissions(IDP_SUB))
+    when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
     when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
@@ -229,7 +231,7 @@ class TokenRefreshGatewayFilterFactoryTest {
 
     gatewayFilter.filter(exchange, chain).block();
 
-    verify(permissionServiceClient).fetchPermissions(IDP_SUB);
+    verify(permissionServiceClient).fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME);
   }
 
   @Test
@@ -243,7 +245,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
-    when(permissionServiceClient.fetchPermissions(IDP_SUB))
+    when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(
                 new PermissionResponse(
@@ -270,7 +272,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
-    when(permissionServiceClient.fetchPermissions(IDP_SUB))
+    when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
     when(internalJwtService.mintToken(IDP_SUB, "user-1", List.of("ROLE_USER"), List.of("read")))
@@ -298,7 +300,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     StepVerifier.create(gatewayFilter.filter(exchange, chain)).verifyComplete();
 
     verify(chain).filter(exchange);
-    verify(permissionServiceClient, never()).fetchPermissions(any());
+    verify(permissionServiceClient, never()).fetchPermissions(any(), any(), any());
   }
 
   @Test
@@ -326,7 +328,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
-    when(permissionServiceClient.fetchPermissions(IDP_SUB))
+    when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(Mono.error(new RuntimeException("permission service down")));
 
     StepVerifier.create(gatewayFilter.filter(exchange, chain)).verifyComplete();
@@ -346,7 +348,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(authorizedClientManager.authorize(any())).thenReturn(Mono.just(refreshedClient));
     when(authorizedClientRepository.saveAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
-    when(permissionServiceClient.fetchPermissions(IDP_SUB))
+    when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
     when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
