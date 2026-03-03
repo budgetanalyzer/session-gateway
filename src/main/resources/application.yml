@@ -129,7 +129,7 @@ budgetanalyzer:
 
 # Permission service configuration
 permission-service:
-  base-url: ${PERMISSION_SERVICE_URL:http://permission-service:8082}
+  base-url: ${PERMISSION_SERVICE_URL:http://permission-service:8086}
 
 # JWT signing key (required). PEM-encoded RSA private key for internal JWT minting.
 jwt:

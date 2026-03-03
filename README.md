@@ -24,11 +24,11 @@ The Session Gateway implements the BFF pattern to provide secure authentication 
 ## Architecture
 
 ```
-Browser → Session Gateway (8081) → NGINX (8080) → Backend Services
-          ├─ OAuth2 flows (Auth0)              ↑ verify via JWKS
-          ├─ Permission fetch (permission-service:8082)
-          ├─ Internal JWT minting (RS256)
-          ├─ Session management (Redis)
+Browser → Session Gateway (8081) → NGINX (443) → TVS (8088) → Backend Services
+          ├─ OAuth2 flows (Auth0)          │ auth_request  │     ↑ verify via JWKS
+          ├─ Permission fetch (:8082)      │ verify sig    │     │ + issuer check
+          ├─ Internal JWT minting (RS256)  │ via JWKS      │     │ via service-common
+          ├─ Session management (Redis)    └───────────────┘
           └─ Internal JWT relay
 ```
 
@@ -52,13 +52,14 @@ Browser → Session Gateway (8081) → NGINX (8080) → Backend Services
 | `AUTH0_ISSUER_URI` | Auth0 tenant issuer URI | `https://placeholder.auth0.com/` |
 | `IDP_AUDIENCE` | Auth0 API audience identifier | — |
 | `IDP_LOGOUT_RETURN_TO` | URL to redirect after Auth0 logout | `http://localhost:8080` |
-| `JWT_SIGNING_PRIVATE_KEY_PEM` | PKCS#8 PEM RSA private key for JWT signing (ephemeral key if absent) | — |
+| `JWT_SIGNING_PRIVATE_KEY_PEM` | PKCS#8 PEM RSA private key for JWT signing (**required**, app fails to start without it) | — |
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8082` |
 
 ### Ports
 
 - **8081**: Session Gateway (public-facing for frontend, serves JWKS)
 - **8082**: Permission Service (user roles and permissions)
+- **8088**: Token Validation Service (NGINX auth_request target, verifies JWT signatures via JWKS)
 - **6379**: Redis (session storage)
 
 ## Running Locally
@@ -100,8 +101,9 @@ curl http://localhost:8081/actuator/health
 - Signed with RS256 (RSA 2048-bit)
 - Claims: `iss` (session-gateway), `sub` (internal userId), `idp_sub` (Auth0 subject), `roles`, `permissions`
 - JWKS endpoint: `GET /.well-known/jwks.json` (unauthenticated, public key only)
-- Two key modes: PEM-configured (production) or ephemeral (development, regenerated on restart)
+- PEM-configured RSA key required — app fails to start without it; `kid` derived from SHA-256 thumbprint
 - TTL: 30 minutes, re-minted 5 minutes before expiry
+- Two-tier verification: TVS validates signature only (NGINX auth_request); backend services validate signature + issuer via service-common
 
 ### Return URL Support
 - **Automatic saved requests**: Users return to originally requested page after login

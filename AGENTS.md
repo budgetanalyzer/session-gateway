@@ -92,9 +92,11 @@ Browser → NGINX (:443)
               ├─ Mint Internal JWT (RS256)
               │                           ↓ Cached in Redis (:6379)
               ↓ Internal JWT + Proxy
-         NGINX Gateway (:443) ← JWKS ── Session Gateway
-              ↓ Backend verifies via JWKS
-         Backend Services (:8083+)
+         NGINX Gateway (:443) ── auth_request ──→ TVS (:8088)
+              │                                     ↓ verify via JWKS
+              │                          Session Gateway JWKS endpoint
+              ↓ JWT valid → proxy to backend
+         Backend Services (:8083+) ── verify via JWKS ── Session Gateway
 ```
 
 **Discovery**:
@@ -113,6 +115,7 @@ grep -r "oauth2" src/main/resources/
 - **443**: NGINX Gateway (browser entry point, SSL termination)
 - **8081**: Session Gateway (behind NGINX, receives proxied requests, serves JWKS)
 - **8082**: Permission Service (user roles and permissions)
+- **8088**: Token Validation Service (NGINX auth_request target, verifies JWT signatures via JWKS)
 - **6379**: Redis (session storage)
 
 ## Technology Stack
@@ -171,7 +174,7 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 - SecurityConfig: OAuth2 login, authorization, entry points, return URL handling, permission fetching on login success
 - SessionConfig: Redis session management
 - OAuth2ClientConfig: OAuth2 client and repository configuration
-- InternalJwtConfig: RSA key pair management (PEM or ephemeral), JwtEncoder, permission-service WebClient
+- InternalJwtConfig: RSA key pair management (PEM required), JwtEncoder, permission-service WebClient
 - OAuth2TokenRelayFilterConfig: Registers OAuth2TokenRelayGlobalFilter as a Spring bean
 
 **Controllers** (src/main/java/.../controller/):
@@ -262,8 +265,8 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - Redirect URI for callback
 
 **Internal JWT Signing**:
-- `jwt.signing.private-key-pem` (`JWT_SIGNING_PRIVATE_KEY_PEM`): PKCS#8 PEM-encoded RSA private key for production; if absent, generates an ephemeral 2048-bit key (dev only, lost on restart)
-- Key ID (`kid`): Random UUID assigned at startup
+- `jwt.signing.private-key-pem` (`JWT_SIGNING_PRIVATE_KEY_PEM`): PKCS#8 PEM-encoded RSA private key — **required**, app fails to start without it
+- Key ID (`kid`): Derived deterministically from public key SHA-256 thumbprint (stable across restarts)
 - Token lifetime: 30 minutes
 - Re-mint threshold: 5 minutes before expiry
 
@@ -278,7 +281,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - Session stores: userId, roles, permissions, cached internal JWT
 
 **Gateway Routing**:
-- Routes to NGINX Gateway (port 8080)
+- Routes to NGINX Gateway (`https://api.budgetanalyzer.localhost`, port 443)
 - Filter chains (token relay, refresh)
 - Path predicates
 
@@ -409,7 +412,7 @@ curl -v http://localhost:8081/oauth2/authorization/auth0
 - `GET /.well-known/jwks.json` must be accessible without authentication
 - Verify `SecurityConfig` permits this path
 - Check that `InternalJwtConfig` successfully created the RSA key (look for startup logs)
-- If using ephemeral keys, the key changes on every restart — backend services must re-fetch JWKS
+- PEM key is required — app fails to start without `jwt.signing.private-key-pem`
 
 **502 Bad Gateway**:
 - Ensure NGINX Gateway is running on port 443
@@ -435,8 +438,10 @@ curl -v http://localhost:8081/oauth2/authorization/auth0
 4. Session Gateway → Permission Service (on login or token refresh: fetch userId, roles, permissions)
 5. Session Gateway mints internal JWT (RS256) with identity, roles, permissions claims
 6. Session Gateway → NGINX (proxy with Authorization: Bearer \<internal-jwt\> to api.budgetanalyzer.localhost)
-7. Backend services verify JWT signature via JWKS (`GET /.well-known/jwks.json` on Session Gateway)
-8. Response flows back through the chain
+7. NGINX → Token Validation Service (auth_request: TVS verifies JWT signature via Session Gateway JWKS, no issuer/audience checks)
+8. NGINX → Backend Service (JWT valid, request proxied)
+9. Backend services verify JWT via JWKS (`GET /.well-known/jwks.json` on Session Gateway) + issuer validation (`iss = "session-gateway"`) via service-common
+10. Response flows back through the chain
 
 **Architecture Documentation**:
 For detailed architecture diagrams and security design:
@@ -456,8 +461,8 @@ For detailed architecture diagrams and security design:
 - JWKS endpoint (`/.well-known/jwks.json`) exposes only the public key — private key never leaves the gateway
 - Short TTL (30 minutes), re-minted 5 minutes before expiry
 - Claims: `iss` (session-gateway), `sub` (internal userId), `idp_sub` (Auth0 subject), `roles`, `permissions`
-- Two key modes: PEM-configured (production, stable across restarts) or ephemeral (development, regenerated on restart)
-- Ephemeral key caveat: all cached JWTs invalidated on restart; backend services must re-fetch JWKS
+- PEM-configured RSA key required — app fails to start without it; `kid` derived from SHA-256 thumbprint (stable across restarts)
+- Two-tier verification: TVS validates signature only (NGINX auth_request); backend services validate signature + issuer via service-common
 
 **Session Cookies**:
 - HttpOnly: Not accessible via JavaScript
@@ -506,6 +511,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
 **Direct Dependencies**:
 - **NGINX Gateway**: Downstream proxy target (API routing)
+- **Token Validation Service** (port 8088): NGINX auth_request target — validates internal JWT signatures via Session Gateway JWKS before proxying to backends
 - **Permission Service**: Provides user roles and permissions (called on login and token refresh)
 - **Redis**: Session persistence (Auth0 tokens, identity, roles, permissions, cached internal JWT)
 - **Auth0**: Identity provider
@@ -516,7 +522,8 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 - **Budget Analyzer Web**: React frontend (served through NGINX)
 
 **Backend JWT Verification**:
-- Backend services verify internal JWTs by fetching the JWKS from Session Gateway (`/.well-known/jwks.json`)
+- **TVS** (NGINX auth_request): Verifies JWT signature via JWKS — no issuer/audience checks (signature-only gate)
+- **Backend services**: Verify JWT signature via JWKS + issuer validation (`iss = "session-gateway"`) via service-common
 
 **Repository Links**:
 - Orchestration: https://github.com/budgetanalyzer/orchestration
@@ -534,7 +541,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 8. **Return URL Validation**: All returnUrl redirects automatically validated by RedirectUrlValidator - no additional validation needed
 9. **Safe Logging**: Use `SafeLogger.toJson()` from service-common when logging objects that may contain sensitive data
 10. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production
-11. **JWT Key Management**: Use PEM-configured RSA keys in production for stability across restarts; ephemeral keys are acceptable for local development only
+11. **JWT Key Management**: PEM-configured RSA key is required — app fails to start without it; `kid` is derived from SHA-256 thumbprint for stability
 12. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required); token refresh degrades gracefully (existing permissions retained on failure)
 
 ## Notes for Claude Code
@@ -581,8 +588,9 @@ When working on this service:
 - All browser traffic flows through NGINX (port 443) to Session Gateway (port 8081)
 - Internal JWTs replace Auth0 token relay — downstream services never see Auth0 tokens
 - Permission-service must be reachable for login to succeed (permissions fetched in OAuth2 success handler)
-- Ephemeral RSA keys regenerate on restart — all cached JWTs invalidated, backend services must re-fetch JWKS
-- JWKS endpoint (`/.well-known/jwks.json`) must be accessible without authentication for backend JWT verification
+- PEM RSA key is required — app fails to start without `jwt.signing.private-key-pem`
+- JWKS endpoint (`/.well-known/jwks.json`) must be accessible without authentication — consumed by TVS and backend services
+- TVS validates JWT signature only (NGINX auth_request gate); backend services validate signature + issuer via service-common
 - Changes to OAuth2 configuration require Auth0 console updates
 - Redis is critical dependency - session loss means user re-authentication
 - Token refresh happens automatically via custom filter before expiry (includes permission re-fetch and JWT re-mint)
