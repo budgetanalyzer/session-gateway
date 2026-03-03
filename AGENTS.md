@@ -50,6 +50,23 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 - Implements proactive token refresh with permission re-fetch and JWT re-mint
 - Exposes a JWKS endpoint for backend services to verify internal JWT signatures
 
+## Spring Boot Patterns
+
+**This service follows standard Budget Analyzer Spring Boot conventions.**
+
+**When to consult service-common documentation:**
+- **Implementing new features** → Read [service-common/AGENTS.md](../service-common/AGENTS.md) for architecture patterns
+- **Handling errors** → Read [error-handling.md](../service-common/docs/error-handling.md) for exception hierarchy
+- **Writing tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit 5 + TestContainers conventions
+- **Code quality issues** → Read [code-quality-standards.md](../service-common/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
+
+**Quick reference:**
+- Naming: `*Controller`, `*Service`, `*ServiceImpl`, `*Repository`
+- DTOs: `*Request`, `*Response` — NEVER `*Dto`/`*DTO`
+- Exceptions: `BusinessException` for business rules, `InvalidRequestException` for bad input
+- Logging: SLF4J with structured logging (never log sensitive data)
+- Imports: Use `jakarta.persistence.*` — NEVER `org.hibernate.*`
+
 ## Architecture Principles
 
 - **Defense-in-Depth Security**: Second layer in multi-tier security architecture (NGINX → Session Gateway → Services)

@@ -2,7 +2,6 @@ package org.budgetanalyzer.sessiongateway.service;
 
 import java.text.ParseException;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 
@@ -60,8 +59,8 @@ public class InternalJwtService {
    */
   public String mintToken(
       String idpSub, String userId, List<String> roles, List<String> permissions) {
-    Instant now = clock.instant();
-    JwtClaimsSet claims =
+    var now = clock.instant();
+    var claims =
         JwtClaimsSet.builder()
             .issuer("session-gateway")
             .subject(userId)
@@ -73,7 +72,7 @@ public class InternalJwtService {
             .expiresAt(now.plus(TOKEN_LIFETIME_MINUTES, ChronoUnit.MINUTES))
             .build();
 
-    String token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
+    var token = jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
     log.debug("Minted internal JWT for userId={}", userId);
     return token;
   }
@@ -90,13 +89,16 @@ public class InternalJwtService {
     }
 
     try {
-      SignedJWT parsed = SignedJWT.parse(cachedToken);
+      var parsed = SignedJWT.parse(cachedToken);
       var expTime = parsed.getJWTClaimsSet().getExpirationTime();
+
       if (expTime == null) {
         return true;
       }
-      Instant expiry = expTime.toInstant();
-      Instant threshold = clock.instant().plus(REMINT_THRESHOLD_MINUTES, ChronoUnit.MINUTES);
+
+      var expiry = expTime.toInstant();
+      var threshold = clock.instant().plus(REMINT_THRESHOLD_MINUTES, ChronoUnit.MINUTES);
+
       return expiry.isBefore(threshold);
     } catch (ParseException e) {
       log.warn("Failed to parse cached internal JWT, will remint", e);

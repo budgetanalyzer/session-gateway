@@ -94,7 +94,7 @@ class TokenRefreshGatewayFilterFactoryTest {
   @Test
   void filter_skipsRefreshWhenTokenNotExpiringSoon() {
     // Expires in 10 min > 5 min threshold
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(600));
+    var client = buildClient(FIXED_NOW.plusSeconds(600));
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
         .thenReturn(Mono.just(client));
@@ -108,8 +108,8 @@ class TokenRefreshGatewayFilterFactoryTest {
   @Test
   void filter_triggersRefreshWhenTokenExpiringSoon() {
     // Expires in 3 min < 5 min threshold
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
-    OAuth2AuthorizedClient refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
+    var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -131,9 +131,9 @@ class TokenRefreshGatewayFilterFactoryTest {
   @Test
   void filter_triggersRefreshWhenTokenAlreadyExpired() {
     // Issued 30 min ago, expired 1 min ago
-    Instant issuedAt = FIXED_NOW.minusSeconds(1800);
-    OAuth2AuthorizedClient client = buildClient(issuedAt, FIXED_NOW.minusSeconds(60));
-    OAuth2AuthorizedClient refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
+    var issuedAt = FIXED_NOW.minusSeconds(1800);
+    var client = buildClient(issuedAt, FIXED_NOW.minusSeconds(60));
+    var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -155,7 +155,7 @@ class TokenRefreshGatewayFilterFactoryTest {
   @Test
   void filter_skipsRefreshWhenAccessTokenIsNull() {
     // Mock an authorized client that returns null access token
-    OAuth2AuthorizedClient client = mock(OAuth2AuthorizedClient.class);
+    var client = mock(OAuth2AuthorizedClient.class);
     when(client.getAccessToken()).thenReturn(null);
 
     when(authorizedClientRepository.loadAuthorizedClient(
@@ -171,10 +171,10 @@ class TokenRefreshGatewayFilterFactoryTest {
   @Test
   void filter_skipsRefreshWhenExpiresAtIsNull() {
     // Build token without expiresAt
-    ClientRegistration registration = buildRegistration();
-    OAuth2AccessToken token =
+    var registration = buildRegistration();
+    var token =
         new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, "token-value", FIXED_NOW, null);
-    OAuth2AuthorizedClient client = new OAuth2AuthorizedClient(registration, IDP_SUB, token);
+    var client = new OAuth2AuthorizedClient(registration, IDP_SUB, token);
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -189,8 +189,8 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   @Test
   void filter_savesRefreshedClient() {
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
-    OAuth2AuthorizedClient refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
+    var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -212,8 +212,8 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   @Test
   void filter_fetchesPermissionsAfterRefresh() {
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
-    OAuth2AuthorizedClient refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
+    var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -234,8 +234,8 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   @Test
   void filter_storesPermissionsInSessionAfterRefresh() {
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
-    OAuth2AuthorizedClient refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
+    var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -261,8 +261,8 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   @Test
   void filter_mintsNewJwtAfterRefresh() {
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
-    OAuth2AuthorizedClient refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
+    var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -287,7 +287,7 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   @Test
   void filter_fallsBackToOriginalClientOnRefreshError() {
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -303,7 +303,7 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   @Test
   void filter_continuesWhenRefreshReturnsEmpty() {
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -317,8 +317,8 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   @Test
   void filter_swallowsPermissionFetchError() {
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
-    OAuth2AuthorizedClient refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
+    var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -337,8 +337,8 @@ class TokenRefreshGatewayFilterFactoryTest {
 
   @Test
   void filter_continuesChainAfterSuccessfulRefresh() {
-    OAuth2AuthorizedClient client = buildClient(FIXED_NOW.plusSeconds(180));
-    OAuth2AuthorizedClient refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
+    var client = buildClient(FIXED_NOW.plusSeconds(180));
+    var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
     when(authorizedClientRepository.loadAuthorizedClient(
             "auth0", oauth2AuthenticationToken, exchange))
@@ -378,8 +378,8 @@ class TokenRefreshGatewayFilterFactoryTest {
   }
 
   private OAuth2AuthorizedClient buildClient(Instant issuedAt, Instant expiresAt) {
-    ClientRegistration registration = buildRegistration();
-    OAuth2AccessToken accessToken =
+    var registration = buildRegistration();
+    var accessToken =
         new OAuth2AccessToken(
             OAuth2AccessToken.TokenType.BEARER, "access-token", issuedAt, expiresAt);
     return new OAuth2AuthorizedClient(registration, IDP_SUB, accessToken);

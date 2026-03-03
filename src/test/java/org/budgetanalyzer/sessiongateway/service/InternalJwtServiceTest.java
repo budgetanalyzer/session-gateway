@@ -10,15 +10,14 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
-import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jwt.SignedJWT;
 
 class InternalJwtServiceTest {
@@ -37,17 +36,17 @@ class InternalJwtServiceTest {
   @BeforeEach
   void setUp() throws Exception {
     rsaKey = new RSAKeyGenerator(2048).keyID("test-kid").generate();
-    ImmutableJWKSet<SecurityContext> jwkSource = new ImmutableJWKSet<>(new JWKSet(rsaKey));
-    JwtEncoder encoder = new NimbusJwtEncoder(jwkSource);
+    var jwkSource = new ImmutableJWKSet<>(new JWKSet(rsaKey));
+    var encoder = new NimbusJwtEncoder(jwkSource);
+
     fixedClock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
     internalJwtService = new InternalJwtService(encoder, fixedClock);
   }
 
   @Test
   void mintToken_producesValidJwtWithCorrectClaims() throws Exception {
-    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
-
-    SignedJWT parsed = SignedJWT.parse(token);
+    var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var parsed = SignedJWT.parse(token);
     var claims = parsed.getJWTClaimsSet();
 
     assertThat(claims.getIssuer()).isEqualTo("session-gateway");
@@ -64,18 +63,18 @@ class InternalJwtServiceTest {
 
   @Test
   void mintToken_usesRs256Algorithm() throws Exception {
-    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var parsed = SignedJWT.parse(token);
 
-    SignedJWT parsed = SignedJWT.parse(token);
     assertThat(parsed.getHeader().getAlgorithm()).isEqualTo(JWSAlgorithm.RS256);
   }
 
   @Test
   void mintToken_signatureVerifiesWithPublicKey() throws Exception {
-    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var parsed = SignedJWT.parse(token);
+    var verifier = new RSASSAVerifier(rsaKey.toRSAPublicKey());
 
-    SignedJWT parsed = SignedJWT.parse(token);
-    var verifier = new com.nimbusds.jose.crypto.RSASSAVerifier(rsaKey.toRSAPublicKey());
     assertThat(parsed.verify(verifier)).isTrue();
   }
 
@@ -102,10 +101,9 @@ class InternalJwtServiceTest {
   @Test
   void needsRemint_returnsTrueForExpiredToken() {
     // Mint a token, then advance clock past expiry
-    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
-
-    Clock expiredClock = Clock.fixed(FIXED_NOW.plus(31, ChronoUnit.MINUTES), ZoneOffset.UTC);
-    InternalJwtService laterService = new InternalJwtService(null, expiredClock);
+    var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var expiredClock = Clock.fixed(FIXED_NOW.plus(31, ChronoUnit.MINUTES), ZoneOffset.UTC);
+    var laterService = new InternalJwtService(null, expiredClock);
 
     assertThat(laterService.needsRemint(token)).isTrue();
   }
@@ -113,30 +111,30 @@ class InternalJwtServiceTest {
   @Test
   void needsRemint_returnsTrueForNearExpiryToken() {
     // Mint a token, then advance clock to within 5 min of expiry
-    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     // Token expires at FIXED_NOW + 30min. Clock at FIXED_NOW + 26min means 4 min left < 5 min
     // threshold
-    Clock nearExpiryClock = Clock.fixed(FIXED_NOW.plus(26, ChronoUnit.MINUTES), ZoneOffset.UTC);
-    InternalJwtService laterService = new InternalJwtService(null, nearExpiryClock);
+    var nearExpiryClock = Clock.fixed(FIXED_NOW.plus(26, ChronoUnit.MINUTES), ZoneOffset.UTC);
+    var laterService = new InternalJwtService(null, nearExpiryClock);
 
     assertThat(laterService.needsRemint(token)).isTrue();
   }
 
   @Test
   void needsRemint_returnsFalseForFreshToken() {
-    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     assertThat(internalJwtService.needsRemint(token)).isFalse();
   }
 
   @Test
   void needsRemint_returnsFalseWhenMoreThan5MinRemaining() {
-    String token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
+    var token = internalJwtService.mintToken(IDP_SUB, USER_ID, ROLES, PERMISSIONS);
 
     // Token expires at FIXED_NOW + 30min. Clock at FIXED_NOW + 20min means 10 min left > 5 min
-    Clock midLifeClock = Clock.fixed(FIXED_NOW.plus(20, ChronoUnit.MINUTES), ZoneOffset.UTC);
-    InternalJwtService laterService = new InternalJwtService(null, midLifeClock);
+    var midLifeClock = Clock.fixed(FIXED_NOW.plus(20, ChronoUnit.MINUTES), ZoneOffset.UTC);
+    var laterService = new InternalJwtService(null, midLifeClock);
 
     assertThat(laterService.needsRemint(token)).isFalse();
   }

@@ -31,7 +31,7 @@ class InternalJwtConfigTest {
 
   @Test
   void configuredMode_loadsFromPemString() throws Exception {
-    String pem = generateTestPem();
+    var pem = generateTestPem();
 
     RSAKey loaded = internalJwtConfig.rsaKey(pem);
 
@@ -42,7 +42,7 @@ class InternalJwtConfigTest {
 
   @Test
   void configuredMode_producesDeterministicKid() throws Exception {
-    String pem = generateTestPem();
+    var pem = generateTestPem();
 
     RSAKey first = internalJwtConfig.rsaKey(pem);
     RSAKey second = internalJwtConfig.rsaKey(pem);
@@ -59,27 +59,30 @@ class InternalJwtConfigTest {
 
   @Test
   void jwtEncoder_isCreatedFromRsaKey() throws Exception {
-    String pem = generateTestPem();
-    RSAKey rsaKey = internalJwtConfig.rsaKey(pem);
+    var pem = generateTestPem();
+    var rsaKey = internalJwtConfig.rsaKey(pem);
     var encoder = internalJwtConfig.jwtEncoder(rsaKey);
 
     assertThat(encoder).isNotNull();
   }
 
   private static String generateTestPem() throws Exception {
-    KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+    var keyGen = KeyPairGenerator.getInstance("RSA");
     keyGen.initialize(2048);
-    var keyPair = keyGen.generateKeyPair();
-    RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
 
-    String base64 = Base64.getEncoder().encodeToString(privateKey.getEncoded());
-    StringBuilder pem = new StringBuilder();
+    var keyPair = keyGen.generateKeyPair();
+    var privateKey = (RSAPrivateKey) keyPair.getPrivate();
+
+    var base64 = Base64.getEncoder().encodeToString(privateKey.getEncoded());
+    var pem = new StringBuilder();
+
     pem.append("-----BEGIN PRIVATE KEY-----\n");
     for (int i = 0; i < base64.length(); i += 64) {
       pem.append(base64, i, Math.min(i + 64, base64.length()));
       pem.append("\n");
     }
     pem.append("-----END PRIVATE KEY-----");
+
     return pem.toString();
   }
 }

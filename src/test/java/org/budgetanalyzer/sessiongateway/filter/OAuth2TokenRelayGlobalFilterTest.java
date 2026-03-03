@@ -61,7 +61,7 @@ class OAuth2TokenRelayGlobalFilterTest {
 
   @Test
   void filter_addsBearerHeaderWhenCachedJwtIsValid() {
-    MockServerWebExchange exchange = buildExchange();
+    var exchange = buildExchange();
     exchange
         .getSession()
         .block()
@@ -76,14 +76,14 @@ class OAuth2TokenRelayGlobalFilterTest {
                 Mono.just(new SecurityContextImpl(oauth2AuthenticationToken))))
         .block();
 
-    ServerWebExchange captured = captureExchange();
+    var captured = captureExchange();
     assertThat(captured.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
         .isEqualTo("Bearer cached-jwt-token");
   }
 
   @Test
   void filter_remintsJwtWhenCachedTokenNeedsRemint() {
-    MockServerWebExchange exchange = buildExchange();
+    var exchange = buildExchange();
     var session = exchange.getSession().block();
     session.getAttributes().put(InternalJwtService.SESSION_INTERNAL_JWT, "old-jwt");
     session.getAttributes().put(InternalJwtService.SESSION_USER_ID, "user-456");
@@ -102,7 +102,7 @@ class OAuth2TokenRelayGlobalFilterTest {
                 Mono.just(new SecurityContextImpl(oauth2AuthenticationToken))))
         .block();
 
-    ServerWebExchange captured = captureExchange();
+    var captured = captureExchange();
     assertThat(captured.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
         .isEqualTo("Bearer new-jwt");
     verify(internalJwtService)
@@ -111,8 +111,9 @@ class OAuth2TokenRelayGlobalFilterTest {
 
   @Test
   void filter_cachesMintedJwtInSession() {
-    MockServerWebExchange exchange = buildExchange();
+    var exchange = buildExchange();
     var session = exchange.getSession().block();
+
     session.getAttributes().put(InternalJwtService.SESSION_USER_ID, "user-456");
     session.getAttributes().put(InternalJwtService.SESSION_ROLES, List.of("ROLE_USER"));
     session.getAttributes().put(InternalJwtService.SESSION_PERMISSIONS, List.of("read"));
@@ -134,8 +135,9 @@ class OAuth2TokenRelayGlobalFilterTest {
 
   @Test
   void filter_remintsWhenNoCachedJwtExists() {
-    MockServerWebExchange exchange = buildExchange();
+    var exchange = buildExchange();
     var session = exchange.getSession().block();
+
     session.getAttributes().put(InternalJwtService.SESSION_USER_ID, "user-456");
     session.getAttributes().put(InternalJwtService.SESSION_ROLES, List.of("ROLE_USER"));
     session.getAttributes().put(InternalJwtService.SESSION_PERMISSIONS, List.of("read"));
@@ -151,14 +153,14 @@ class OAuth2TokenRelayGlobalFilterTest {
                 Mono.just(new SecurityContextImpl(oauth2AuthenticationToken))))
         .block();
 
-    ServerWebExchange captured = captureExchange();
+    var captured = captureExchange();
     assertThat(captured.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION))
         .isEqualTo("Bearer minted-jwt");
   }
 
   @Test
   void filter_skipsHeaderWhenSessionMissingPermissionData() {
-    MockServerWebExchange exchange = buildExchange();
+    var exchange = buildExchange();
     // No session attributes set — userId, roles, permissions all null
     when(internalJwtService.needsRemint(null)).thenReturn(true);
 
@@ -170,14 +172,15 @@ class OAuth2TokenRelayGlobalFilterTest {
         .block();
 
     verify(internalJwtService, never()).mintToken(any(), any(), any(), any());
+
     // Original exchange should be passed through (no Authorization header)
-    ServerWebExchange captured = captureExchange();
+    var captured = captureExchange();
     assertThat(captured.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION)).isNull();
   }
 
   @Test
   void filter_skipsHeaderWhenUserIdMissing() {
-    MockServerWebExchange exchange = buildExchange();
+    var exchange = buildExchange();
     var session = exchange.getSession().block();
     session.getAttributes().put(InternalJwtService.SESSION_ROLES, List.of("ROLE_USER"));
     session.getAttributes().put(InternalJwtService.SESSION_PERMISSIONS, List.of("read"));
@@ -197,7 +200,7 @@ class OAuth2TokenRelayGlobalFilterTest {
 
   @Test
   void filter_passesThruForUnauthenticatedRequest() {
-    MockServerWebExchange exchange = buildExchange();
+    var exchange = buildExchange();
 
     // No security context at all
     StepVerifier.create(oauth2TokenRelayGlobalFilter.filter(exchange, chain)).verifyComplete();
@@ -207,7 +210,7 @@ class OAuth2TokenRelayGlobalFilterTest {
 
   @Test
   void filter_passesThruForNonOauthAuthentication() {
-    MockServerWebExchange exchange = buildExchange();
+    var exchange = buildExchange();
     var auth = new TestingAuthenticationToken("bob", "secret", "ROLE_USER");
 
     oauth2TokenRelayGlobalFilter
@@ -233,6 +236,7 @@ class OAuth2TokenRelayGlobalFilterTest {
   private ServerWebExchange captureExchange() {
     ArgumentCaptor<ServerWebExchange> captor = ArgumentCaptor.forClass(ServerWebExchange.class);
     verify(chain).filter(captor.capture());
+
     return captor.getValue();
   }
 }

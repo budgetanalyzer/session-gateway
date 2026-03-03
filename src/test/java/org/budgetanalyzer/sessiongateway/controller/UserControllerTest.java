@@ -36,7 +36,7 @@ class UserControllerTest {
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
     var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "auth0");
 
-    Map<String, Object> result = userController.getCurrentUser(token).block();
+    var result = userController.getCurrentUser(token).block();
 
     assertThat(result)
         .containsEntry("sub", "auth0|abc123")
@@ -55,7 +55,7 @@ class UserControllerTest {
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
     var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "auth0");
 
-    Map<String, Object> result = userController.getCurrentUser(token).block();
+    var result = userController.getCurrentUser(token).block();
 
     assertThat(result)
         .containsEntry("sub", "auth0|abc123")
@@ -68,8 +68,7 @@ class UserControllerTest {
   @Test
   void getCurrentUser_returnsNameAndAuthenticatedForNonOauthAuth() {
     var auth = new TestingAuthenticationToken("bob", "secret", "ROLE_USER");
-
-    Map<String, Object> result = userController.getCurrentUser(auth).block();
+    var result = userController.getCurrentUser(auth).block();
 
     assertThat(result)
         .containsEntry("name", "bob")
@@ -85,7 +84,7 @@ class UserControllerTest {
         new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
     var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "google");
 
-    Map<String, Object> result = userController.getCurrentUser(token).block();
+    var result = userController.getCurrentUser(token).block();
 
     assertThat(result).containsEntry("registrationId", "google");
   }

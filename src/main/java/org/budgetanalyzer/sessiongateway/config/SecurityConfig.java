@@ -168,7 +168,7 @@ public class SecurityConfig {
               log.debug("Configuring exception handling with delegating entry point");
 
               // Create delegating entry point to route based on request path
-              DelegatingServerAuthenticationEntryPoint delegatingEntryPoint =
+              var delegatingEntryPoint =
                   new DelegatingServerAuthenticationEntryPoint(
                       // API requests (/api/**) return 401 Unauthorized
                       // Frontend axios interceptor will catch this and redirect user to login page
@@ -370,7 +370,7 @@ public class SecurityConfig {
       return Mono.empty();
     }
 
-    String idpSub = oauthToken.getName();
+    var idpSub = oauthToken.getName();
     log.debug("Fetching permissions for idpSub={}", idpSub);
 
     return permissionServiceClient
@@ -477,11 +477,13 @@ public class SecurityConfig {
 
     if (RedirectUrlValidator.isValidRedirectUrl(redirectUrl)) {
       log.info("Redirecting authenticated user to: {}", redirectUrl);
+
       return redirectToUrl(redirectUrl, webFilterExchange, authentication);
     } else {
       log.warn(
           "Invalid or potentially malicious redirect URL rejected: {}, using safe default: /",
           redirectUrl);
+
       return redirectToUrl("/", webFilterExchange, authentication);
     }
   }

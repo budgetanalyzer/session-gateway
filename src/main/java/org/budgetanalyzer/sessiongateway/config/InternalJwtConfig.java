@@ -19,8 +19,6 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
-import com.nimbusds.jose.jwk.source.JWKSource;
-import com.nimbusds.jose.proc.SecurityContext;
 
 /**
  * Configuration for internal JWT signing infrastructure.
@@ -72,33 +70,35 @@ public class InternalJwtConfig {
    */
   @Bean
   public JwtEncoder jwtEncoder(RSAKey rsaKey) {
-    JWKSource<SecurityContext> jwkSource = new ImmutableJWKSet<>(new JWKSet(rsaKey));
+    var jwkSource = new ImmutableJWKSet<>(new JWKSet(rsaKey));
     return new NimbusJwtEncoder(jwkSource);
   }
 
   private RSAKey loadFromPem(String pem) {
     try {
       // Strip PEM headers and decode Base64
-      String base64 =
+      var base64 =
           pem.replace("-----BEGIN PRIVATE KEY-----", "")
               .replace("-----END PRIVATE KEY-----", "")
               .replaceAll("\\s", "");
       byte[] keyBytes = Base64.getDecoder().decode(base64);
 
       // Parse PKCS#8 private key and derive public key
-      KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-      PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
-      RSAPrivateCrtKey privateKey = (RSAPrivateCrtKey) keyFactory.generatePrivate(keySpec);
-      RSAPublicKey publicKey =
+      var keyFactory = KeyFactory.getInstance("RSA");
+      var keySpec = new PKCS8EncodedKeySpec(keyBytes);
+      var privateKey = (RSAPrivateCrtKey) keyFactory.generatePrivate(keySpec);
+      var publicKey =
           (RSAPublicKey)
               keyFactory.generatePublic(
                   new RSAPublicKeySpec(privateKey.getModulus(), privateKey.getPublicExponent()));
 
       // Derive kid from public key thumbprint for stability across restarts
       var rsaKey = new RSAKey.Builder(publicKey).privateKey(privateKey).build();
-      String kid = rsaKey.computeThumbprint("SHA-256").toString();
-      RSAKey finalKey = new RSAKey.Builder(rsaKey).keyID(kid).build();
+      var kid = rsaKey.computeThumbprint("SHA-256").toString();
+      var finalKey = new RSAKey.Builder(rsaKey).keyID(kid).build();
+
       log.info("Loaded RSA signing key from configuration (kid={})", kid);
+
       return finalKey;
     } catch (Exception e) {
       throw new IllegalStateException("Failed to parse RSA private key from PEM configuration", e);
