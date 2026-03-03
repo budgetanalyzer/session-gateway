@@ -50,6 +50,9 @@ dependencies {
     // Actuator for health checks
     implementation(libs.spring.boot.starter.actuator)
 
+    // SpringDoc OpenAPI (WebFlux variant for reactive gateway)
+    implementation(libs.springdoc.openapi)
+
     // Test dependencies
     testImplementation(libs.spring.boot.starter.test)
     testRuntimeOnly(libs.junit.platform.launcher)
