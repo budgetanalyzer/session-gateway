@@ -123,11 +123,13 @@ public class SecurityConfig {
                         "/swagger-ui/**",
                         "/swagger-ui.html")
                     .permitAll()
-                    // Allow frontend routes (served by NGINX) without authentication
+                    // Allow frontend routes (served by Vite/NGINX) without authentication
                     // Users can browse the app; API calls will require authentication
                     .pathMatchers(
                         "/",
                         "/index.html",
+                        "/peace", // Logout landing page
+                        "/unauthorized", // Access denied page
                         "/assets/**",
                         "/src/**",
                         "/node_modules/**",
