@@ -114,7 +114,14 @@ public class SecurityConfig {
                     .pathMatchers("/actuator/health/**")
                     .permitAll()
                     // Allow login and error pages
-                    .pathMatchers("/login/**", "/error", "/oauth2/**", "/.well-known/jwks.json")
+                    .pathMatchers(
+                        "/login/**",
+                        "/error",
+                        "/oauth2/**",
+                        "/.well-known/jwks.json",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html")
                     .permitAll()
                     // Allow frontend routes (served by NGINX) without authentication
                     // Users can browse the app; API calls will require authentication
