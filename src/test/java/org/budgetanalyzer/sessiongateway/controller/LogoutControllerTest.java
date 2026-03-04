@@ -102,7 +102,7 @@ class LogoutControllerTest {
     assertThat(headers.getLocation())
         .hasToString(
             "https://idp.example.com/v2/logout"
-                + "?returnTo=https://app.example.com&client_id=my-client-id");
+                + "?returnTo=https%3A%2F%2Fapp.example.com&client_id=my-client-id");
   }
 
   @Test
@@ -147,5 +147,23 @@ class LogoutControllerTest {
     StepVerifier.create(logoutController.logout(exchange, oauth2AuthenticationToken))
         .expectErrorMessage("session invalidation failed")
         .verify();
+  }
+
+  @Test
+  void logout_normalizesDoubleSlashInLogoutUrl() {
+    // Simulates issuer-uri with trailing slash creating //v2/logout
+    var templateWithDoubleSlash =
+        "https://idp.example.com//v2/logout?returnTo={returnTo}&client_id={clientId}";
+    var controllerWithDoubleSlash =
+        new LogoutController(
+            authorizedClientRepository, templateWithDoubleSlash, CLIENT_ID, RETURN_TO);
+
+    controllerWithDoubleSlash.logout(exchange, oauth2AuthenticationToken).block();
+
+    // Should normalize to single slash
+    assertThat(headers.getLocation())
+        .hasToString(
+            "https://idp.example.com/v2/logout"
+                + "?returnTo=https%3A%2F%2Fapp.example.com&client_id=my-client-id");
   }
 }

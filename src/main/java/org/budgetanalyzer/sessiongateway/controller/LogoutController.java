@@ -1,6 +1,8 @@
 package org.budgetanalyzer.sessiongateway.controller;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -128,8 +130,11 @@ public class LogoutController {
   private Mono<Void> redirectToIdpLogout(ServerWebExchange exchange) {
     var response = exchange.getResponse();
 
+    var encodedReturnTo = URLEncoder.encode(returnToUrl, StandardCharsets.UTF_8);
     var idpLogoutUrl =
-        idpLogoutUrlTemplate.replace("{returnTo}", returnToUrl).replace("{clientId}", clientId);
+        idpLogoutUrlTemplate.replace("{returnTo}", encodedReturnTo).replace("{clientId}", clientId);
+    // Normalize double slashes (handles issuer-uri with trailing slash)
+    idpLogoutUrl = idpLogoutUrl.replace("//v2/logout", "/v2/logout");
 
     log.debug("Redirecting to IDP logout: {}", idpLogoutUrl);
 
