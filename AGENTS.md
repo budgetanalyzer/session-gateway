@@ -547,7 +547,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 12. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required); token refresh degrades gracefully (existing permissions retained on failure)
 13. **Internal M2M Authentication**: Gateway-to-service calls use short-lived service JWTs signed with the same RSA key — no IdP client-credentials grant needed; internal services are fully decoupled from Auth0
 
-## Notes for Claude Code
+## NOTES FOR AI AGENTS
 
 **CRITICAL - Prerequisites First**: Before implementing any plan or feature:
 1. Check for prerequisites in documentation (e.g., "Prerequisites: service-common Enhancement")
