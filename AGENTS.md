@@ -10,6 +10,10 @@ Do not over-validate ideas. The user wants honest pushback, not agreement.
 - Don't say "great question" or "that's a really interesting point"
 - Skip the preamble and caveats — just answer
 
+## Code Exploration
+
+NEVER use Agent/subagent tools for code exploration. Use Grep, Glob, and Read directly.
+
 ## Tree Position
 
 **Archetype**: service
