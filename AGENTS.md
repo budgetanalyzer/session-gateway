@@ -50,6 +50,10 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 - Implements proactive token refresh with permission re-fetch and JWT re-mint
 - Exposes a JWKS endpoint for backend services to verify internal JWT signatures
 
+## Coding Standards
+
+**Before writing or modifying any Java code, read [code-quality-standards.md](../service-common/docs/code-quality-standards.md).** Do not skip this step. The most common violations: missing `var`, wildcard imports, abbreviated variable names, Javadoc without trailing periods.
+
 ## Spring Boot Patterns
 
 **This service follows standard Budget Analyzer Spring Boot conventions.**
