@@ -1,4 +1,4 @@
-package org.budgetanalyzer.sessiongateway.controller.response;
+package org.budgetanalyzer.sessiongateway.api.response;
 
 import java.util.List;
 

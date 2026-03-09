@@ -1,5 +1,7 @@
 package org.budgetanalyzer.sessiongateway.config;
 
+import java.time.Clock;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -38,6 +40,16 @@ public class SessionConfig {
   private static final Logger log = LoggerFactory.getLogger(SessionConfig.class);
   private static final String ACTUATOR_PATTERN = "/actuator/**";
   private static final AntPathMatcher pathMatcher = new AntPathMatcher();
+
+  /**
+   * Provides the system UTC clock for token timestamp operations.
+   *
+   * @return the system UTC clock
+   */
+  @Bean
+  public Clock clock() {
+    return Clock.systemUTC();
+  }
 
   /**
    * Configures session cookie with security attributes.

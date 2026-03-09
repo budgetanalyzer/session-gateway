@@ -1,4 +1,4 @@
-package org.budgetanalyzer.sessiongateway.controller;
+package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -31,6 +31,8 @@ import org.springframework.web.server.WebSession;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import org.budgetanalyzer.sessiongateway.session.ExtAuthzSessionWriter;
+
 @ExtendWith(MockitoExtension.class)
 class LogoutControllerTest {
 
@@ -40,6 +42,7 @@ class LogoutControllerTest {
   private static final String RETURN_TO = "https://app.example.com";
 
   @Mock private ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
+  @Mock private ExtAuthzSessionWriter extAuthzSessionWriter;
   @Mock private ServerWebExchange exchange;
   @Mock private WebSession session;
   @Mock private ServerHttpResponse response;
@@ -51,7 +54,8 @@ class LogoutControllerTest {
   @BeforeEach
   void setUp() {
     logoutController =
-        new LogoutController(authorizedClientRepository, URL_TEMPLATE, CLIENT_ID, RETURN_TO);
+        new LogoutController(
+            authorizedClientRepository, extAuthzSessionWriter, URL_TEMPLATE, CLIENT_ID, RETURN_TO);
     headers = new HttpHeaders();
 
     var attributes = Map.<String, Object>of("sub", "auth0|abc123");
@@ -63,11 +67,13 @@ class LogoutControllerTest {
     lenient().when(exchange.getSession()).thenReturn(Mono.just(session));
     lenient().when(exchange.getResponse()).thenReturn(response);
     lenient().when(session.invalidate()).thenReturn(Mono.empty());
+    lenient().when(session.getId()).thenReturn("test-session-id");
     lenient().when(response.getHeaders()).thenReturn(headers);
     lenient().when(response.setComplete()).thenReturn(Mono.empty());
     lenient()
         .when(authorizedClientRepository.removeAuthorizedClient(any(), any(), any()))
         .thenReturn(Mono.empty());
+    lenient().when(extAuthzSessionWriter.deleteSession(any())).thenReturn(Mono.empty());
   }
 
   @Test
@@ -95,6 +101,13 @@ class LogoutControllerTest {
   }
 
   @Test
+  void logout_deletesExtAuthzSession() {
+    logoutController.logout(exchange, oauth2AuthenticationToken).block();
+
+    verify(extAuthzSessionWriter).deleteSession("test-session-id");
+  }
+
+  @Test
   void logout_redirectsToIdpLogoutWithCorrectUrl() {
     logoutController.logout(exchange, oauth2AuthenticationToken).block();
 
@@ -109,14 +122,13 @@ class LogoutControllerTest {
   void logout_executesStepsInOrder() {
     logoutController.logout(exchange, oauth2AuthenticationToken).block();
 
-    // removeAuthorizedClient and session.invalidate happen during subscription (in order)
-    var subscriptionOrder = inOrder(authorizedClientRepository, session);
+    var subscriptionOrder = inOrder(authorizedClientRepository, extAuthzSessionWriter, session);
     subscriptionOrder
         .verify(authorizedClientRepository)
         .removeAuthorizedClient(eq("idp"), any(), any());
+    subscriptionOrder.verify(extAuthzSessionWriter).deleteSession("test-session-id");
     subscriptionOrder.verify(session).invalidate();
 
-    // setStatusCode and setComplete happen during assembly (in order)
     var assemblyOrder = inOrder(response);
     assemblyOrder.verify(response).setStatusCode(HttpStatus.FOUND);
     assemblyOrder.verify(response).setComplete();
@@ -156,7 +168,11 @@ class LogoutControllerTest {
         "https://idp.example.com//v2/logout?returnTo={returnTo}&client_id={clientId}";
     var controllerWithDoubleSlash =
         new LogoutController(
-            authorizedClientRepository, templateWithDoubleSlash, CLIENT_ID, RETURN_TO);
+            authorizedClientRepository,
+            extAuthzSessionWriter,
+            templateWithDoubleSlash,
+            CLIENT_ID,
+            RETURN_TO);
 
     controllerWithDoubleSlash.logout(exchange, oauth2AuthenticationToken).block();
 

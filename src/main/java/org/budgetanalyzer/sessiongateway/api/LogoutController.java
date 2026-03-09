@@ -1,4 +1,4 @@
-package org.budgetanalyzer.sessiongateway.controller;
+package org.budgetanalyzer.sessiongateway.api;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -17,6 +17,8 @@ import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.sessiongateway.session.ExtAuthzSessionWriter;
+
 /**
  * Logout controller for Session Gateway.
  *
@@ -26,6 +28,7 @@ import reactor.core.publisher.Mono;
  *   <li>Invalidates Redis session
  *   <li>Clears session cookie
  *   <li>Removes OAuth2 authorized client from session
+ *   <li>Deletes ext_authz session from Redis
  *   <li>Redirects to IDP logout (with returnTo parameter)
  * </ul>
  */
@@ -38,9 +41,11 @@ public class LogoutController {
   private final String clientId;
   private final String returnToUrl;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
+  private final ExtAuthzSessionWriter extAuthzSessionWriter;
 
   public LogoutController(
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
+      ExtAuthzSessionWriter extAuthzSessionWriter,
       @Value(
               "${idp.logout.url-template:"
                   + "${spring.security.oauth2.client.provider.idp.issuer-uri:}"
@@ -49,6 +54,7 @@ public class LogoutController {
       @Value("${spring.security.oauth2.client.registration.idp.client-id:}") String clientId,
       @Value("${idp.logout.return-to:http://localhost:8080}") String returnToUrl) {
     this.authorizedClientRepository = authorizedClientRepository;
+    this.extAuthzSessionWriter = extAuthzSessionWriter;
     this.idpLogoutUrlTemplate = idpLogoutUrlTemplate;
     this.clientId = clientId;
     this.returnToUrl = returnToUrl;
@@ -75,6 +81,7 @@ public class LogoutController {
     log.info("Processing logout request for user: {}", authentication.getName());
 
     return removeAuthorizedClient(exchange, authentication)
+        .then(deleteExtAuthzSession(exchange))
         .then(invalidateSession(exchange))
         .then(redirectToIdpLogout(exchange))
         .doOnSuccess(v -> log.info("Successfully logged out user: {}", authentication.getName()))
@@ -100,6 +107,18 @@ public class LogoutController {
     }
 
     return Mono.empty();
+  }
+
+  /**
+   * Deletes the ext_authz session from Redis.
+   *
+   * @param exchange the server web exchange
+   * @return completion signal
+   */
+  private Mono<Void> deleteExtAuthzSession(ServerWebExchange exchange) {
+    return exchange
+        .getSession()
+        .flatMap(session -> extAuthzSessionWriter.deleteSession(session.getId()));
   }
 
   /**

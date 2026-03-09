@@ -61,35 +61,8 @@ api:
 permission-service:
   base-url: http://localhost:8080
 
-# JWT signing key for tests
-jwt:
-  signing:
-    private-key-pem: |
-      -----BEGIN PRIVATE KEY-----
-      MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDQKEGd3zNIs8Lv
-      n+YMu1uFwXpdZVkwLy8+rCY3knt4+bRNIhuDWHN4HSRY+f86nZyPBI4jf1DRyVCS
-      CcI8IGxLogN+Sn9yciBcWFgk/dHTMG+lWKbm41rxpJANo/d66CHiFq+jlSeLKPmZ
-      TogQiR+2kSYP7v8n6zjKAxz2fnIq2Vy0GoqCsHW3JeOSn2xmxgJMWxdT2T9h8vsL
-      uDIwU30XigzbhB2NtAD3lTv1dGToOgsdJHD8Hen5/eUe09kpyEjPvFyV4Mov/PqK
-      lyjAPrFCtewHWrPa2D9IeW/xtdH3V8mZns2lVIz7IBBr+sOqqnQLHdMiK6tE4VpP
-      H6S32WIHAgMBAAECggEAJWPVxYHeOGTx0xEpxYex/OiwDi6yQpF3Lw7FHp5VR3mz
-      BVfnEUTGGQFDEih1zBWblaT/0yh/X++FZXYTSbGZQkyry/edxPTzEyNbUem10vWU
-      WGMAN+EG6PjiV1Dol08zJuVkT0HvhHOrwfn1PuMiqyyPZbVMZ+M8pCzC+xPjdgaZ
-      4GvR1nUGGIpuy7mKdrL3fRm77KnVbQyoFjXtImNjbutZRuiddXD7xp4dkCk5x67n
-      D9KzTNvX0oUPI9tcIQVpXs6PqmgDYf3PY1Rj/9HSU/3oBG3IiBpZpnRvNYNDiIAo
-      McMkI+9W6n7jq+yuueQBdYo8H+8eMnLv70uAbPZ6wQKBgQD/hS0c76YM+d61fXZc
-      sxkFjVDAL48FbvdS2V1Vob98aJptstenVeGRVmkEXQrs7QgL9fbns4ma35RrVg3o
-      wvlOK+mjdROwDfLnQlW1fYtlL+wNQIp616fGTabdJGEEAInVPxsC9txPNeNN2SZQ
-      3d2v48q6GKbAPi7kN5pyTIuZ2QKBgQDQjFBINTUbdjLtOyp+FPtmsZ4xxcjrbM4j
-      ewgQp55mwTrF/hiqGqDqHVkC1RFPQIIjXfDWzDU36drIUBG0STMij9FdVje1RcPC
-      tVdMX4pHr0V6K4ELZAd2yaFNmxYm3nSEiOSQ2xrX3q9cTcFXQaZVIDLKLj5puxTg
-      sDFveSiO3wKBgQD1GTn816PgLo6CaKZwpRsLSFJ9ByGZhKeYwQfWbCDRpUT8lOBn
-      kumcD9cMaHNicLuXPYhpGL6V4IDttM4Cx4N8iILEWDlaVwb47ZhpTtO3bBBxZcdv
-      rg0xGqtE1PB6dknAU5gFb+ZD1N0Ef5dRWoCbh1WezKanIP65ytxLZ0FBgQKBgFRG
-      n5rOhauXVHUx17Yj3IRfesI6XztkONl1uoigdA6qP4oLaQQ0xppVSccvO1N/iheo
-      us7Srx7tThBs6vqkKhnpbH3/fXuvubBRf/nJEiRt2/HG6tsjjTCfwqON7KHAe+2j
-      NFqlcG+T+eGfOmZ8jS8RV/UEQwyPIZy7Fv8pQw6ZAoGBALzcYx8duB83I2yCzSjc
-      Q/R5N+9Qz6bp2RVeYrXUfuKyEI+U1/e6DV1HnulVom/kNjroG8/2vFUnAmXUYvwQ
-      bQtY72ckeKaXEWpPqVHDsLnxGO7Ji5eOZns5M9wlUbjagTDaxioQnIvh2j35TiMP
-      MfSRbioo8TGSTbqY3ut5iPo4
-      -----END PRIVATE KEY-----
+# ext_authz session configuration for tests
+extauthz:
+  session:
+    key-prefix: "extauthz:session:test:"
+    ttl-seconds: 1800

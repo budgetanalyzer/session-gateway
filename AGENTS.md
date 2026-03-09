@@ -18,7 +18,7 @@ NEVER use Agent/subagent tools for code exploration. Use Grep, Glob, and Read di
 
 **Archetype**: service
 **Scope**: budgetanalyzer ecosystem
-**Role**: BFF for browser authentication; manages OAuth2 flows, session cookies, and internal JWT minting
+**Role**: BFF for browser authentication; manages OAuth2 flows, session cookies, and ext_authz session dual-writes
 
 ### Relationships
 - **Consumes**: service-common (patterns)
@@ -42,17 +42,17 @@ ls ../service-common/
 
 Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide secure authentication for browser-based clients in the Budget Analyzer application.
 
-**Purpose**: Protects sensitive tokens from browser exposure by managing OAuth2 flows server-side, issuing HTTP-only session cookies, and minting RSA-signed internal JWTs for downstream service authorization. Acts as the security entry point for all browser traffic.
+**Purpose**: Protects sensitive tokens from browser exposure by managing OAuth2 flows server-side, issuing HTTP-only session cookies, and dual-writing session data to the ext_authz Redis schema for Envoy-based authorization. Acts as the security entry point for all browser traffic.
 
 **Key Responsibilities**:
 - Manages OAuth2/OIDC authentication flows with Auth0
 - Fetches user roles and permissions from the permission-service on login
-- Mints RSA-signed internal JWTs containing identity, roles, and permissions for downstream services
-- Stores Auth0 tokens, user identity, permissions, and cached internal JWTs in Redis (never exposed to browser)
+- Dual-writes session data (userId, roles, permissions) to ext_authz Redis schema for Envoy ext_authz validation
+- Stores Auth0 tokens, user identity, and permissions in Redis (never exposed to browser)
 - Issues HTTP-only, Secure, SameSite session cookies to browsers
-- Proxies authenticated requests to the NGINX API Gateway with internal JWT injection
-- Implements proactive token refresh with permission re-fetch and JWT re-mint
-- Exposes a JWKS endpoint for backend services to verify internal JWT signatures
+- Proxies authenticated requests to the NGINX API Gateway
+- Implements proactive token refresh with permission re-fetch and ext_authz session update
+- Provides token exchange endpoint for native PKCE/M2M clients (`POST /auth/token/exchange`)
 
 ## Coding Standards
 
@@ -77,13 +77,13 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 
 ## Architecture Principles
 
-- **Defense-in-Depth Security**: Second layer in multi-tier security architecture (NGINX → Session Gateway → Services)
-- **Two-Tier Authentication**: Auth0 OAuth2 for browser-to-gateway; internal RSA-signed JWTs for gateway-to-backend
-- **Token Protection**: Auth0 tokens stored server-side only (XSS/CSRF protection); internal JWTs minted by Session Gateway and injected into downstream requests (never exposed to browser)
-- **Session-Based Auth**: Browser clients use cookies, not tokens
+- **Defense-in-Depth Security**: Second layer in multi-tier security architecture (Envoy → ext_authz → Services)
+- **ext_authz-Based Authorization**: Envoy ext_authz gRPC service validates sessions directly from Redis, injecting X-User-Id/X-Roles/X-Permissions headers into proxied requests
+- **Token Protection**: Auth0 tokens stored server-side only (XSS/CSRF protection); session data dual-written to ext_authz Redis schema (never exposed to browser)
+- **Session-Based Auth**: Browser clients use cookies; native clients use opaque bearer tokens from token exchange
 - **Behind NGINX**: All browser traffic enters through NGINX (port 443) which proxies to Session Gateway (port 8081)
-- **Stateful Sessions**: Redis provides distributed session storage (identity, roles, permissions, cached JWT)
-- **Browser-Only**: External M2M clients bypass this service; the gateway itself authenticates to internal services using short-lived service JWTs signed with its own RSA key (no IdP involvement)
+- **Stateful Sessions**: Redis provides distributed session storage (identity, roles, permissions) plus ext_authz session schema
+- **Multi-Client Support**: Browser clients use OAuth2 login + cookies; native PKCE/M2M clients use `POST /auth/token/exchange`
 
 ## Service Architecture
 
@@ -95,16 +95,18 @@ Browser → NGINX (:443)
               ↓ Proxy to Session Gateway
          Session Gateway (:8081) ← OAuth2 → Auth0
               │                           ↓ Session Data
-              ├─ Permissions ──→ Permission Service (:8082) [service JWT + email/name]
+              ├─ Permissions ──→ Permission Service (:8082) [email/name]
               │                           ↓ userId, roles, permissions
-              ├─ Mint Internal JWT (RS256)
-              │                           ↓ Cached in Redis (:6379)
-              ↓ Internal JWT + Proxy
-         NGINX Gateway (:443) ── auth_request ──→ TVS (:8088)
-              │                                     ↓ verify via JWKS
-              │                          Session Gateway JWKS endpoint
-              ↓ JWT valid → proxy to backend
-         Backend Services (:8083+) ── verify via JWKS ── Session Gateway
+              ├─ Dual-write: Spring Session + ext_authz Redis hash
+              │                           ↓ Stored in Redis (:6379)
+              ↓ Proxy request
+         Envoy Gateway ── ext_authz ──→ ext_authz gRPC service
+              │                           ↓ lookup extauthz:session:{id}
+              │                           ↓ inject X-User-Id, X-Roles, X-Permissions
+              ↓ headers injected → proxy to backend
+         Backend Services (:8083+) ── read claims from headers
+
+Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 ```
 
 **Discovery**:
@@ -121,10 +123,9 @@ grep -r "oauth2" src/main/resources/
 
 **Port Summary**:
 - **443**: NGINX Gateway (browser entry point, SSL termination)
-- **8081**: Session Gateway (behind NGINX, receives proxied requests, serves JWKS)
+- **8081**: Session Gateway (behind NGINX, receives proxied requests)
 - **8082**: Permission Service (user roles and permissions)
-- **8088**: Token Validation Service (NGINX auth_request target, verifies JWT signatures via JWKS)
-- **6379**: Redis (session storage)
+- **6379**: Redis (session storage + ext_authz session schema)
 
 ## Technology Stack
 
@@ -145,7 +146,6 @@ grep "implementation" build.gradle.kts
 **Stack Components**:
 - **Gateway**: Spring Cloud Gateway (reactive, WebFlux-based)
 - **Security**: Spring Security OAuth2 Client
-- **JWT Signing**: Nimbus JOSE+JWT (RSA key management, JWT encoding, JWKS)
 - **Sessions**: Spring Session Data Redis
 - **Service Common (service-web)**: Reactive HTTP logging, correlation IDs, safe logging, exception handling
 - **Permission Client**: WebClient for reactive HTTP calls to permission-service
@@ -179,28 +179,28 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 **Component Types**:
 
 **Configuration** (src/main/java/.../config/):
-- SecurityConfig: OAuth2 login, authorization, entry points, return URL handling, permission fetching on login success
-- SessionConfig: Redis session management
+- SecurityConfig: OAuth2 login, authorization, entry points, return URL handling, permission fetching on login success, ext_authz dual-write
+- SessionConfig: Redis session management, Clock bean
 - OAuth2ClientConfig: OAuth2 client and repository configuration
-- InternalJwtConfig: RSA key pair management (PEM required), JwtEncoder, permission-service WebClient
-- OAuth2TokenRelayFilterConfig: Registers OAuth2TokenRelayGlobalFilter as a Spring bean
 
-**Controllers** (src/main/java/.../controller/):
+**Controllers** (src/main/java/.../api/):
 - UserController: Returns current authenticated user info
-- LogoutController: Session invalidation and Auth0 logout
-- JwksController: Serves RSA public key at `/.well-known/jwks.json` for backend JWT verification
+- LogoutController: Session invalidation, ext_authz session deletion, and Auth0 logout
+- TokenExchangeController: Exchanges IDP access tokens for opaque session bearer tokens (native clients)
 
 **Security** (src/main/java/.../security/):
 - RedirectUrlValidator: Validates redirect URLs to prevent open redirect attacks
 - RedisServerRequestCache: Custom ServerRequestCache implementation for saving/retrieving original request URIs
 
 **Filters** (src/main/java/.../filter/):
-- TokenRefreshGatewayFilterFactory: Proactive OAuth2 token refresh before expiry, with permission re-fetch and internal JWT re-mint
-- OAuth2TokenRelayGlobalFilter: Mints or retrieves cached internal JWT from session, injects as Authorization header into proxied requests
+- TokenRefreshGatewayFilterFactory: Proactive OAuth2 token refresh before expiry, with permission re-fetch and ext_authz session update
 
 **Services** (src/main/java/.../service/):
-- InternalJwtService: Mints RS256-signed JWTs — user tokens (30-min, identity/roles/permissions) for downstream authorization and service tokens (1-min, `sub: "session-gateway"`, `type: "service"`) for gateway-to-service calls; manages re-mint threshold logic
-- PermissionServiceClient: Reactive WebClient that fetches user roles and permissions from the permission-service; authenticates with a service JWT (Bearer token) and passes email/displayName as query params
+- PermissionServiceClient: Reactive WebClient that fetches user roles and permissions from the permission-service; passes email/displayName as query params (no bearer auth — network isolation)
+
+**Session** (src/main/java/.../session/):
+- SessionAttributes: Constants for session attribute keys (USER_ID, ROLES, PERMISSIONS)
+- ExtAuthzSessionWriter: Dual-writes session data to ext_authz Redis hash (`extauthz:session:{id}`) for Envoy ext_authz validation
 
 **Service-Common Utilities** (auto-configured from service-web):
 - ReactiveHttpLoggingFilter: HTTP request/response logging (replaces RequestLoggingWebFilter)
@@ -239,16 +239,17 @@ After successful authentication, the redirect priority is:
 - Rejects: external URLs, protocol-relative URLs, `javascript:`, `data:`, and other malicious schemes
 - Invalid URLs safely default to `/` redirect
 
-**JWKS Endpoint**:
-- `GET /.well-known/jwks.json` - Returns the RSA public key as a JWKS document (unauthenticated)
-  - Used by backend services to verify internal JWT signatures
-  - Returns a static JSON response computed at startup
+**Token Exchange Endpoint**:
+- `POST /auth/token/exchange` - Exchanges an IDP access token for an opaque session bearer token (unauthenticated)
+  - Request: `{ "accessToken": "<IDP access token>" }`
+  - Response: `{ "token": "<session-id>", "expiresIn": 1800, "tokenType": "Bearer" }`
+  - Validates token via IDP userinfo endpoint, fetches permissions, creates session, writes ext_authz session
 
 **User Endpoints**:
 - `GET /user` - Returns current authenticated user information
 
 **Proxy Routes**:
-- `GET /api/**` - Proxies API requests to NGINX Gateway (JWT injected)
+- `GET /api/**` - Proxies API requests to NGINX Gateway
 - `GET /**` - Proxies frontend requests to NGINX (serves React app)
 
 ## Configuration
@@ -272,22 +273,20 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - Scopes: openid, profile, email
 - Redirect URI for callback
 
-**Internal JWT Signing**:
-- `jwt.signing.private-key-pem` (`JWT_SIGNING_PRIVATE_KEY_PEM`): PKCS#8 PEM-encoded RSA private key — **required**, app fails to start without it
-- Key ID (`kid`): Derived deterministically from public key SHA-256 thumbprint (stable across restarts)
-- Token lifetime: 30 minutes
-- Re-mint threshold: 5 minutes before expiry
+**ext_authz Session**:
+- `extauthz.session.key-prefix` (`EXTAUTHZ_SESSION_KEY_PREFIX`): Redis key prefix for ext_authz sessions (default: `extauthz:session:`)
+- `extauthz.session.ttl-seconds` (`EXTAUTHZ_SESSION_TTL_SECONDS`): TTL for ext_authz session keys in seconds (default: `1800`, must match Spring Session timeout)
 
 **Permission Service**:
-- `permission-service.base-url` (`PERMISSION_SERVICE_URL`): Base URL for the permission-service (default: `http://permission-service:8082`)
+- `permission-service.base-url` (`PERMISSION_SERVICE_URL`): Base URL for the permission-service (default: `http://permission-service:8086`)
 - Endpoint called: `GET /internal/v1/users/{idpSub}/permissions?email={email}&displayName={displayName}`
-- Authenticated with a service JWT (`Authorization: Bearer <service-jwt>`) minted by InternalJwtService
+- No bearer auth — relies on network isolation (mTLS planned for Phase 2)
 
 **Session Management**:
 - Redis connection (host, port)
 - Session timeout (30 minutes default)
 - Cookie settings (HttpOnly, Secure, SameSite)
-- Session stores: userId, roles, permissions, cached internal JWT
+- Session stores: userId, roles, permissions
 
 **Gateway Routing**:
 - Routes to NGINX Gateway (`https://api.budgetanalyzer.localhost`, port 443)
@@ -406,22 +405,18 @@ curl -v http://localhost:8081/oauth2/authorization/auth0
 - Check Redis container is running: `docker ps | grep redis`
 - Inspect Redis session keys: `docker exec redis-cache redis-cli KEYS "*"`
 
-**Token Not Added to Proxied Requests**:
-- Verify OAuth2TokenRelayGatewayFilter is registered
-- Check authorized client repository has token for session
-- Enable debug logging: `logging.level.org.springframework.security=DEBUG`
-
-**Internal JWT Not Being Minted**:
+**ext_authz Session Not Created**:
 - Check that permission-service is running and reachable at `permission-service.base-url`
 - Verify session contains `INTERNAL_USER_ID`, `INTERNAL_ROLES`, `INTERNAL_PERMISSIONS` (populated on login)
-- If login succeeded but session attributes are missing, permission-service may have failed during OAuth2 success handler
+- Verify ext_authz session exists in Redis: `redis-cli HGETALL "extauthz:session:{session-id}"`
+- If login succeeded but ext_authz session missing, check logs for `ExtAuthzSessionWriter` errors (errors are swallowed)
+- Verify `extauthz.session.key-prefix` and `extauthz.session.ttl-seconds` match ext_authz service expectations
 - Enable debug logging: `logging.level.org.budgetanalyzer.sessiongateway=DEBUG`
 
-**JWKS Endpoint Not Responding**:
-- `GET /.well-known/jwks.json` must be accessible without authentication
-- Verify `SecurityConfig` permits this path
-- Check that `InternalJwtConfig` successfully created the RSA key (look for startup logs)
-- PEM key is required — app fails to start without `jwt.signing.private-key-pem`
+**Token Exchange Not Working**:
+- Verify the IDP userinfo endpoint is reachable from Session Gateway
+- Check that the IDP access token is valid (test with `curl -H "Authorization: Bearer <token>" <issuer-uri>/userinfo`)
+- Verify permission-service is running for the permission fetch step
 
 **502 Bad Gateway**:
 - Ensure NGINX Gateway is running on port 443
@@ -436,20 +431,20 @@ curl -v http://localhost:8081/oauth2/authorization/auth0
 
 **Downstream (Sends To)**:
 - **Auth0**: OAuth2 authorization, token exchange, logout
-- **Permission Service** (port 8082): Fetches user roles and permissions on login and token refresh
-- **Redis**: Session storage and retrieval (stores Auth0 tokens, userId, roles, permissions, cached internal JWT)
-- **NGINX Gateway** (port 443): Proxies all requests with internal JWT injection to https://api.budgetanalyzer.localhost
+- **Permission Service** (port 8082): Fetches user roles and permissions on login and token refresh (no bearer auth — network isolation)
+- **Redis**: Session storage (Auth0 tokens, userId, roles, permissions) + ext_authz session dual-write (`extauthz:session:{id}`)
+- **NGINX Gateway** (port 443): Proxies requests to https://api.budgetanalyzer.localhost
 
 **Data Flow**:
 1. Browser → NGINX (https://app.budgetanalyzer.localhost)
 2. NGINX → Session Gateway (session cookie in request)
-3. Session Gateway → Redis (lookup session: identity, roles, permissions, cached JWT)
-4. Session Gateway → Permission Service (on login or token refresh: fetch userId, roles, permissions; authenticated with service JWT, passes email/displayName)
-5. Session Gateway mints internal JWT (RS256) with identity, roles, permissions claims
-6. Session Gateway → NGINX (proxy with Authorization: Bearer \<internal-jwt\> to api.budgetanalyzer.localhost)
-7. NGINX → Token Validation Service (auth_request: TVS verifies JWT signature via Session Gateway JWKS, no issuer/audience checks)
-8. NGINX → Backend Service (JWT valid, request proxied)
-9. Backend services verify JWT via JWKS (`GET /.well-known/jwks.json` on Session Gateway) + issuer validation (`iss = "session-gateway"`) via service-common
+3. Session Gateway → Redis (lookup session: identity, roles, permissions)
+4. Session Gateway → Permission Service (on login or token refresh: fetch userId, roles, permissions; passes email/displayName)
+5. Session Gateway dual-writes: Spring Session + ext_authz Redis hash (`extauthz:session:{id}`)
+6. Session Gateway → NGINX (proxy request to api.budgetanalyzer.localhost)
+7. Envoy → ext_authz gRPC service (lookup `extauthz:session:{id}` in Redis, inject X-User-Id/X-Roles/X-Permissions headers)
+8. Envoy → Backend Service (headers injected, request proxied)
+9. Backend services read claims from request headers (X-User-Id, X-Roles, X-Permissions)
 10. Response flows back through the chain
 
 **Architecture Documentation**:
@@ -461,18 +456,15 @@ For detailed architecture diagrams and security design:
 
 **Token Protection**:
 - Auth0 access tokens stored server-side in Redis (never exposed to browser)
-- Internal JWTs minted by Session Gateway, injected into downstream requests, and cached in Redis
-- Neither Auth0 tokens nor internal JWTs are ever sent to the browser
-- All token data cleared on logout or session expiry
+- Session data dual-written to ext_authz Redis hash — browser only sees opaque session cookie
+- All session data cleared on logout (both Spring Session and ext_authz session)
 
-**Internal JWT Security**:
-- Signed with RS256 (RSA 2048-bit minimum)
-- JWKS endpoint (`/.well-known/jwks.json`) exposes only the public key — private key never leaves the gateway
-- **User tokens**: 30-min TTL, re-minted 5 minutes before expiry. Claims: `iss` (session-gateway), `sub` (internal userId), `idp_sub` (Auth0 subject), `roles`, `permissions`
-- **Service tokens**: 1-min TTL, minted per-call, never cached. Claims: `iss` (session-gateway), `sub` (session-gateway), `type` (service). Used for gateway-to-permission-service calls during bootstrap permission fetch
-- The RSA key pair serves double duty: signs both user JWTs (downstream authorization) and service JWTs (internal M2M) — no IdP client-credentials flow needed for service-to-service calls
-- PEM-configured RSA key required — app fails to start without it; `kid` derived from SHA-256 thumbprint (stable across restarts)
-- Two-tier verification: TVS validates signature only (NGINX auth_request); backend services validate signature + issuer via service-common
+**ext_authz Session Security**:
+- Ext_authz sessions stored as Redis hashes under `extauthz:session:{id}` with TTL matching Spring Session timeout (30 min)
+- Fields: `user_id`, `roles` (comma-joined), `permissions` (comma-joined), `created_at`, `expires_at` (unix timestamps)
+- Envoy ext_authz gRPC service validates sessions by reading directly from Redis — no cryptographic verification needed (Redis is trusted internal infrastructure)
+- Session IDs are opaque — no sensitive data encoded in the token itself
+- Dual-write errors are logged and swallowed to avoid breaking the primary authentication flow
 
 **Session Cookies**:
 - HttpOnly: Not accessible via JavaScript
@@ -505,11 +497,12 @@ find src/test -name "*.java"
 
 **Key Directories**:
 - [src/main/java/org/budgetanalyzer/sessiongateway/](src/main/java/org/budgetanalyzer/sessiongateway/) - Application source
-  - [config/](src/main/java/org/budgetanalyzer/sessiongateway/config/) - Spring configuration classes (OAuth2, JWT signing, security)
-  - [controller/](src/main/java/org/budgetanalyzer/sessiongateway/controller/) - REST controllers (user, logout, JWKS)
-  - [filter/](src/main/java/org/budgetanalyzer/sessiongateway/filter/) - Custom Gateway filters (token relay, refresh)
+  - [config/](src/main/java/org/budgetanalyzer/sessiongateway/config/) - Spring configuration classes (OAuth2, security, session)
+  - [api/](src/main/java/org/budgetanalyzer/sessiongateway/api/) - REST controllers (user, logout, token exchange)
+  - [filter/](src/main/java/org/budgetanalyzer/sessiongateway/filter/) - Custom Gateway filters (token refresh)
   - [security/](src/main/java/org/budgetanalyzer/sessiongateway/security/) - Security utilities (redirect validation, request cache)
-  - [service/](src/main/java/org/budgetanalyzer/sessiongateway/service/) - Business services (JWT minting, permission client)
+  - [service/](src/main/java/org/budgetanalyzer/sessiongateway/service/) - Business services (permission client)
+  - [session/](src/main/java/org/budgetanalyzer/sessiongateway/session/) - Session management (ext_authz dual-write, session constants)
 - [src/main/resources/](src/main/resources/) - Configuration files (application.yml)
 - [src/test/](src/test/) - Test classes
 - [gradle/](gradle/) - Gradle wrapper and version catalog
@@ -521,19 +514,15 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
 **Direct Dependencies**:
 - **NGINX Gateway**: Downstream proxy target (API routing)
-- **Token Validation Service** (port 8088): NGINX auth_request target — validates internal JWT signatures via Session Gateway JWKS before proxying to backends
-- **Permission Service**: Provides user roles and permissions (called on login and token refresh)
-- **Redis**: Session persistence (Auth0 tokens, identity, roles, permissions, cached internal JWT)
+- **ext_authz gRPC Service**: Envoy ext_authz target — validates sessions from Redis, injects claims headers
+- **Permission Service**: Provides user roles and permissions (called on login and token refresh, no bearer auth)
+- **Redis**: Session persistence (Spring Session + ext_authz session schema)
 - **Auth0**: Identity provider
 
-**Indirect (via NGINX)**:
+**Indirect (via Envoy/NGINX)**:
 - **Transaction Service**: Business logic for transactions
 - **Currency Service**: Currency conversion
 - **Budget Analyzer Web**: React frontend (served through NGINX)
-
-**Backend JWT Verification**:
-- **TVS** (NGINX auth_request): Verifies JWT signature via JWKS — no issuer/audience checks (signature-only gate)
-- **Backend services**: Verify JWT signature via JWKS + issuer validation (`iss = "session-gateway"`) via service-common
 
 **Repository Links**:
 - Orchestration: https://github.com/budgetanalyzer/orchestration
@@ -541,19 +530,19 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
 ## Best Practices
 
-1. **Secure Token Storage**: Never expose Auth0 tokens or internal JWTs to the browser — Auth0 tokens stored in Redis, internal JWTs cached in Redis and injected server-side
-2. **Proactive Refresh**: Refresh Auth0 tokens before expiry, re-fetch permissions from permission-service, and re-mint internal JWT
+1. **Secure Token Storage**: Never expose Auth0 tokens to the browser — Auth0 tokens stored in Redis, session data dual-written to ext_authz Redis schema
+2. **Proactive Refresh**: Refresh Auth0 tokens before expiry, re-fetch permissions from permission-service, and update ext_authz session
 3. **Comprehensive Logging**: Enable OAuth2 debug logging for troubleshooting
 4. **Session Timeout**: Balance security (short timeout) vs UX (longer timeout)
-5. **Graceful Logout**: Clear both session and Auth0 session on logout
+5. **Graceful Logout**: Clear Spring Session, ext_authz session, and Auth0 session on logout
 6. **Health Checks**: Monitor Redis connectivity and Auth0 availability
 7. **Environment Parity**: Use same Auth0 tenant structure for dev/staging/prod
 8. **Return URL Validation**: All returnUrl redirects automatically validated by RedirectUrlValidator - no additional validation needed
 9. **Safe Logging**: Use `SafeLogger.toJson()` from service-common when logging objects that may contain sensitive data
 10. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production
-11. **JWT Key Management**: PEM-configured RSA key is required — app fails to start without it; `kid` is derived from SHA-256 thumbprint for stability
+11. **ext_authz TTL Alignment**: `extauthz.session.ttl-seconds` must match Spring Session timeout to prevent stale sessions
 12. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required); token refresh degrades gracefully (existing permissions retained on failure)
-13. **Internal M2M Authentication**: Gateway-to-service calls use short-lived service JWTs signed with the same RSA key — no IdP client-credentials grant needed; internal services are fully decoupled from Auth0
+13. **Dual-Write Resilience**: ext_authz write failures are logged and swallowed — primary session flow is never broken by ext_authz errors
 
 ## NOTES FOR AI AGENTS
 
@@ -595,18 +584,17 @@ When SSL issues occur, guide the user to run certificate scripts on their host m
 When working on this service:
 - This is a security-critical component - always consider threat models
 - BFF pattern means no CORS configuration needed (same-origin from browser perspective)
-- Session Gateway is browser-specific - M2M clients should use NGINX Gateway directly
+- Session Gateway serves browser clients (OAuth2 + cookies) and native clients (token exchange + bearer tokens)
 - All browser traffic flows through NGINX (port 443) to Session Gateway (port 8081)
-- Internal JWTs replace Auth0 token relay — downstream services never see Auth0 tokens
+- ext_authz validates sessions directly from Redis — no JWT infrastructure needed
 - Permission-service must be reachable for login to succeed (permissions fetched in OAuth2 success handler)
-- PEM RSA key is required — app fails to start without `jwt.signing.private-key-pem`
-- JWKS endpoint (`/.well-known/jwks.json`) must be accessible without authentication — consumed by TVS and backend services
-- TVS validates JWT signature only (NGINX auth_request gate); backend services validate signature + issuer via service-common
-- Gateway authenticates to permission-service using short-lived service JWTs (not Auth0 M2M tokens) — internal services are fully decoupled from Auth0
+- Permission-service calls use no bearer auth — relies on network isolation (mTLS planned)
+- ext_authz session dual-write errors are swallowed — never break the primary session flow
+- `extauthz.session.ttl-seconds` must match Spring Session timeout (`@EnableRedisWebSession(maxInactiveIntervalInSeconds)`)
 - Changes to OAuth2 configuration require Auth0 console updates
 - Redis is critical dependency - session loss means user re-authentication
-- Token refresh happens automatically via custom filter before expiry (includes permission re-fetch and JWT re-mint)
+- Token refresh happens automatically via custom filter before expiry (includes permission re-fetch and ext_authz session update)
 - Spring Cloud Gateway uses reactive WebFlux - avoid blocking operations
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
-- Follow the hybrid architecture: NGINX (SSL termination) → Session Gateway (BFF) → NGINX (API Gateway) → Services
+- Follow the hybrid architecture: NGINX (SSL termination) → Session Gateway (BFF) → Envoy (ext_authz) → Services
 

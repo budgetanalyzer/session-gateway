@@ -1,4 +1,4 @@
-package org.budgetanalyzer.sessiongateway.controller;
+package org.budgetanalyzer.sessiongateway.api;
 
 import java.util.List;
 
@@ -18,8 +18,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
-import org.budgetanalyzer.sessiongateway.controller.response.UserInfoResponse;
-import org.budgetanalyzer.sessiongateway.service.InternalJwtService;
+import org.budgetanalyzer.sessiongateway.api.response.UserInfoResponse;
+import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
 
 /**
  * User information controller.
@@ -74,7 +74,7 @@ public class UserController {
     log.debug("User info requested for: {}", authentication.getName());
 
     @SuppressWarnings("unchecked")
-    var roles = (List<String>) session.getAttribute(InternalJwtService.SESSION_ROLES);
+    var roles = (List<String>) session.getAttribute(SessionAttributes.SESSION_ROLES);
     var safeRoles = roles != null ? roles : List.<String>of();
 
     if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
