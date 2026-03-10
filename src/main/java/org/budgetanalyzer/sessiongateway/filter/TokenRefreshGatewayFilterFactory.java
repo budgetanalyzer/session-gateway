@@ -27,7 +27,7 @@ import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
  * Gateway filter that proactively refreshes OAuth2 access tokens before they expire.
  *
  * <p>When a token is refreshed, this filter also re-fetches the user's permissions from the
- * permission-service and re-mints the internal JWT.
+ * permission-service and updates the ext_authz session with refreshed permissions.
  */
 @Component
 public class TokenRefreshGatewayFilterFactory
