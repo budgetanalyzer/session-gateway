@@ -18,19 +18,14 @@ public class PermissionServiceClient {
   private static final Logger log = LoggerFactory.getLogger(PermissionServiceClient.class);
 
   private final WebClient webClient;
-  private final InternalJwtService internalJwtService;
 
   /**
    * Creates a new PermissionServiceClient.
    *
    * @param webClient the WebClient configured for the permission-service
-   * @param internalJwtService the service for minting internal JWTs
    */
-  public PermissionServiceClient(
-      @Qualifier("permissionServiceWebClient") WebClient webClient,
-      InternalJwtService internalJwtService) {
+  public PermissionServiceClient(@Qualifier("permissionServiceWebClient") WebClient webClient) {
     this.webClient = webClient;
-    this.internalJwtService = internalJwtService;
   }
 
   /**
@@ -44,7 +39,6 @@ public class PermissionServiceClient {
   public Mono<PermissionResponse> fetchPermissions(
       String idpSub, String email, String displayName) {
     log.debug("Fetching permissions for idpSub={}", idpSub);
-    var serviceToken = internalJwtService.mintServiceToken();
 
     return webClient
         .get()
@@ -55,7 +49,6 @@ public class PermissionServiceClient {
                     .queryParam("email", email)
                     .queryParam("displayName", displayName)
                     .build(idpSub))
-        .headers(h -> h.setBearerAuth(serviceToken))
         .retrieve()
         .onStatus(
             HttpStatusCode::isError,

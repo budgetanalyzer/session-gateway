@@ -19,14 +19,15 @@ import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
 
-import org.budgetanalyzer.sessiongateway.service.InternalJwtService;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
+import org.budgetanalyzer.sessiongateway.session.ExtAuthzSessionWriter;
+import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
 
 /**
  * Gateway filter that proactively refreshes OAuth2 access tokens before they expire.
  *
  * <p>When a token is refreshed, this filter also re-fetches the user's permissions from the
- * permission-service and re-mints the internal JWT.
+ * permission-service and updates the ext_authz session with refreshed permissions.
  */
 @Component
 public class TokenRefreshGatewayFilterFactory
@@ -38,20 +39,20 @@ public class TokenRefreshGatewayFilterFactory
   private final ReactiveOAuth2AuthorizedClientManager authorizedClientManager;
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
   private final PermissionServiceClient permissionServiceClient;
-  private final InternalJwtService internalJwtService;
+  private final ExtAuthzSessionWriter extAuthzSessionWriter;
   private final Clock clock;
 
   public TokenRefreshGatewayFilterFactory(
       ReactiveOAuth2AuthorizedClientManager authorizedClientManager,
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
       PermissionServiceClient permissionServiceClient,
-      InternalJwtService internalJwtService,
+      ExtAuthzSessionWriter extAuthzSessionWriter,
       Clock clock) {
     super(Config.class);
     this.authorizedClientManager = authorizedClientManager;
     this.authorizedClientRepository = authorizedClientRepository;
     this.permissionServiceClient = permissionServiceClient;
-    this.internalJwtService = internalJwtService;
+    this.extAuthzSessionWriter = extAuthzSessionWriter;
     this.clock = clock;
   }
 
@@ -149,7 +150,7 @@ public class TokenRefreshGatewayFilterFactory
                 // Save the refreshed client to the session, then refresh permissions
                 return authorizedClientRepository
                     .saveAuthorizedClient(refreshedClient, authentication, exchange)
-                    .then(refreshPermissionsAndRemint(exchange, authentication))
+                    .then(refreshPermissionsAndUpdateSession(exchange, authentication))
                     .thenReturn(refreshedClient);
               } else {
                 log.warn("Token refresh returned null for user: {}", authentication.getName());
@@ -170,12 +171,12 @@ public class TokenRefreshGatewayFilterFactory
   }
 
   /**
-   * Re-fetches permissions from the permission-service and re-mints the internal JWT.
+   * Re-fetches permissions from the permission-service and updates the session and ext_authz.
    *
    * <p>Errors are swallowed and logged. Unlike login, refresh failure should not break the active
-   * request. Cached permissions and JWT remain valid.
+   * request. Cached permissions remain valid.
    */
-  private Mono<Void> refreshPermissionsAndRemint(
+  private Mono<Void> refreshPermissionsAndUpdateSession(
       ServerWebExchange exchange, Authentication authentication) {
     if (!(authentication instanceof OAuth2AuthenticationToken oauthToken)) {
       return Mono.empty();
@@ -196,39 +197,32 @@ public class TokenRefreshGatewayFilterFactory
                         session -> {
                           session
                               .getAttributes()
-                              .put(InternalJwtService.SESSION_USER_ID, response.userId());
+                              .put(SessionAttributes.SESSION_USER_ID, response.userId());
                           session
                               .getAttributes()
                               .put(
-                                  InternalJwtService.SESSION_ROLES,
+                                  SessionAttributes.SESSION_ROLES,
                                   new ArrayList<>(response.roles()));
                           session
                               .getAttributes()
                               .put(
-                                  InternalJwtService.SESSION_PERMISSIONS,
+                                  SessionAttributes.SESSION_PERMISSIONS,
                                   new ArrayList<>(response.permissions()));
 
-                          // Mint new internal JWT
-                          String newJwt =
-                              internalJwtService.mintToken(
-                                  idpSub,
-                                  response.userId(),
-                                  response.roles(),
-                                  response.permissions());
-                          session
-                              .getAttributes()
-                              .put(InternalJwtService.SESSION_INTERNAL_JWT, newJwt);
-
-                          log.info(
-                              "Refreshed permissions and re-minted internal JWT for user: {}",
-                              authentication.getName());
+                          log.info("Refreshed permissions for user: {}", authentication.getName());
                         })
-                    .then())
+                    .flatMap(
+                        session ->
+                            extAuthzSessionWriter.writeSession(
+                                session.getId(),
+                                response.userId(),
+                                response.roles(),
+                                response.permissions())))
         .onErrorResume(
             error -> {
               log.warn(
                   "Failed to refresh permissions for user: {}, "
-                      + "cached permissions and JWT remain valid",
+                      + "cached permissions remain valid",
                   authentication.getName(),
                   error);
               return Mono.empty();

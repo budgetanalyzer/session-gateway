@@ -41,9 +41,10 @@ import org.springframework.web.server.WebSession;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import org.budgetanalyzer.sessiongateway.service.InternalJwtService;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient.PermissionResponse;
+import org.budgetanalyzer.sessiongateway.session.ExtAuthzSessionWriter;
+import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
 
 @ExtendWith(MockitoExtension.class)
 class TokenRefreshGatewayFilterFactoryTest {
@@ -56,7 +57,7 @@ class TokenRefreshGatewayFilterFactoryTest {
   @Mock private ReactiveOAuth2AuthorizedClientManager authorizedClientManager;
   @Mock private ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
   @Mock private PermissionServiceClient permissionServiceClient;
-  @Mock private InternalJwtService internalJwtService;
+  @Mock private ExtAuthzSessionWriter extAuthzSessionWriter;
   @Mock private GatewayFilterChain chain;
   @Mock private ServerWebExchange exchange;
   @Mock private WebSession session;
@@ -73,7 +74,7 @@ class TokenRefreshGatewayFilterFactoryTest {
             authorizedClientManager,
             authorizedClientRepository,
             permissionServiceClient,
-            internalJwtService,
+            extAuthzSessionWriter,
             fixedClock);
     gatewayFilter = factory.apply(new TokenRefreshGatewayFilterFactory.Config());
 
@@ -88,7 +89,11 @@ class TokenRefreshGatewayFilterFactoryTest {
     lenient().when(exchange.getPrincipal()).thenReturn(Mono.just(oauth2AuthenticationToken));
     lenient().when(exchange.getSession()).thenReturn(Mono.just(session));
     lenient().when(session.getAttributes()).thenReturn(sessionAttributes);
+    lenient().when(session.getId()).thenReturn("test-session-id");
     lenient().when(chain.filter(any())).thenReturn(Mono.empty());
+    lenient()
+        .when(extAuthzSessionWriter.writeSession(anyString(), anyString(), anyList(), anyList()))
+        .thenReturn(Mono.empty());
   }
 
   // --- Refresh threshold tests ---
@@ -122,8 +127,6 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
-    when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
-        .thenReturn("new-jwt");
 
     gatewayFilter.filter(exchange, chain).block();
 
@@ -146,8 +149,6 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
-    when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
-        .thenReturn("jwt");
 
     gatewayFilter.filter(exchange, chain).block();
 
@@ -203,8 +204,6 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
-    when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
-        .thenReturn("jwt");
 
     gatewayFilter.filter(exchange, chain).block();
 
@@ -226,8 +225,6 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
-    when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
-        .thenReturn("jwt");
 
     gatewayFilter.filter(exchange, chain).block();
 
@@ -250,19 +247,17 @@ class TokenRefreshGatewayFilterFactoryTest {
             Mono.just(
                 new PermissionResponse(
                     "user-1", List.of("ROLE_USER"), List.of("transactions:read"))));
-    when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
-        .thenReturn("jwt");
 
     gatewayFilter.filter(exchange, chain).block();
 
     assertThat(sessionAttributes)
-        .containsEntry(InternalJwtService.SESSION_USER_ID, "user-1")
-        .containsEntry(InternalJwtService.SESSION_ROLES, List.of("ROLE_USER"))
-        .containsEntry(InternalJwtService.SESSION_PERMISSIONS, List.of("transactions:read"));
+        .containsEntry(SessionAttributes.SESSION_USER_ID, "user-1")
+        .containsEntry(SessionAttributes.SESSION_ROLES, List.of("ROLE_USER"))
+        .containsEntry(SessionAttributes.SESSION_PERMISSIONS, List.of("transactions:read"));
   }
 
   @Test
-  void filter_mintsNewJwtAfterRefresh() {
+  void filter_writesExtAuthzSessionAfterRefresh() {
     var client = buildClient(FIXED_NOW.plusSeconds(180));
     var refreshedClient = buildClient(FIXED_NOW.plusSeconds(1800));
 
@@ -275,14 +270,11 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
-    when(internalJwtService.mintToken(IDP_SUB, "user-1", List.of("ROLE_USER"), List.of("read")))
-        .thenReturn("minted-jwt");
 
     gatewayFilter.filter(exchange, chain).block();
 
-    verify(internalJwtService).mintToken(IDP_SUB, "user-1", List.of("ROLE_USER"), List.of("read"));
-    assertThat(sessionAttributes)
-        .containsEntry(InternalJwtService.SESSION_INTERNAL_JWT, "minted-jwt");
+    verify(extAuthzSessionWriter)
+        .writeSession("test-session-id", "user-1", List.of("ROLE_USER"), List.of("read"));
   }
 
   // --- Error/fallback tests ---
@@ -334,7 +326,7 @@ class TokenRefreshGatewayFilterFactoryTest {
     StepVerifier.create(gatewayFilter.filter(exchange, chain)).verifyComplete();
 
     verify(chain).filter(exchange);
-    assertThat(sessionAttributes).doesNotContainKey(InternalJwtService.SESSION_USER_ID);
+    assertThat(sessionAttributes).doesNotContainKey(SessionAttributes.SESSION_USER_ID);
   }
 
   @Test
@@ -351,8 +343,6 @@ class TokenRefreshGatewayFilterFactoryTest {
     when(permissionServiceClient.fetchPermissions(IDP_SUB, EMAIL, DISPLAY_NAME))
         .thenReturn(
             Mono.just(new PermissionResponse("user-1", List.of("ROLE_USER"), List.of("read"))));
-    when(internalJwtService.mintToken(anyString(), anyString(), anyList(), anyList()))
-        .thenReturn("jwt");
 
     StepVerifier.create(gatewayFilter.filter(exchange, chain)).verifyComplete();
 
