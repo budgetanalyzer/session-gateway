@@ -1,4 +1,4 @@
-package org.budgetanalyzer.sessiongateway.controller;
+package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -14,7 +14,7 @@ import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 
 import reactor.test.StepVerifier;
 
-import org.budgetanalyzer.sessiongateway.service.InternalJwtService;
+import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
 
 class UserControllerTest {
 
@@ -41,7 +41,7 @@ class UserControllerTest {
     var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
 
     var session = new MockWebSession();
-    session.getAttributes().put(InternalJwtService.SESSION_ROLES, List.of("USER"));
+    session.getAttributes().put(SessionAttributes.SESSION_ROLES, List.of("USER"));
 
     var result = userController.getCurrentUser(token, session).block();
 
@@ -97,7 +97,7 @@ class UserControllerTest {
     var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "google");
 
     var session = new MockWebSession();
-    session.getAttributes().put(InternalJwtService.SESSION_ROLES, List.of("USER"));
+    session.getAttributes().put(SessionAttributes.SESSION_ROLES, List.of("USER"));
 
     var result = userController.getCurrentUser(token, session).block();
 
@@ -127,7 +127,7 @@ class UserControllerTest {
     var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
 
     var session = new MockWebSession();
-    session.getAttributes().put(InternalJwtService.SESSION_ROLES, List.of("ADMIN"));
+    session.getAttributes().put(SessionAttributes.SESSION_ROLES, List.of("ADMIN"));
 
     var result = userController.getCurrentUser(token, session).block();
 
@@ -155,7 +155,7 @@ class UserControllerTest {
   void getCurrentUser_returnsRolesForNonOauthAuth() {
     var auth = new TestingAuthenticationToken("bob", "secret", "ROLE_USER");
     var session = new MockWebSession();
-    session.getAttributes().put(InternalJwtService.SESSION_ROLES, List.of("USER"));
+    session.getAttributes().put(SessionAttributes.SESSION_ROLES, List.of("USER"));
 
     var result = userController.getCurrentUser(auth, session).block();
 

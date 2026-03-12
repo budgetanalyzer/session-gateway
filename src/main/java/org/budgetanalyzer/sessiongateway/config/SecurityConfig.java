@@ -30,8 +30,9 @@ import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.sessiongateway.security.RedirectUrlValidator;
 import org.budgetanalyzer.sessiongateway.security.RedisServerRequestCache;
-import org.budgetanalyzer.sessiongateway.service.InternalJwtService;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
+import org.budgetanalyzer.sessiongateway.session.ExtAuthzSessionWriter;
+import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
 
 /**
  * Security configuration for Session Gateway.
@@ -73,18 +74,21 @@ public class SecurityConfig {
   private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
   private final ReactiveClientRegistrationRepository clientRegistrationRepository;
   private final PermissionServiceClient permissionServiceClient;
+  private final ExtAuthzSessionWriter extAuthzSessionWriter;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
       OAuth2LoginDebugger oauth2LoginDebugger,
       ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
       ReactiveClientRegistrationRepository clientRegistrationRepository,
-      PermissionServiceClient permissionServiceClient) {
+      PermissionServiceClient permissionServiceClient,
+      ExtAuthzSessionWriter extAuthzSessionWriter) {
     this.authorizationRequestResolver = authorizationRequestResolver;
     this.oauth2LoginDebugger = oauth2LoginDebugger;
     this.authorizedClientRepository = authorizedClientRepository;
     this.clientRegistrationRepository = clientRegistrationRepository;
     this.permissionServiceClient = permissionServiceClient;
+    this.extAuthzSessionWriter = extAuthzSessionWriter;
   }
 
   /**
@@ -118,7 +122,7 @@ public class SecurityConfig {
                         "/login/**",
                         "/error",
                         "/oauth2/**",
-                        "/.well-known/jwks.json",
+                        "/auth/token/exchange",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html")
@@ -395,16 +399,16 @@ public class SecurityConfig {
                         session -> {
                           session
                               .getAttributes()
-                              .put(InternalJwtService.SESSION_USER_ID, response.userId());
+                              .put(SessionAttributes.SESSION_USER_ID, response.userId());
                           session
                               .getAttributes()
                               .put(
-                                  InternalJwtService.SESSION_ROLES,
+                                  SessionAttributes.SESSION_ROLES,
                                   new ArrayList<>(response.roles()));
                           session
                               .getAttributes()
                               .put(
-                                  InternalJwtService.SESSION_PERMISSIONS,
+                                  SessionAttributes.SESSION_PERMISSIONS,
                                   new ArrayList<>(response.permissions()));
                           log.info(
                               "Stored permissions in session for userId={}, "
@@ -413,7 +417,13 @@ public class SecurityConfig {
                               response.roles().size(),
                               response.permissions().size());
                         })
-                    .then());
+                    .flatMap(
+                        session ->
+                            extAuthzSessionWriter.writeSession(
+                                session.getId(),
+                                response.userId(),
+                                response.roles(),
+                                response.permissions())));
   }
 
   /**
