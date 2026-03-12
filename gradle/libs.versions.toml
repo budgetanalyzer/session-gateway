@@ -11,6 +11,7 @@ springdoc = "2.8.13"
 wiremock = "3.10.0"
 awaitility = "4.2.2"
 serviceCommon = "0.0.1-SNAPSHOT"
+testcontainers = "1.21.4"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
