@@ -14,6 +14,17 @@ Do not over-validate ideas. The user wants honest pushback, not agreement.
 
 NEVER use Agent/subagent tools for code exploration. Use Grep, Glob, and Read directly.
 
+## Documentation Discipline
+
+Always keep documentation up to date after any configuration or code change.
+
+Update the nearest affected documentation in the same work:
+- `AGENTS.md` when instructions, guardrails, discovery commands, or repository-specific workflow changes
+- `README.md` when setup, usage, or repository purpose changes
+- `docs/` when architecture, configuration, APIs, behaviors, or operational workflows change
+
+Do not leave documentation updates as follow-up work.
+
 ## Tree Position
 
 **Archetype**: service
@@ -597,4 +608,3 @@ When working on this service:
 - Spring Cloud Gateway uses reactive WebFlux - avoid blocking operations
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
 - Follow the hybrid architecture: NGINX (SSL termination) → Session Gateway (BFF) → Envoy (ext_authz) → Services
-
