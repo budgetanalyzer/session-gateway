@@ -1,5 +1,5 @@
 # Build stage
-FROM eclipse-temurin:24-jdk-alpine AS build
+FROM eclipse-temurin:24-jdk-alpine@sha256:8fdbcb6bc6b846640cea7058e6eeb56c311fae4efaa506a213789134065c6b90 AS build
 WORKDIR /app
 
 # Copy gradle wrapper and configuration
@@ -18,7 +18,7 @@ COPY src src
 RUN ./gradlew bootJar --no-daemon
 
 # Runtime stage
-FROM eclipse-temurin:24-jre-alpine
+FROM eclipse-temurin:24-jre-alpine@sha256:4044b6c87cb088885bcd0220f7dc7a8a4aab76577605fa471945d2e98270741f
 WORKDIR /app
 
 # Create non-root user

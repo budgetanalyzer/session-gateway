@@ -21,12 +21,24 @@ spring:
   application:
     name: session-gateway
 
+  ssl:
+    bundle:
+      pem:
+        infra-ca:
+          truststore:
+            certificate: ${INFRA_CA_CERT_PATH:}
+
   # Redis configuration for session storage
   data:
     redis:
       host: localhost  # Use 'redis' when running in Docker
       port: 6379
+      username: ${SPRING_DATA_REDIS_USERNAME:session-gateway}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
       timeout: 2000ms
+      ssl:
+        enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false}
+        bundle: ${SPRING_DATA_REDIS_SSL_BUNDLE:}
 
   # Session management with Redis
   session:
