@@ -247,7 +247,7 @@ Implementation note:
 
 **Goal**: New `GET /auth/session` endpoint that validates the IDP grant and extends session TTL.
 
-### 4a. IDP token refresh client
+### 4a. IDP token refresh client ✅
 
 **New file: `src/main/java/.../service/IdpTokenRefreshClient.java`**
 - Direct WebClient POST to Auth0's `/oauth/token` endpoint
@@ -295,7 +295,7 @@ session:
   refresh-threshold-seconds: ${SESSION_REFRESH_THRESHOLD_SECONDS:600}  # 10 min
 ```
 
-### 4e. Tests for Phase 4
+### 4e. Tests for Phase 4 ✅
 
 - `SessionControllerTest.java` — valid session, expired session, near-expiry triggers refresh, refresh failure -> 401
 - `IdpTokenRefreshClientTest.java` — successful refresh, failed refresh (WireMock)

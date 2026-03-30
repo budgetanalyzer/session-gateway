@@ -88,6 +88,7 @@ public class SecurityConfig {
                         "/error",
                         "/oauth2/**",
                         "/auth/token/exchange",
+                        "/auth/session",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html")
