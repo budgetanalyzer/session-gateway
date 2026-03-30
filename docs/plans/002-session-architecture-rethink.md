@@ -98,7 +98,7 @@ Record holding deserialized session data (userId, idpSub, email, displayName, pi
 - Returns `Mono.empty()` if not found or expired
 
 **New file: `src/main/java/.../session/SessionCookieHelper.java`**
-- `setSessionCookie(exchange, sessionId)` — writes `Set-Cookie: SESSION={id}; HttpOnly; Secure; SameSite=Lax; Path=/; Domain={configured domain}`
+- `setSessionCookie(exchange, sessionId)` — writes `Set-Cookie: SESSION={id}; HttpOnly; Secure; SameSite=Strict; Path=/; Domain={configured domain}`
 - `clearSessionCookie(exchange)` — writes `Set-Cookie` with `Max-Age=0`
 - `readSessionId(exchange)` — extracts session ID from `Cookie` header
 - Domain from `session.cookie.domain-override` config (preserving Envoy workaround)
@@ -113,7 +113,7 @@ session:
     domain-override: budgetanalyzer.localhost
     name: SESSION
     secure: true
-    same-site: lax
+    same-site: strict
 ```
 
 ### 1h. Tests for Phase 1
@@ -133,8 +133,12 @@ session:
 
 **New file: `src/main/java/.../security/RedisAuthorizationRequestRepository.java`**
 Implements `ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest>`:
-- `saveAuthorizationRequest(request, exchange)` — serialize to JSON, write to `oauth2:state:{state}` Redis key with 10-min TTL. Also store `returnUrl` from query param if present.
-- `loadAuthorizationRequest(exchange)` — extract `state` param from callback, read from Redis
+- `saveAuthorizationRequest(request, exchange)` — store needed fields as a flat Redis hash at `oauth2:state:{state}` with 10-min TTL:
+  - `redirect_uri` — the callback URI
+  - `return_url` — from query param if present (where to send the user after login)
+  - `nonce` — OIDC nonce if generated
+  - Do NOT serialize the `OAuth2AuthorizationRequest` object itself. `OAuth2AuthorizationRequest` has no stable serialization contract — it isn't `Serializable` and has no default Jackson configuration. Spring Session handled this via `GenericJackson2JsonRedisSerializer` with type info, which couples to Spring Security internals and breaks across version upgrades. Storing only the fields we need as plain strings decouples from Spring Security's class structure entirely.
+- `loadAuthorizationRequest(exchange)` — extract `state` param from callback, read hash fields from Redis, reconstruct `OAuth2AuthorizationRequest` using stored fields + static OAuth2 client registration properties (client-id, scopes, authorization URI from `application.yml`)
 - `removeAuthorizationRequest(exchange)` — delete the Redis key after callback
 - Uses same `ReactiveRedisTemplate` as session infrastructure
 
@@ -213,7 +217,7 @@ scope:
 - Fetch permissions (same as current)
 - Extract IDP profile from userinfo response (sub, name, email, picture)
 - Create session hash via `sessionWriter.createSession(...)` with access token expiry from userinfo or a default
-- Note: token exchange doesn't get a refresh token (the caller has their own IDP token). Store null/empty for `refresh_token`.
+- Note: token exchange doesn't get a refresh token (the caller has their own IDP token). Store null/empty for `refresh_token`. No server-side IDP grant validation is needed — the heartbeat exists because browsers gave up token management in exchange for an opaque cookie. M2M/native clients hold their own IDP tokens and handle revocation themselves. They re-exchange when their session expires.
 - Return opaque session ID as bearer token (same response contract)
 - Remove: `ReactiveSessionRepository` dependency, Spring Session creation
 
@@ -479,7 +483,7 @@ ext_authz reads: `user_id`, `roles`, `permissions`, `expires_at` (ignores other 
 
 ### ext_authz sees refresh_token in HGETALL
 
-ext_authz uses `HGETALL` which returns all fields, including `refresh_token`. This is acceptable — the refresh token is only useful with Auth0's client secret (which ext_authz doesn't have), and both services are internal infrastructure behind network isolation. Optional future hardening: change ext_authz to `HMGET` for specific fields.
+ext_authz uses `HGETALL` which returns all fields, including `refresh_token`. The refresh token is an opaque bearer token that requires Auth0's client_secret to use — ext_authz doesn't have the client_secret and cannot do anything with it. In non-BFF architectures, refresh tokens live in the browser, which is orders of magnitude more exposed than internal infrastructure behind mTLS and network policies. No additional isolation (HMGET, separate keys) is needed.
 
 ### Session lifetime mechanics
 
@@ -552,4 +556,4 @@ kubectl exec -n infrastructure deployment/redis -- redis-cli --user "$REDIS_OPS_
 | 6 | Documentation (all repos) | all |
 | 7 | Frontend heartbeat | budget-analyzer-web |
 
-Phases 1-4 are sequential (each builds on the previous). Phase 5 can be done in parallel with 3-4. Phase 6 can start after Phase 4. Phase 7 is independent and can be deferred.
+Phases 1-4 are sequential (each builds on the previous). **Phase 5a (Redis ACLs) must be applied before any new session-gateway code is deployed** — the new code writes to `session:*` and `oauth2:state:*` which the current ACLs don't permit. Phase 5b-5d can parallel Phases 3-4. Phase 6 can start after Phase 4. Phase 7 is independent and can be deferred.
