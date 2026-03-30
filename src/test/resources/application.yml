@@ -2,13 +2,7 @@ spring:
   # Redis configuration (host/port auto-configured by @ServiceConnection)
   data:
     redis:
-      timeout: 2000ms
-
-  # Session configuration
-  session:
-    timeout: 30m
-    redis:
-      namespace: spring:session:test
+      timeout: 10000ms
 
   # OAuth2 Client (issuer-uri will be overridden by @DynamicPropertySource)
   security:
@@ -22,28 +16,21 @@ spring:
               - openid
               - profile
               - email
+              - offline_access
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
         provider:
           idp:
             # Will be overridden to point to WireMock
             issuer-uri: http://localhost:8080/idp
 
-  # Cloud Gateway routes
-  cloud:
-    gateway:
-      routes:
-        - id: api-route
-          uri: ${api.gateway.url:http://localhost:8080}
-          predicates:
-            - Path=/api/**
-          filters:
-            - TokenRelay=
-        - id: frontend-route
-          uri: ${api.gateway.url:http://localhost:8080}
-          predicates:
-            - Path=/**
-          filters:
-            - TokenRelay=
+session:
+  key-prefix: "session:test:"
+  ttl-seconds: 1800
+  cookie:
+    domain-override: budgetanalyzer.localhost
+    name: SESSION
+    secure: true
+    same-site: strict
 
 # Logging
 logging:
@@ -52,17 +39,6 @@ logging:
     org.springframework.security.oauth2: DEBUG
     org.budgetanalyzer.sessiongateway: DEBUG
 
-# Custom properties
-api:
-  gateway:
-    url: http://localhost:8080
-
 # Permission service (overridden by @DynamicPropertySource in tests)
 permission-service:
   base-url: http://localhost:8080
-
-# ext_authz session configuration for tests
-extauthz:
-  session:
-    key-prefix: "extauthz:session:test:"
-    ttl-seconds: 1800

@@ -1,14 +1,12 @@
 package org.budgetanalyzer.sessiongateway.api;
 
-import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.WebSession;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.server.ServerWebExchange;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -19,7 +17,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.sessiongateway.api.response.UserInfoResponse;
-import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
+import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
+import org.budgetanalyzer.sessiongateway.session.SessionReader;
 
 /**
  * User information controller.
@@ -33,19 +32,18 @@ public class UserController {
 
   private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
+  private final SessionReader sessionReader;
+  private final SessionCookieHelper sessionCookieHelper;
+
+  public UserController(SessionReader sessionReader, SessionCookieHelper sessionCookieHelper) {
+    this.sessionReader = sessionReader;
+    this.sessionCookieHelper = sessionCookieHelper;
+  }
+
   /**
    * Returns the current authenticated user's information.
    *
-   * <p>The frontend can call this endpoint to:
-   *
-   * <ul>
-   *   <li>Check if the user is authenticated (200 OK if authenticated, 401 if not)
-   *   <li>Get user information (name, email, etc.)
-   *   <li>Get user roles for UI visibility (e.g., show admin nav for ADMIN users)
-   * </ul>
-   *
-   * @param authentication the current authentication
-   * @param session the web session containing roles and permissions
+   * @param exchange the current server exchange
    * @return user information including roles
    */
   @Operation(
@@ -65,41 +63,26 @@ public class UserController {
         @ApiResponse(responseCode = "401", description = "Not authenticated", content = @Content)
       })
   @GetMapping("/user")
-  public Mono<UserInfoResponse> getCurrentUser(Authentication authentication, WebSession session) {
-    if (authentication == null) {
-      log.debug("No authentication found for /user request");
-      return Mono.empty();
+  public Mono<UserInfoResponse> getCurrentUser(ServerWebExchange exchange) {
+    var sessionId = sessionCookieHelper.readSessionId(exchange);
+    if (sessionId == null || sessionId.isBlank()) {
+      log.debug("No session cookie found for /user request");
+      return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
 
-    log.debug("User info requested for: {}", authentication.getName());
+    log.debug("User info requested for sessionId={}", sessionId);
 
-    @SuppressWarnings("unchecked")
-    var roles = (List<String>) session.getAttribute(SessionAttributes.SESSION_ROLES);
-    var safeRoles = roles != null ? roles : List.<String>of();
-
-    if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
-      var oauth2User = oauth2Token.getPrincipal();
-
-      var response =
-          new UserInfoResponse(
-              oauth2User.getAttribute("sub"),
-              oauth2User.getAttribute("name"),
-              oauth2User.getAttribute("email"),
-              oauth2User.getAttribute("picture"),
-              oauth2User.getAttribute("email_verified"),
-              true,
-              oauth2Token.getAuthorizedClientRegistrationId(),
-              safeRoles);
-
-      log.debug("Returning user info for: {}", authentication.getName());
-      return Mono.just(response);
-    }
-
-    // Fallback for non-OAuth2 authentication (shouldn't happen in this app)
-    var response =
-        new UserInfoResponse(
-            null, authentication.getName(), null, null, null, true, null, safeRoles);
-
-    return Mono.just(response);
+    return sessionReader
+        .readSession(sessionId)
+        .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED)))
+        .map(
+            sessionData ->
+                new UserInfoResponse(
+                    sessionData.idpSub(),
+                    sessionData.displayName(),
+                    sessionData.email(),
+                    sessionData.picture(),
+                    true,
+                    sessionData.roles()));
   }
 }

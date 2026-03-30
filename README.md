@@ -23,6 +23,9 @@ The Session Gateway implements the BFF pattern to provide secure authentication 
 
 Bare `/login` is a frontend route served through NGINX. It starts the real OAuth2 flow through `/oauth2/authorization/idp`.
 
+Browser login depends on Auth0 refresh tokens. The configured OAuth2 scope set includes
+`offline_access`, and the Auth0 application must allow refresh tokens with rotation enabled.
+
 ## Architecture
 
 ```text
@@ -151,6 +154,10 @@ After authentication, users are redirected based on priority:
 3. Default `/` homepage
 
 All returnUrl values are validated by `RedirectUrlValidator` to ensure same-origin only, preventing open redirect vulnerabilities.
+
+The `returnUrl` value is attached to the OAuth2 authorization request, stored in Redis under the
+`oauth2:state:{state}` key, and recovered after the Auth0 callback. This avoids depending on
+WebSession state during the OAuth2 round-trip.
 
 ## Development
 

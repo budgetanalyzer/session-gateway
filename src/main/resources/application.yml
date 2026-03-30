@@ -12,7 +12,6 @@ logging:
   level:
     root: WARN
     org.budgetanalyzer: TRACE
-    org.springframework.cloud.gateway: DEBUG
     org.springframework.security: INFO
     org.springframework.security.oauth2: DEBUG
     org.springframework.web.reactive.function.client: DEBUG
@@ -40,14 +39,6 @@ spring:
         enabled: ${SPRING_DATA_REDIS_SSL_ENABLED:false}
         bundle: ${SPRING_DATA_REDIS_SSL_BUNDLE:}
 
-  # Session management with Redis
-  session:
-    store-type: redis
-    timeout: 30m  # 30 minutes session timeout
-    redis:
-      flush-mode: on_save
-      namespace: spring:session
-
   # OAuth2 Client configuration
   security:
     oauth2:
@@ -60,6 +51,7 @@ spring:
               - openid
               - profile
               - email
+              - offline_access
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             client-authentication-method: client_secret_basic
@@ -67,37 +59,10 @@ spring:
           idp:
             issuer-uri: ${AUTH0_ISSUER_URI:https://placeholder.auth0.com/}
 
-  # Spring Cloud Gateway routes
-  cloud:
-    gateway:
-      server:
-        webflux:
-          httpclient:
-            wiretap: true
-          routes:
-            # Route all /api/* requests to NGINX gateway (backend APIs)
-            - id: api-route
-              uri: https://api.budgetanalyzer.localhost  # Use 'https://nginx-gateway:443' when running in Docker
-              predicates:
-                - Path=/api/**
-              filters:
-                # Phase 2: OAuth2 token forwarding handled by OAuth2TokenRelayGatewayFilter (WebFilter)
-                # TokenRelay and TokenRefresh filters are not compatible with Spring Cloud Gateway Server
-                - StripPrefix=0  # Keep the /api prefix when forwarding
-
-            # Route all frontend requests to Vite dev server (static files and React app)
-            # All non-API requests (except /user, /logout, /oauth2/*) proxy to Vite
-            - id: frontend-route
-              uri: http://budget-analyzer-web:3000  # Vite dev server in Kubernetes
-              predicates:
-                - Path=/**
-              filters:
-                - StripPrefix=0
-              # Lower priority than api-route, /user, /logout, /oauth2/* routes
-              order: 10000
-
-# Session cookie configuration
+# Session configuration
 session:
+  key-prefix: ${SESSION_KEY_PREFIX:session:}
+  ttl-seconds: ${SESSION_TTL_SECONDS:1800}
   cookie:
     # Domain override for session cookies.
     #
@@ -112,6 +77,9 @@ session:
     # When Envoy is fixed to preserve Host headers, this can be removed and dynamic
     # extraction will work. Check logs for "DOMAIN MATCH" to verify.
     domain-override: budgetanalyzer.localhost
+    name: SESSION
+    secure: true
+    same-site: strict
 
 # IDP configuration
 idp:
@@ -140,12 +108,6 @@ budgetanalyzer:
 # Permission service configuration
 permission-service:
   base-url: ${PERMISSION_SERVICE_URL:http://permission-service:8086}
-
-# ext_authz session configuration (dual-write to Redis for Envoy ext_authz service)
-extauthz:
-  session:
-    key-prefix: ${EXTAUTHZ_SESSION_KEY_PREFIX:extauthz:session:}
-    ttl-seconds: ${EXTAUTHZ_SESSION_TTL_SECONDS:1800}
 
 # Actuator configuration
 management:

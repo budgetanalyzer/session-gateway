@@ -51,7 +51,7 @@ public class WireMockConfig {
                         "grant_types_supported": ["authorization_code", "refresh_token"],
                         "subject_types_supported": ["public"],
                         "id_token_signing_alg_values_supported": ["RS256"],
-                        "scopes_supported": ["openid", "profile", "email"]
+                        "scopes_supported": ["openid", "profile", "email", "offline_access"]
                     }
                     """
                             .formatted(baseUrl, baseUrl, baseUrl, baseUrl, baseUrl))));

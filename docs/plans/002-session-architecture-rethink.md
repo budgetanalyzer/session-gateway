@@ -26,7 +26,7 @@ The fix: strip Session Gateway down to a plain WebFlux app with one Redis hash p
 
 **Goal**: Remove dead code, Gateway, and Spring Session. Build the new session infrastructure. Service compiles but doesn't function end-to-end yet.
 
-### 1a. Delete dead/obsolete files
+### 1a. Delete dead/obsolete files ✅
 
 | File | Reason |
 |------|--------|
@@ -43,7 +43,7 @@ The fix: strip Session Gateway down to a plain WebFlux app with one Redis hash p
 | `src/test/.../security/RedisServerRequestCacheTest.java` | Tests for deleted class |
 | `src/test/.../session/ExtAuthzSessionWriterTest.java` | Tests for deleted class |
 
-### 1b. Remove dependencies from `build.gradle.kts`
+### 1b. Remove dependencies from `build.gradle.kts` ✅
 
 - Remove `spring-cloud-starter-gateway-server-webflux`
 - Remove `spring-session-data-redis`
@@ -51,14 +51,14 @@ The fix: strip Session Gateway down to a plain WebFlux app with one Redis hash p
 - Add `spring-boot-starter-webflux` (was transitively provided by gateway)
 - Keep: `spring-boot-starter-oauth2-client`, `spring-boot-starter-data-redis`, `service-web`, `springdoc-openapi`, `spring-boot-starter-actuator`
 
-### 1c. Strip `application.yml`
+### 1c. Strip `application.yml` ✅
 
 - Remove entire `spring.cloud.gateway` section (routes, httpclient wiretap)
 - Remove `spring.session` section (store-type, timeout, redis flush-mode/namespace)
 - Update `extauthz.session.key-prefix` default to `session:` (or rename config property)
 - Keep: server config, OAuth2 config, Redis config, logging, permission-service, actuator, cookie config, IDP config
 
-### 1d. Strip `SessionConfig.java`
+### 1d. Strip `SessionConfig.java` ✅
 
 - Remove `@EnableRedisWebSession`
 - Remove `springSessionDefaultRedisSerializer` bean (Jackson serializer)
@@ -67,12 +67,12 @@ The fix: strip Session Gateway down to a plain WebFlux app with one Redis hash p
 - Keep `clock` bean
 - This class becomes minimal (just Clock + new Redis config)
 
-### 1e. Update `SessionGatewayApplication.java`
+### 1e. Update `SessionGatewayApplication.java` ✅ (no-op — no Gateway exclusions existed)
 
 - Remove Gateway-related auto-configuration exclusions if any exist
 - The app currently excludes DataSource and JPA — keep those
 
-### 1f. Create session infrastructure
+### 1f. Create session infrastructure ✅
 
 **New file: `src/main/java/.../session/SessionHashFields.java`**
 Constants for Redis hash field names:
@@ -103,7 +103,7 @@ Record holding deserialized session data (userId, idpSub, email, displayName, pi
 - `readSessionId(exchange)` — extracts session ID from `Cookie` header
 - Domain from `session.cookie.domain-override` config (preserving Envoy workaround)
 
-### 1g. Add new config properties to `application.yml`
+### 1g. Add new config properties to `application.yml` ✅
 
 ```yaml
 session:
@@ -116,12 +116,7 @@ session:
     same-site: strict
 ```
 
-### 1h. Tests for Phase 1
-
-- `SessionWriterTest.java` — integration test with TestContainers Redis: create, read, delete, expiry
-- `SessionReaderTest.java` — integration test: read existing, read missing, read expired
-- `SessionCookieHelperTest.java` — unit test: set, clear, read cookie
-- Verify: `./gradlew clean spotlessApply && ./gradlew clean build`
+### 1h. ~~Tests for Phase 1~~ → Moved to 2g (build is broken until Phase 2 rewrites consumers)
 
 ---
 
@@ -129,7 +124,7 @@ session:
 
 **Goal**: Reimplement the OAuth2 login flow writing to the single session hash. Login works end-to-end.
 
-### 2a. OAuth2 authorization request storage
+### 2a. OAuth2 authorization request storage ✅
 
 **New file: `src/main/java/.../security/RedisAuthorizationRequestRepository.java`**
 Implements `ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest>`:
@@ -137,12 +132,15 @@ Implements `ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest>`:
   - `redirect_uri` — the callback URI
   - `return_url` — from query param if present (where to send the user after login)
   - `nonce` — OIDC nonce if generated
+  - `code_verifier` — PKCE code verifier (required for token exchange at callback)
   - Do NOT serialize the `OAuth2AuthorizationRequest` object itself. `OAuth2AuthorizationRequest` has no stable serialization contract — it isn't `Serializable` and has no default Jackson configuration. Spring Session handled this via `GenericJackson2JsonRedisSerializer` with type info, which couples to Spring Security internals and breaks across version upgrades. Storing only the fields we need as plain strings decouples from Spring Security's class structure entirely.
 - `loadAuthorizationRequest(exchange)` — extract `state` param from callback, read hash fields from Redis, reconstruct `OAuth2AuthorizationRequest` using stored fields + static OAuth2 client registration properties (client-id, scopes, authorization URI from `application.yml`)
 - `removeAuthorizationRequest(exchange)` — delete the Redis key after callback
 - Uses same `ReactiveRedisTemplate` as session infrastructure
 
-### 2b. Rewrite `SecurityConfig.java`
+**Implementation note for 2b**: The reconstructed request puts `return_url` in `additionalParameters`. The success handler should read it via `authorizationRequest.getAdditionalParameters().get("return_url")`. The `registration_id` attribute is set so Spring Security's `ServerOAuth2AuthorizationCodeAuthenticationTokenConverter` can resolve the client registration.
+
+### 2b. Rewrite `SecurityConfig.java` ✅
 
 Major rewrite. Key changes:
 - `oauth2Login()` with custom `authorizationRequestRepository` (the Redis one from 2a)
@@ -157,13 +155,13 @@ Major rewrite. Key changes:
 - Authentication entry point: API paths -> 401, browser paths -> redirect to `/oauth2/authorization/idp` (same as current)
 - Remove Gateway-specific filter chains, force-session-creation filter
 
-### 2c. Update `OAuth2ClientConfig.java`
+### 2c. Update `OAuth2ClientConfig.java` ✅
 
 - Keep audience customizer
 - Modify returnUrl capture to store in authorization request `additionalParameters` (instead of WebSession)
 - Remove logging wrapper if it depends on Gateway internals
 
-### 2d. Add `offline_access` scope
+### 2d. Add `offline_access` scope ✅
 
 In `application.yml`, add to OAuth2 scopes:
 ```yaml
@@ -176,18 +174,31 @@ scope:
 
 **Note**: Auth0 application settings may need `offline_access` allowed + refresh token rotation configured. This is an Auth0 console change — document it but don't automate it.
 
-### 2e. Custom `ServerSecurityContextRepository`
+### 2e. Custom `ServerSecurityContextRepository` ✅
 
 **New file: `src/main/java/.../security/RedisSessionSecurityContextRepository.java`**
 - `load(exchange)` — reads SESSION cookie via `sessionCookieHelper`, reads hash via `sessionReader`, creates a simple `Authentication` token from session data
 - `save(exchange, context)` — no-op (session hash is written by success handler)
 - This bridges Spring Security's expectations with our Redis-only session
 
-### 2f. Tests for Phase 2
+Implementation note:
+- Rebuild the security context with a plain `UsernamePasswordAuthenticationToken`, not `OAuth2AuthenticationToken`
+- Use a small `SessionPrincipal` value object as the authenticated principal so route protection depends only on the Redis session schema
+- Cover this repository with dedicated tests for missing cookie, missing Redis session, reconstructed authorities, and no-op save behavior
+
+### 2f. Tests for Phase 2 ✅
 
 - Update `AbstractIntegrationTest.java` — adjust WireMock stubs for new flow
 - Integration test for full OAuth2 login flow (authorize -> callback -> session hash created -> cookie set -> redirect)
+- Keep the test Redis timeout high enough for cold-start TestContainers runs; a 2s timeout is flaky during clean builds
 - Verify login works with: `./gradlew clean build`
+
+### 2g. Tests for session infrastructure (moved from 1h) ✅
+
+- `SessionWriterTest.java` — integration test with TestContainers Redis: create, read, delete, expiry
+- `SessionReaderTest.java` — integration test: read existing, read missing, read expired
+- `SessionCookieHelperTest.java` — unit test: set, clear, read cookie
+- Verify: `./gradlew clean spotlessApply && ./gradlew clean build`
 
 ---
 
@@ -195,7 +206,7 @@ scope:
 
 **Goal**: Update logout, user info, and token exchange to use the single session hash.
 
-### 3a. Rewrite `LogoutController.java`
+### 3a. Rewrite `LogoutController.java` ✅
 
 - Read session ID from cookie (via `sessionCookieHelper`)
 - Delete session hash (via `sessionWriter.deleteSession`)
@@ -203,15 +214,16 @@ scope:
 - Redirect to IDP logout (same URL template logic)
 - Remove: `ServerOAuth2AuthorizedClientRepository` dependency, Spring Session invalidation
 
-### 3b. Rewrite `UserController.java`
+### 3b. Rewrite `UserController.java` ✅
 
 - Read session ID from cookie
 - Read session data from hash (via `sessionReader`)
 - Build `UserInfoResponse` from session data fields (idpSub, displayName, email, picture, roles)
 - Remove: `Authentication` parameter, `WebSession` parameter, `OAuth2AuthenticationToken` casting
+- Remove: `emailVerified` and `registrationId` from `UserInfoResponse` (OAuth2 artifacts not in session data)
 - 401 if no session
 
-### 3c. Rewrite `TokenExchangeController.java`
+### 3c. Rewrite `TokenExchangeController.java` ✅
 
 - Validate IDP token via userinfo (same as current)
 - Fetch permissions (same as current)
@@ -221,7 +233,7 @@ scope:
 - Return opaque session ID as bearer token (same response contract)
 - Remove: `ReactiveSessionRepository` dependency, Spring Session creation
 
-### 3d. Tests for Phase 3
+### 3d. Tests for Phase 3 ✅
 
 - Update `LogoutControllerTest.java`
 - Update `UserControllerTest.java`

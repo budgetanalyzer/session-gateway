@@ -1,16 +1,11 @@
 package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-
-import java.util.List;
-import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,18 +15,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpResponse;
-import org.springframework.security.authentication.TestingAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
-import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.web.server.ServerWebExchange;
-import org.springframework.web.server.WebSession;
 
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import org.budgetanalyzer.sessiongateway.session.ExtAuthzSessionWriter;
+import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
+import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 @ExtendWith(MockitoExtension.class)
 class LogoutControllerTest {
@@ -41,78 +31,48 @@ class LogoutControllerTest {
   private static final String CLIENT_ID = "my-client-id";
   private static final String RETURN_TO = "https://app.example.com";
 
-  @Mock private ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
-  @Mock private ExtAuthzSessionWriter extAuthzSessionWriter;
+  @Mock private SessionWriter sessionWriter;
+  @Mock private SessionCookieHelper sessionCookieHelper;
   @Mock private ServerWebExchange exchange;
-  @Mock private WebSession session;
   @Mock private ServerHttpResponse response;
 
-  private HttpHeaders headers;
+  private HttpHeaders httpHeaders;
   private LogoutController logoutController;
-  private OAuth2AuthenticationToken oauth2AuthenticationToken;
 
   @BeforeEach
   void setUp() {
     logoutController =
         new LogoutController(
-            authorizedClientRepository, extAuthzSessionWriter, URL_TEMPLATE, CLIENT_ID, RETURN_TO);
-    headers = new HttpHeaders();
+            sessionWriter, sessionCookieHelper, URL_TEMPLATE, CLIENT_ID, RETURN_TO);
+    httpHeaders = new HttpHeaders();
 
-    var attributes = Map.<String, Object>of("sub", "auth0|abc123");
-    var oauth2User =
-        new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    oauth2AuthenticationToken =
-        new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
-
-    lenient().when(exchange.getSession()).thenReturn(Mono.just(session));
     lenient().when(exchange.getResponse()).thenReturn(response);
-    lenient().when(session.invalidate()).thenReturn(Mono.empty());
-    lenient().when(session.getId()).thenReturn("test-session-id");
-    lenient().when(response.getHeaders()).thenReturn(headers);
+    lenient().when(response.getHeaders()).thenReturn(httpHeaders);
     lenient().when(response.setComplete()).thenReturn(Mono.empty());
-    lenient()
-        .when(authorizedClientRepository.removeAuthorizedClient(any(), any(), any()))
-        .thenReturn(Mono.empty());
-    lenient().when(extAuthzSessionWriter.deleteSession(any())).thenReturn(Mono.empty());
+    lenient().when(sessionCookieHelper.readSessionId(exchange)).thenReturn("test-session-id");
+    lenient().when(sessionWriter.deleteSession("test-session-id")).thenReturn(Mono.just(true));
   }
 
   @Test
-  void logout_removesAuthorizedClientForOauthToken() {
-    logoutController.logout(exchange, oauth2AuthenticationToken).block();
+  void logout_deletesSessionFromRedis() {
+    logoutController.logout(exchange).block();
 
-    verify(authorizedClientRepository)
-        .removeAuthorizedClient("idp", oauth2AuthenticationToken, exchange);
+    verify(sessionWriter).deleteSession("test-session-id");
   }
 
   @Test
-  void logout_skipsClientRemovalForNonOauthAuth() {
-    var auth = new TestingAuthenticationToken("bob", "secret", "ROLE_USER");
+  void logout_clearsSessionCookie() {
+    logoutController.logout(exchange).block();
 
-    logoutController.logout(exchange, auth).block();
-
-    verifyNoInteractions(authorizedClientRepository);
-  }
-
-  @Test
-  void logout_invalidatesSession() {
-    logoutController.logout(exchange, oauth2AuthenticationToken).block();
-
-    verify(session).invalidate();
-  }
-
-  @Test
-  void logout_deletesExtAuthzSession() {
-    logoutController.logout(exchange, oauth2AuthenticationToken).block();
-
-    verify(extAuthzSessionWriter).deleteSession("test-session-id");
+    verify(sessionCookieHelper).clearSessionCookie(exchange);
   }
 
   @Test
   void logout_redirectsToIdpLogoutWithCorrectUrl() {
-    logoutController.logout(exchange, oauth2AuthenticationToken).block();
+    logoutController.logout(exchange).block();
 
     verify(response).setStatusCode(HttpStatus.FOUND);
-    assertThat(headers.getLocation())
+    assertThat(httpHeaders.getLocation())
         .hasToString(
             "https://idp.example.com/v2/logout"
                 + "?returnTo=https%3A%2F%2Fapp.example.com&client_id=my-client-id");
@@ -120,64 +80,62 @@ class LogoutControllerTest {
 
   @Test
   void logout_executesStepsInOrder() {
-    logoutController.logout(exchange, oauth2AuthenticationToken).block();
+    logoutController.logout(exchange).block();
 
-    var subscriptionOrder = inOrder(authorizedClientRepository, extAuthzSessionWriter, session);
-    subscriptionOrder
-        .verify(authorizedClientRepository)
-        .removeAuthorizedClient(eq("idp"), any(), any());
-    subscriptionOrder.verify(extAuthzSessionWriter).deleteSession("test-session-id");
-    subscriptionOrder.verify(session).invalidate();
+    var inOrder = inOrder(sessionWriter, sessionCookieHelper);
+    inOrder.verify(sessionWriter).deleteSession("test-session-id");
+    inOrder.verify(sessionCookieHelper).clearSessionCookie(exchange);
 
-    var assemblyOrder = inOrder(response);
-    assemblyOrder.verify(response).setStatusCode(HttpStatus.FOUND);
-    assemblyOrder.verify(response).setComplete();
+    verify(response).setStatusCode(HttpStatus.FOUND);
+    verify(response).setComplete();
   }
 
   @Test
   void logout_completesSuccessfully() {
-    StepVerifier.create(logoutController.logout(exchange, oauth2AuthenticationToken))
-        .verifyComplete();
+    StepVerifier.create(logoutController.logout(exchange)).verifyComplete();
   }
 
   @Test
-  void logout_propagatesErrorFromClientRemoval() {
-    var error = new RuntimeException("client removal failed");
-    when(authorizedClientRepository.removeAuthorizedClient(any(), any(), any()))
-        .thenReturn(Mono.error(error));
+  void logout_propagatesErrorFromSessionDeletion() {
+    when(sessionWriter.deleteSession("test-session-id"))
+        .thenReturn(Mono.error(new RuntimeException("session deletion failed")));
 
-    StepVerifier.create(logoutController.logout(exchange, oauth2AuthenticationToken))
-        .expectErrorMessage("client removal failed")
+    StepVerifier.create(logoutController.logout(exchange))
+        .expectErrorMessage("session deletion failed")
         .verify();
   }
 
   @Test
-  void logout_propagatesErrorFromSessionInvalidation() {
-    var error = new RuntimeException("session invalidation failed");
-    when(session.invalidate()).thenReturn(Mono.error(error));
+  void logout_skipsSessionDeletionWhenCookieMissing() {
+    when(sessionCookieHelper.readSessionId(exchange)).thenReturn(null);
 
-    StepVerifier.create(logoutController.logout(exchange, oauth2AuthenticationToken))
-        .expectErrorMessage("session invalidation failed")
-        .verify();
+    logoutController.logout(exchange).block();
+
+    verifyNoInteractions(sessionWriter);
+    verify(sessionCookieHelper).clearSessionCookie(exchange);
+  }
+
+  @Test
+  void logout_skipsSessionDeletionWhenCookieBlank() {
+    when(sessionCookieHelper.readSessionId(exchange)).thenReturn("  ");
+
+    logoutController.logout(exchange).block();
+
+    verifyNoInteractions(sessionWriter);
+    verify(sessionCookieHelper).clearSessionCookie(exchange);
   }
 
   @Test
   void logout_normalizesDoubleSlashInLogoutUrl() {
-    // Simulates issuer-uri with trailing slash creating //v2/logout
     var templateWithDoubleSlash =
         "https://idp.example.com//v2/logout?returnTo={returnTo}&client_id={clientId}";
     var controllerWithDoubleSlash =
         new LogoutController(
-            authorizedClientRepository,
-            extAuthzSessionWriter,
-            templateWithDoubleSlash,
-            CLIENT_ID,
-            RETURN_TO);
+            sessionWriter, sessionCookieHelper, templateWithDoubleSlash, CLIENT_ID, RETURN_TO);
 
-    controllerWithDoubleSlash.logout(exchange, oauth2AuthenticationToken).block();
+    controllerWithDoubleSlash.logout(exchange).block();
 
-    // Should normalize to single slash
-    assertThat(headers.getLocation())
+    assertThat(httpHeaders.getLocation())
         .hasToString(
             "https://idp.example.com/v2/logout"
                 + "?returnTo=https%3A%2F%2Fapp.example.com&client_id=my-client-id");

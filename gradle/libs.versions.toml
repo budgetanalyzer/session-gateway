@@ -1,7 +1,6 @@
 [versions]
 java = "24"
 springBoot = "3.5.7"
-springCloud = "2025.0.0"
 dependencyManagement = "1.1.7"
 spotless = "8.0.0"
 checkstyle = "12.0.1"
@@ -22,14 +21,10 @@ spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 # Budget Analyzer Common Libraries
 service-web = { module = "org.budgetanalyzer:service-web", version.ref = "serviceCommon" }
 
-# Spring Cloud
-spring-cloud-dependencies = { module = "org.springframework.cloud:spring-cloud-dependencies", version.ref = "springCloud" }
-
 # Spring Boot starters (versions managed by Spring Boot BOM)
-spring-cloud-starter-gateway-server-webflux = { module = "org.springframework.cloud:spring-cloud-starter-gateway-server-webflux" }
+spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
 spring-boot-starter-oauth2-client = { module = "org.springframework.boot:spring-boot-starter-oauth2-client" }
 spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
-spring-session-data-redis = { module = "org.springframework.session:spring-session-data-redis" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 
