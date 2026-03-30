@@ -24,15 +24,8 @@ class SessionGatewayApplicationTests extends AbstractIntegrationTest {
   }
 
   @Test
-  void unauthenticatedUserRequest_redirectsToOauth2Login() {
-    webTestClient
-        .get()
-        .uri("/user")
-        .exchange()
-        .expectStatus()
-        .is3xxRedirection()
-        .expectHeader()
-        .valueMatches("Location", ".*/oauth2/authorization/idp.*");
+  void unauthenticatedUserRequest_returns401() {
+    webTestClient.get().uri("/user").exchange().expectStatus().isUnauthorized();
   }
 
   @Test

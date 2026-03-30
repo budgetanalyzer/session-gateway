@@ -127,7 +127,7 @@ public class SecurityConfig {
     var delegatingEntryPoint =
         new DelegatingServerAuthenticationEntryPoint(
             new DelegatingServerAuthenticationEntryPoint.DelegateEntry(
-                ServerWebExchangeMatchers.pathMatchers("/api/**"),
+                ServerWebExchangeMatchers.pathMatchers("/api/**", "/user"),
                 (exchange, exception) -> unauthorized(exchange)));
 
     delegatingEntryPoint.setDefaultEntryPoint(
@@ -217,10 +217,6 @@ public class SecurityConfig {
     if (returnUrl instanceof String stringValue
         && RedirectUrlValidator.isValidRedirectUrl(stringValue)) {
       return stringValue;
-    }
-
-    if (returnUrl != null) {
-      log.warn("Rejected invalid return_url from OAuth2 authorization request: {}", returnUrl);
     }
 
     return DEFAULT_REDIRECT_URL;

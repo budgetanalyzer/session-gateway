@@ -101,7 +101,9 @@ budgetanalyzer:
       include-query-params: true
       include-client-ip: true
       max-body-size: 10000  # 10KB max body size to log
-      # Default exclude-patterns: /actuator/**, /swagger-ui/**, /v3/api-docs/**
+      exclude-patterns:
+        - /actuator/**
+        - /login/oauth2/code/**
       # Sensitive headers are automatically masked (Authorization, Cookie, Set-Cookie, etc.)
       log-errors-only: false
 

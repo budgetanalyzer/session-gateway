@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.core.logging.SafeLogger;
 import org.budgetanalyzer.sessiongateway.api.response.UserInfoResponse;
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
 import org.budgetanalyzer.sessiongateway.session.SessionReader;
@@ -70,7 +71,7 @@ public class UserController {
       return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
 
-    log.debug("User info requested for sessionId={}", sessionId);
+    log.debug("User info requested for sessionId={}", SafeLogger.truncateId(sessionId));
 
     return sessionReader
         .readSession(sessionId)

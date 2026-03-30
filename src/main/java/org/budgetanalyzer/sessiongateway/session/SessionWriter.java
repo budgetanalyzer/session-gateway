@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.core.logging.SafeLogger;
+
 /** Writes and manages session data in Redis as a single hash per session. */
 @Component
 public class SessionWriter {
@@ -84,7 +86,7 @@ public class SessionWriter {
             Map.entry(SessionHashFields.CREATED_AT, String.valueOf(now.getEpochSecond())),
             Map.entry(SessionHashFields.EXPIRES_AT, String.valueOf(expiresAt.getEpochSecond())));
 
-    log.debug("Creating session {} for userId={}", sessionId, userId);
+    log.debug("Creating session {} for userId={}", SafeLogger.truncateId(sessionId), userId);
 
     return redisTemplate
         .<String, String>opsForHash()
@@ -146,7 +148,7 @@ public class SessionWriter {
    */
   public Mono<Boolean> deleteSession(String sessionId) {
     var key = keyPrefix + sessionId;
-    log.debug("Deleting session {}", sessionId);
+    log.debug("Deleting session {}", SafeLogger.truncateId(sessionId));
 
     return redisTemplate.delete(key).map(count -> count > 0);
   }

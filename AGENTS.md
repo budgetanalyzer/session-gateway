@@ -29,7 +29,7 @@ Do not leave documentation updates as follow-up work.
 
 **Archetype**: service
 **Scope**: budgetanalyzer ecosystem
-**Role**: BFF for browser authentication; manages OAuth2 flows, session cookies, and ext_authz session dual-writes
+**Role**: BFF for browser authentication; manages OAuth2 flows and session cookies
 
 ### Relationships
 - **Consumes**: service-common (patterns)
@@ -53,16 +53,15 @@ ls ../service-common/
 
 Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide secure authentication for browser-based clients in the Budget Analyzer application.
 
-**Purpose**: Protects sensitive tokens from browser exposure by managing OAuth2 flows server-side, issuing HTTP-only session cookies, and dual-writing session data to the ext_authz Redis schema for per-request authorization at the Istio ingress. Owns the OAuth2 and session lifecycle endpoints, while the frontend owns bare `/login`.
+**Purpose**: Protects sensitive tokens from browser exposure by managing OAuth2 flows server-side and issuing HTTP-only session cookies. Writes session data as Redis hashes that the ext_authz HTTP service reads directly for per-request authorization at the Istio ingress. Owns the OAuth2 and session lifecycle endpoints, while the frontend owns bare `/login`.
 
 **Key Responsibilities**:
 - Manages OAuth2/OIDC authentication flows with Auth0
 - Fetches user roles and permissions from the permission-service on login
-- Dual-writes session data (userId, roles, permissions) to ext_authz Redis schema for ingress ext_authz validation
-- Stores Auth0 tokens, user identity, and permissions in Redis (never exposed to browser)
+- Writes session data (userId, roles, permissions, refresh token, expiry) as Redis hashes (`session:{id}`)
+- The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema or dual-write
 - Issues HTTP-only, Secure, SameSite session cookies to browsers
 - Owns `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`, and `/user`
-- Implements proactive token refresh with permission re-fetch and ext_authz session update
 - Provides token exchange endpoint for native PKCE/M2M clients (`POST /auth/token/exchange`)
 
 ## Coding Standards
@@ -89,11 +88,11 @@ Session Gateway implements the Backend-for-Frontend (BFF) pattern to provide sec
 ## Architecture Principles
 
 - **Defense-in-Depth Security**: BFF layer in the hybrid edge architecture (Istio ingress → Session Gateway or NGINX, with ext_authz enforcing `/api/*`)
-- **ext_authz-Based Authorization**: The Istio ingress Envoy proxy calls the ext_authz HTTP service, which validates sessions directly from Redis and injects X-User-Id/X-Roles/X-Permissions headers into API requests
-- **Token Protection**: Auth0 tokens stored server-side only (XSS/CSRF protection); session data dual-written to ext_authz Redis schema (never exposed to browser)
+- **ext_authz-Based Authorization**: The Istio ingress Envoy proxy calls the ext_authz HTTP service, which reads session hashes directly from Redis and injects X-User-Id/X-Roles/X-Permissions headers into API requests
+- **Token Protection**: Auth0 refresh tokens stored server-side in Redis session hashes (XSS/CSRF protection); browser only sees opaque session cookie
 - **Session-Based Auth**: Browser clients use cookies; native clients use opaque bearer tokens from token exchange
 - **Behind Istio Ingress**: Browser auth and OAuth2 protocol endpoints reach Session Gateway through Istio ingress; bare `/login` is frontend-owned and served through NGINX
-- **Stateful Sessions**: Redis provides distributed session storage (identity, roles, permissions) plus ext_authz session schema
+- **Stateful Sessions**: Redis hashes (`session:{id}`) provide distributed session storage — identity, roles, permissions, refresh token, expiry — read by both Session Gateway and the ext_authz service
 - **Multi-Client Support**: Browser clients use OAuth2 login + cookies; native PKCE/M2M clients use `POST /auth/token/exchange`
 
 ## Service Architecture
@@ -106,7 +105,7 @@ Browser → Istio Ingress (:443)
   ├─ /oauth2/*, /auth/*, /login/oauth2/*, /logout, /user
   │      → Session Gateway (:8081) ← OAuth2 → Auth0
   │           ├─ Permission Service (:8086) [email/displayName]
-  │           └─ Redis (:6379) [Spring Session + extauthz:session:*]
+  │           └─ Redis (:6379) [session:*]
   ├─ /login, /* → NGINX (:8080) → budget-analyzer-web
   └─ /api/* → ext_authz HTTP service (:9002) → NGINX (:8080) → Backend Services
 
@@ -115,11 +114,11 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 
 **Discovery**:
 ```bash
-# View Spring Cloud Gateway routes
-cat src/main/resources/application.yml | grep -A 10 "spring.cloud.gateway"
+# Find all Java source files
+find src/main/java -name "*.java" | sort
 
-# Find all filter implementations
-find src -name "*Filter*.java"
+# Find configuration classes
+grep -r "class.*Config" src/main/java
 
 # Check OAuth2 configuration
 grep -r "oauth2" src/main/resources/
@@ -132,11 +131,11 @@ grep -r "oauth2" src/main/resources/
 - **9002**: ext_authz HTTP service (called by the ingress Envoy proxy on `/api/*`)
 - **8090**: ext_authz health endpoint
 - **8086**: Permission Service (user roles and permissions)
-- **6379**: Redis (session storage + ext_authz session schema)
+- **6379**: Redis (session storage)
 
 ## Technology Stack
 
-**Principle**: Spring Cloud reactive stack with OAuth2 and distributed sessions.
+**Principle**: Spring WebFlux reactive stack with OAuth2 and custom Redis session management.
 
 **Discovery**:
 ```bash
@@ -151,9 +150,9 @@ grep "implementation" build.gradle.kts
 ```
 
 **Stack Components**:
-- **Gateway**: Spring Cloud Gateway (reactive, WebFlux-based)
+- **Web**: Spring WebFlux (reactive)
 - **Security**: Spring Security OAuth2 Client
-- **Sessions**: Spring Session Data Redis
+- **Sessions**: Custom Redis hash sessions via `SessionWriter`/`SessionReader` (not Spring Session)
 - **Service Common (service-web)**: Reactive HTTP logging, correlation IDs, safe logging, exception handling
 - **Permission Client**: WebClient for reactive HTTP calls to permission-service
 - **Build**: Gradle with Kotlin DSL
@@ -186,34 +185,38 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 **Component Types**:
 
 **Configuration** (src/main/java/.../config/):
-- SecurityConfig: OAuth2 login, authorization, entry points, return URL handling, permission fetching on login success, ext_authz dual-write
-- SessionConfig: Redis session management, Clock bean
-- OAuth2ClientConfig: OAuth2 client and repository configuration
+- SecurityConfig: OAuth2 login, authorization, entry points, return URL handling, permission fetching on login success, session creation
+- SessionConfig: Clock bean
+- OAuth2ClientConfig: OAuth2 client, authorization request repository, and authorized client repository configuration
+- WebClientConfig: WebClient bean for external HTTP calls
 
 **Controllers** (src/main/java/.../api/):
 - UserController: Returns current authenticated user info
-- LogoutController: Session invalidation, ext_authz session deletion, and Auth0 logout
+- LogoutController: Session deletion, cookie clearing, and Auth0 logout
 - TokenExchangeController: Exchanges IDP access tokens for opaque session bearer tokens (native clients)
 
 **Security** (src/main/java/.../security/):
 - RedirectUrlValidator: Validates redirect URLs to prevent open redirect attacks
-- RedisServerRequestCache: Custom ServerRequestCache implementation for saving/retrieving original request URIs
-
-**Filters** (src/main/java/.../filter/):
-- TokenRefreshGatewayFilterFactory: Proactive OAuth2 token refresh before expiry, with permission re-fetch and ext_authz session update
+- RedisAuthorizationRequestRepository: Stores OAuth2 authorization requests in Redis (keyed by state parameter), carries return URL through the OAuth2 round-trip
+- RedisSessionSecurityContextRepository: Resolves session cookie → Redis hash → SecurityContext for authenticated requests
+- ExchangeServerOAuth2AuthorizedClientRepository: Stores/loads OAuth2 authorized clients per-exchange (not in WebSession)
+- SessionPrincipal: Authentication principal holding session data
 
 **Services** (src/main/java/.../service/):
 - PermissionServiceClient: Reactive WebClient that fetches user roles and permissions from the permission-service; passes email/displayName as query params (no bearer auth — platform network isolation and mesh policy enforcement)
 
 **Session** (src/main/java/.../session/):
-- SessionAttributes: Constants for session attribute keys (USER_ID, ROLES, PERMISSIONS)
-- ExtAuthzSessionWriter: Dual-writes session data to ext_authz Redis hash (`extauthz:session:{id}`) for ingress ext_authz validation
+- SessionWriter: Creates, updates, and deletes session Redis hashes (`session:{id}`)
+- SessionReader: Reads and deserializes session hashes from Redis
+- SessionData: Record holding deserialized session fields
+- SessionHashFields: Constants for Redis hash field names (user_id, roles, permissions, refresh_token, etc.)
+- SessionCookieHelper: Manages session cookies (set, clear, read)
 
 **Service-Common Utilities** (auto-configured from service-web):
 - ReactiveHttpLoggingFilter: HTTP request/response logging (replaces RequestLoggingWebFilter)
 - ReactiveCorrelationIdFilter: Adds correlation IDs for distributed tracing
 - ReactiveApiExceptionHandler: Global exception handling for WebFlux
-- SafeLogger (org.budgetanalyzer.core.logging): Safe logging with sensitive data masking
+- SafeLogger (org.budgetanalyzer.core.logging): Opt-in safe logging utilities — `SafeLogger.toJson()` for `@Sensitive` masking, `SafeLogger.mask()` for string masking, `SafeLogger.truncateId()` for truncating identifiers (session IDs, OAuth2 state)
 
 ## API Endpoints
 
@@ -237,9 +240,8 @@ cat src/main/resources/application.yml | grep -A 5 "routes:"
 
 **Return URL Flow**:
 After successful authentication, the redirect priority is:
-1. **Explicit returnUrl parameter**: If `?returnUrl=/path` was provided to `/oauth2/authorization/idp`
-2. **Saved request**: If user was redirected to login from a protected resource (automatic via RedisServerRequestCache)
-3. **Default**: Redirects to `/` if no returnUrl or saved request exists
+1. **Explicit returnUrl parameter**: If `?returnUrl=/path` was provided to `/oauth2/authorization/idp` (carried through OAuth2 round-trip via `RedisAuthorizationRequestRepository`)
+2. **Default**: Redirects to `/` if no returnUrl was provided
 
 **Return URL Security**:
 - All redirect URLs validated by `RedirectUrlValidator` (src/main/java/.../security/RedirectUrlValidator.java:27)
@@ -251,15 +253,12 @@ After successful authentication, the redirect priority is:
 - `POST /auth/token/exchange` - Exchanges an IDP access token for an opaque session bearer token (unauthenticated)
   - Request: `{ "accessToken": "<IDP access token>" }`
   - Response: `{ "token": "<session-id>", "expiresIn": 1800, "tokenType": "Bearer" }`
-  - Validates token via IDP userinfo endpoint, fetches permissions, creates session, writes ext_authz session
+  - Validates token via IDP userinfo endpoint, fetches permissions, creates session hash in Redis
 
 **User Endpoints**:
 - `GET /user` - Returns current authenticated user information
 
-**Gateway Routes**:
-- `GET /api/**` - Configured downstream route to the API gateway when requests reach Session Gateway directly
-- `GET /**` - Configured fallback frontend route when requests reach Session Gateway directly
-- Primary ingress ownership in the shared platform is handled by orchestration: Session Gateway receives only auth/session lifecycle paths; NGINX owns `/login`, `/*`, and `/api/*`
+**Note**: Session Gateway does not proxy downstream routes. It only handles auth/session lifecycle endpoints. The Istio ingress routes `/api/*` through ext_authz → NGINX, and `/*` through NGINX directly.
 
 ## Configuration
 
@@ -282,30 +281,25 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - Scopes: openid, profile, email
 - Redirect URI for callback
 
-**ext_authz Session**:
-- `extauthz.session.key-prefix` (`EXTAUTHZ_SESSION_KEY_PREFIX`): Redis key prefix for ext_authz sessions (default: `extauthz:session:`)
-- `extauthz.session.ttl-seconds` (`EXTAUTHZ_SESSION_TTL_SECONDS`): TTL for ext_authz session keys in seconds (default: `1800`, must match Spring Session timeout)
+**Session**:
+- `session.key-prefix` (`SESSION_KEY_PREFIX`): Redis key prefix for session hashes (default: `session:`)
+- `session.ttl-seconds` (`SESSION_TTL_SECONDS`): TTL for session keys in seconds (default: `1800`)
+- `session.cookie.name` (`SESSION_COOKIE_NAME`): Cookie name (default: `SESSION`)
+- `session.cookie.domain-override`: Cookie domain (default: `budgetanalyzer.localhost`)
+- `session.cookie.secure`: HTTPS-only cookies (default: `true`)
+- `session.cookie.same-site`: SameSite attribute (default: `strict`)
 
 **Permission Service**:
 - `permission-service.base-url` (`PERMISSION_SERVICE_URL`): Base URL for the permission-service (default: `http://permission-service:8086`)
 - Endpoint called: `GET /internal/v1/users/{idpSub}/permissions?email={email}&displayName={displayName}`
 - No bearer auth — relies on platform network isolation and mesh policy enforcement
 
-**Session Management**:
-- Redis connection (host, port)
-- Session timeout (30 minutes default)
-- Cookie settings (HttpOnly, Secure, SameSite)
-- Session stores: userId, roles, permissions
-
-**Gateway Routing**:
-- Default profile routes `/api/**` to `https://api.budgetanalyzer.localhost`
-- Kubernetes profile routes `/api/**` and fallback frontend traffic to `http://nginx-gateway:8080`
-- Filter chains (token relay, refresh)
-- Path predicates
+**Redis Connection**:
+- Redis connection (host, port, username, password)
+- TLS configuration via Spring SSL bundles
 
 **Logging**:
 - OAuth2 client debug logging
-- Gateway filter logging
 - Session management logging
 
 **HTTP Logging** (from service-common):
@@ -333,6 +327,7 @@ budgetanalyzer:
       max-body-size: 10000
       exclude-patterns:
         - /actuator/**
+        - /login/oauth2/code/**
 ```
 
 ## Development Workflow
@@ -387,7 +382,7 @@ REDIS_OPS_PASSWORD=$(kubectl get secret redis-bootstrap-credentials -n infrastru
 kubectl exec -n infrastructure deployment/redis -- redis-cli --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning PING
 
 # View session data in Redis
-kubectl exec -n infrastructure deployment/redis -- redis-cli --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning KEYS "spring:session:*"
+kubectl exec -n infrastructure deployment/redis -- redis-cli --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning KEYS "session:*"
 
 # Check application health
 curl http://localhost:8081/actuator/health
@@ -411,12 +406,10 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 - Check Redis deployment is running: `kubectl get pods -n infrastructure | grep redis`
 - Inspect Redis session keys with the `redis-ops` credentials shown above
 
-**ext_authz Session Not Created**:
+**Session Not Created After Login**:
 - Check that permission-service is running and reachable at `permission-service.base-url`
-- Verify session contains `INTERNAL_USER_ID`, `INTERNAL_ROLES`, `INTERNAL_PERMISSIONS` (populated on login)
-- Verify ext_authz session exists in Redis: `redis-cli HGETALL "extauthz:session:{session-id}"`
-- If login succeeded but ext_authz session missing, check logs for `ExtAuthzSessionWriter` errors (errors are swallowed)
-- Verify `extauthz.session.key-prefix` and `extauthz.session.ttl-seconds` match ext_authz service expectations
+- Verify session hash exists in Redis: `redis-cli HGETALL "session:{session-id}"`
+- Verify `session.key-prefix` matches the ext_authz service's expected prefix
 - Enable debug logging: `logging.level.org.budgetanalyzer.sessiongateway=DEBUG`
 
 **Token Exchange Not Working**:
@@ -426,7 +419,6 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 
 **502 Bad Gateway**:
 - Ensure the Istio ingress and NGINX gateway are healthy in the shared platform
-- Check gateway route configuration in application.yml
 - Verify network connectivity: `curl https://api.budgetanalyzer.localhost/health`
 
 ## Integration Points
@@ -437,18 +429,17 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 
 **Downstream (Sends To)**:
 - **Auth0**: OAuth2 authorization, token exchange, logout
-- **Permission Service** (port 8086): Fetches user roles and permissions on login and token refresh (no bearer auth — platform network isolation)
-- **Redis**: Session storage (Auth0 tokens, userId, roles, permissions) + ext_authz session dual-write (`extauthz:session:{id}`)
-- **NGINX Gateway** (port 8080): Downstream route target for internal API/frontend proxy routes when requests reach Session Gateway directly
+- **Permission Service** (port 8086): Fetches user roles and permissions on login (no bearer auth — platform network isolation)
+- **Redis**: Session storage as hashes (`session:{id}`) — read by both Session Gateway and the ext_authz HTTP service
 
 **Data Flow**:
 1. Browser loads `/login` through Istio ingress → NGINX → frontend
 2. Frontend initiates `GET /oauth2/authorization/idp`
 3. Istio ingress routes the OAuth2 request to Session Gateway
 4. Session Gateway completes OAuth2 with Auth0 and fetches permissions from permission-service
-5. Session Gateway writes Spring Session data and the ext_authz Redis hash (`extauthz:session:{id}`)
+5. Session Gateway writes a session hash to Redis (`session:{id}`) and sets the session cookie
 6. Browser later calls `/api/*`
-7. Istio ingress Envoy calls the ext_authz HTTP service, which reads Redis and injects X-User-Id/X-Roles/X-Permissions
+7. Istio ingress Envoy calls the ext_authz HTTP service, which reads the session hash from Redis and injects X-User-Id/X-Roles/X-Permissions
 8. NGINX forwards the validated API request to the backend service
 9. Backend services read claims from request headers
 
@@ -460,16 +451,15 @@ For detailed architecture diagrams and security design:
 ## Security Considerations
 
 **Token Protection**:
-- Auth0 access tokens stored server-side in Redis (never exposed to browser)
-- Session data dual-written to ext_authz Redis hash — browser only sees opaque session cookie
-- All session data cleared on logout (both Spring Session and ext_authz session)
+- Auth0 refresh tokens stored server-side in Redis session hashes (never exposed to browser)
+- Browser only sees opaque session cookie; all sensitive data lives in Redis
+- Session hash deleted on logout
 
-**ext_authz Session Security**:
-- Ext_authz sessions stored as Redis hashes under `extauthz:session:{id}` with TTL matching Spring Session timeout (30 min)
-- Fields: `user_id`, `roles` (comma-joined), `permissions` (comma-joined), `created_at`, `expires_at` (unix timestamps)
-- The ext_authz HTTP service called by the ingress Envoy proxy validates sessions by reading directly from Redis — no cryptographic verification needed (Redis is trusted internal infrastructure)
-- Session IDs are opaque — no sensitive data encoded in the token itself
-- Dual-write errors are logged and swallowed to avoid breaking the primary authentication flow
+**Session Hash Security**:
+- Sessions stored as Redis hashes under `session:{id}` with configurable TTL (default 30 min)
+- Fields: `user_id`, `idp_sub`, `email`, `display_name`, `picture`, `roles` (comma-joined), `permissions` (comma-joined), `refresh_token`, `token_expires_at`, `created_at`, `expires_at` (unix timestamps)
+- The ext_authz HTTP service reads these same hashes directly from Redis — no cryptographic verification needed (Redis is trusted internal infrastructure)
+- Session IDs are opaque UUIDs — no sensitive data encoded in the cookie value itself
 
 **Session Cookies**:
 - HttpOnly: Not accessible via JavaScript
@@ -481,7 +471,6 @@ For detailed architecture diagrams and security design:
 - PKCE enabled for authorization code flow
 - State parameter for CSRF protection
 - Redirect URI validation
-- Token refresh before expiry (proactive)
 
 **No CORS Needed**:
 BFF pattern eliminates CORS complexity. Browser traffic stays on the same origin (`app.budgetanalyzer.localhost`), with `/login` served by the frontend and auth protocol endpoints handled by Session Gateway behind the same ingress.
@@ -502,12 +491,11 @@ find src/test -name "*.java"
 
 **Key Directories**:
 - [src/main/java/org/budgetanalyzer/sessiongateway/](src/main/java/org/budgetanalyzer/sessiongateway/) - Application source
-  - [config/](src/main/java/org/budgetanalyzer/sessiongateway/config/) - Spring configuration classes (OAuth2, security, session)
+  - [config/](src/main/java/org/budgetanalyzer/sessiongateway/config/) - Spring configuration classes (OAuth2, security, session, WebClient)
   - [api/](src/main/java/org/budgetanalyzer/sessiongateway/api/) - REST controllers (user, logout, token exchange)
-  - [filter/](src/main/java/org/budgetanalyzer/sessiongateway/filter/) - Custom Gateway filters (token refresh)
-  - [security/](src/main/java/org/budgetanalyzer/sessiongateway/security/) - Security utilities (redirect validation, request cache)
+  - [security/](src/main/java/org/budgetanalyzer/sessiongateway/security/) - Security utilities (redirect validation, Redis-backed auth request/context repos, session principal)
   - [service/](src/main/java/org/budgetanalyzer/sessiongateway/service/) - Business services (permission client)
-  - [session/](src/main/java/org/budgetanalyzer/sessiongateway/session/) - Session management (ext_authz dual-write, session constants)
+  - [session/](src/main/java/org/budgetanalyzer/sessiongateway/session/) - Session management (Redis hash writer/reader, cookie helper, session data model)
 - [src/main/resources/](src/main/resources/) - Configuration files (application.yml)
 - [src/test/](src/test/) - Test classes
 - [gradle/](gradle/) - Gradle wrapper and version catalog
@@ -521,7 +509,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 - **NGINX Gateway**: Frontend/API gateway and downstream route target when requests reach Session Gateway directly
 - **ext_authz HTTP Service**: Istio ingress authorization target — validates sessions from Redis and injects claims headers
 - **Permission Service**: Provides user roles and permissions (called on login and token refresh, no bearer auth)
-- **Redis**: Session persistence (Spring Session + ext_authz session schema)
+- **Redis**: Session persistence (hashes under `session:{id}`)
 - **Auth0**: Identity provider
 
 **Indirect (via Istio ingress and NGINX)**:
@@ -535,19 +523,17 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
 ## Best Practices
 
-1. **Secure Token Storage**: Never expose Auth0 tokens to the browser — Auth0 tokens stored in Redis, session data dual-written to ext_authz Redis schema
-2. **Proactive Refresh**: Refresh Auth0 tokens before expiry, re-fetch permissions from permission-service, and update ext_authz session
-3. **Comprehensive Logging**: Enable OAuth2 debug logging for troubleshooting
-4. **Session Timeout**: Balance security (short timeout) vs UX (longer timeout)
-5. **Graceful Logout**: Clear Spring Session, ext_authz session, and Auth0 session on logout
-6. **Health Checks**: Monitor Redis connectivity and Auth0 availability
-7. **Environment Parity**: Use same Auth0 tenant structure for dev/staging/prod
-8. **Return URL Validation**: All returnUrl redirects automatically validated by RedirectUrlValidator - no additional validation needed
-9. **Safe Logging**: Use `SafeLogger.toJson()` from service-common when logging objects that may contain sensitive data
-10. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production
-11. **ext_authz TTL Alignment**: `extauthz.session.ttl-seconds` must match Spring Session timeout to prevent stale sessions
-12. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required); token refresh degrades gracefully (existing permissions retained on failure)
-13. **Dual-Write Resilience**: ext_authz write failures are logged and swallowed — primary session flow is never broken by ext_authz errors
+1. **Secure Token Storage**: Never expose Auth0 tokens to the browser — refresh tokens stored in Redis session hashes, browser only sees opaque session cookie
+2. **Comprehensive Logging**: Enable OAuth2 debug logging for troubleshooting
+3. **Session Timeout**: Balance security (short timeout) vs UX (longer timeout)
+4. **Graceful Logout**: Delete session hash from Redis, clear cookie, and redirect to Auth0 logout
+5. **Health Checks**: Monitor Redis connectivity and Auth0 availability
+6. **Environment Parity**: Use same Auth0 tenant structure for dev/staging/prod
+7. **Return URL Validation**: All returnUrl redirects automatically validated by RedirectUrlValidator - no additional validation needed
+8. **Safe Logging**: SafeLogger is **opt-in** — use `SafeLogger.toJson(obj)` for objects with `@Sensitive` fields, `SafeLogger.mask(value)` for sensitive strings, `SafeLogger.truncateId(sessionId)` for session IDs and OAuth2 state values. Never log raw session IDs, OAuth2 code/state, or identity tokens.
+9. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production. OAuth2 callback path (`/login/oauth2/code/**`) is excluded from HTTP logging (defense-in-depth).
+10. **Session Key Prefix Alignment**: `session.key-prefix` must match the ext_authz service's expected prefix so it can find session hashes
+11. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required)
 
 ## NOTES FOR AI AGENTS
 
@@ -593,14 +579,13 @@ When working on this service:
 - BFF pattern means no CORS configuration needed (same-origin from browser perspective)
 - Session Gateway serves browser clients (OAuth2 + cookies) and native clients (token exchange + bearer tokens)
 - Auth and OAuth2 protocol endpoints flow through Istio ingress to Session Gateway; bare `/login` is frontend-owned through NGINX
-- ext_authz validates sessions directly from Redis — no JWT infrastructure needed
+- ext_authz reads session hashes directly from Redis — no JWT infrastructure needed, no separate ext_authz schema
 - Permission-service must be reachable for login to succeed (permissions fetched in OAuth2 success handler)
 - Permission-service calls use no bearer auth — relies on platform network isolation and mesh policy enforcement
-- ext_authz session dual-write errors are swallowed — never break the primary session flow
-- `extauthz.session.ttl-seconds` must match Spring Session timeout (`@EnableRedisWebSession(maxInactiveIntervalInSeconds)`)
+- Sessions are custom Redis hashes (`session:{id}`) — NOT Spring Session
+- `session.key-prefix` must match the ext_authz service's expected prefix
 - Changes to OAuth2 configuration require Auth0 console updates
 - Redis is critical dependency - session loss means user re-authentication
-- Token refresh happens automatically via custom filter before expiry (includes permission re-fetch and ext_authz session update)
-- Spring Cloud Gateway uses reactive WebFlux - avoid blocking operations
+- Spring WebFlux reactive stack - avoid blocking operations
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
 - Follow the hybrid architecture: Istio ingress (edge auth/routing) → Session Gateway for auth endpoints, and Istio ingress → ext_authz → NGINX for `/api/*`

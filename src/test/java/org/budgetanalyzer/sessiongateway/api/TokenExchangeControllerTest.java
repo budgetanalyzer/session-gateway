@@ -26,6 +26,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import org.budgetanalyzer.service.exception.ServiceUnavailableException;
 import org.budgetanalyzer.sessiongateway.api.request.TokenExchangeRequest;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient.PermissionResponse;
@@ -58,7 +59,9 @@ class TokenExchangeControllerTest {
 
   @AfterEach
   void tearDown() {
-    wireMockServer.stop();
+    if (wireMockServer.isRunning()) {
+      wireMockServer.stop();
+    }
   }
 
   @Test
@@ -186,6 +189,26 @@ class TokenExchangeControllerTest {
             ex ->
                 ex instanceof ResponseStatusException
                     && ((ResponseStatusException) ex).getStatusCode().value() == 401)
+        .verify();
+  }
+
+  @Test
+  void exchangeToken_returns503ForIdpServerError() {
+    stubUserinfo(503, "Service Unavailable");
+
+    StepVerifier.create(
+            tokenExchangeController.exchangeToken(new TokenExchangeRequest("valid-token")))
+        .expectError(ServiceUnavailableException.class)
+        .verify();
+  }
+
+  @Test
+  void exchangeToken_returns503ForIdpUnreachable() {
+    wireMockServer.stop();
+
+    StepVerifier.create(
+            tokenExchangeController.exchangeToken(new TokenExchangeRequest("valid-token")))
+        .expectError(ServiceUnavailableException.class)
         .verify();
   }
 

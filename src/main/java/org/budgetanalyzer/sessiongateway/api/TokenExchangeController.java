@@ -8,10 +8,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.server.ResponseStatusException;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,6 +24,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.service.exception.ServiceUnavailableException;
 import org.budgetanalyzer.sessiongateway.api.request.TokenExchangeRequest;
 import org.budgetanalyzer.sessiongateway.api.response.TokenExchangeResponse;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
@@ -111,12 +114,19 @@ public class TokenExchangeController {
         .headers(headers -> headers.setBearerAuth(accessToken))
         .retrieve()
         .onStatus(
-            status -> status.is4xxClientError() || status.is5xxServerError(),
+            HttpStatusCode::is4xxClientError,
             response ->
                 Mono.error(
                     new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED, "Invalid IDP access token")))
-        .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+        .onStatus(
+            HttpStatusCode::is5xxServerError,
+            response ->
+                Mono.error(new ServiceUnavailableException("IDP userinfo endpoint unavailable")))
+        .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+        .onErrorMap(
+            WebClientRequestException.class,
+            ex -> new ServiceUnavailableException("IDP userinfo endpoint unreachable", ex));
   }
 
   private Mono<TokenExchangeResponse> createSessionAndRespond(

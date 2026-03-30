@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.core.logging.SafeLogger;
+
 /** Reads session data from Redis hashes. */
 @Component
 public class SessionReader {
@@ -54,7 +56,7 @@ public class SessionReader {
                   Instant.ofEpochSecond(Long.parseLong(fields.get(SessionHashFields.EXPIRES_AT)));
 
               if (clock.instant().isAfter(expiresAt)) {
-                log.debug("Session {} has expired", sessionId);
+                log.debug("Session {} has expired", SafeLogger.truncateId(sessionId));
                 return Mono.empty();
               }
 

@@ -19,6 +19,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.core.logging.SafeLogger;
+
 /**
  * Redis-backed storage for OAuth2 authorization requests.
  *
@@ -130,7 +132,7 @@ public class RedisAuthorizationRequestRepository
 
     var state = authorizationRequest.getState();
     var key = KEY_PREFIX + state;
-    log.debug("Saving authorization request for state={}", state);
+    log.debug("Saving authorization request for state={}", SafeLogger.truncateId(state));
 
     return redisTemplate
         .<String, String>opsForHash()
@@ -177,7 +179,8 @@ public class RedisAuthorizationRequestRepository
                               .doOnSuccess(
                                   count ->
                                       log.debug(
-                                          "Deleted authorization request for state={}", state))
+                                          "Deleted authorization request for state={}",
+                                          SafeLogger.truncateId(state)))
                               .thenReturn(request));
             });
   }
@@ -257,7 +260,8 @@ public class RedisAuthorizationRequestRepository
                 builder.additionalParameters(params -> params.put(FIELD_RETURN_URL, returnUrl));
               }
 
-              log.debug("Reconstructed authorization request for state={}", state);
+              log.debug(
+                  "Reconstructed authorization request for state={}", SafeLogger.truncateId(state));
               return builder.build();
             });
   }

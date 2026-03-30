@@ -14,6 +14,7 @@ import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.core.logging.SafeLogger;
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
@@ -61,12 +62,13 @@ public class LogoutController {
   public Mono<Void> logout(ServerWebExchange exchange) {
     var sessionId = sessionCookieHelper.readSessionId(exchange);
 
-    log.info("Processing logout request for sessionId={}", sessionId);
+    log.info("Processing logout request for sessionId={}", SafeLogger.truncateId(sessionId));
 
     return deleteSession(sessionId)
         .then(Mono.fromRunnable(() -> sessionCookieHelper.clearSessionCookie(exchange)))
         .then(redirectToIdpLogout(exchange))
-        .doOnSuccess(v -> log.info("Successfully logged out sessionId={}", sessionId))
+        .doOnSuccess(
+            v -> log.info("Successfully logged out sessionId={}", SafeLogger.truncateId(sessionId)))
         .doOnError(error -> log.error("Error during logout", error));
   }
 
@@ -76,7 +78,7 @@ public class LogoutController {
       return Mono.empty();
     }
 
-    log.debug("Deleting session {}", sessionId);
+    log.debug("Deleting session {}", SafeLogger.truncateId(sessionId));
     return sessionWriter.deleteSession(sessionId).then();
   }
 

@@ -11,6 +11,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.core.logging.SafeLogger;
+
 /** Reactive client for the permission-service internal API. */
 @Service
 public class PermissionServiceClient {
@@ -38,7 +40,7 @@ public class PermissionServiceClient {
    */
   public Mono<PermissionResponse> fetchPermissions(
       String idpSub, String email, String displayName) {
-    log.debug("Fetching permissions for idpSub={}", idpSub);
+    log.debug("Fetching permissions for idpSub={}", SafeLogger.truncateId(idpSub));
 
     return webClient
         .get()
@@ -65,7 +67,13 @@ public class PermissionServiceClient {
                                         + ": "
                                         + body))))
         .bodyToMono(PermissionResponse.class)
-        .doOnSuccess(r -> log.debug("Fetched permissions for idpSub={}: {}", idpSub, r));
+        .doOnSuccess(
+            r ->
+                log.debug(
+                    "Fetched {} roles and {} permissions for idpSub={}",
+                    r.roles().size(),
+                    r.permissions().size(),
+                    SafeLogger.truncateId(idpSub)));
   }
 
   /**
