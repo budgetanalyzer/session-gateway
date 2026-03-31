@@ -146,6 +146,9 @@ public class IdpTokenRefreshClient {
 
   /**
    * Thrown when the IDP returns an {@code invalid_grant} error, indicating the grant was revoked.
+   *
+   * <p>Callers should destroy the session immediately — this is a deliberate IDP decision (user
+   * disabled, consent withdrawn), not a transient failure.
    */
   public static class IdpGrantRevokedException extends RuntimeException {
 
@@ -159,7 +162,13 @@ public class IdpTokenRefreshClient {
     }
   }
 
-  /** Thrown when the IDP token endpoint is unavailable or returns a server error. */
+  /**
+   * Thrown when the IDP token endpoint is unavailable or returns a non-revocation error.
+   *
+   * <p>Callers should treat this as a transient failure: the session should be preserved so the
+   * client can retry on the next heartbeat. Contrast with {@link IdpGrantRevokedException}, which
+   * signals a deliberate IDP decision requiring immediate session termination.
+   */
   public static class IdpTokenRefreshException extends RuntimeException {
 
     /**

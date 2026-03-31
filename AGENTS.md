@@ -258,17 +258,22 @@ After successful authentication, the redirect priority is:
   - Reads session from Redis via cookie
   - If IDP token is within `session.refresh-threshold-seconds` (default 10 min) of expiry: refreshes via Auth0's token endpoint
   - If refresh succeeds: updates session hash with new tokens and resets TTL
-  - If IDP grant revoked: deletes session, clears cookie, returns 401
+  - If IDP grant revoked (`invalid_grant`): deletes session, clears cookie, returns 401
   - If session is healthy: resets `expires_at` + Redis key TTL (sliding window)
   - Response: `{ "authenticated": true, "userId": "...", "roles": [...], "expiresAt": <epoch>, "tokenRefreshed": false }`
-  - 401 if no valid session or IDP grant revoked
-  - 502 if IDP token refresh fails due to transient error
+  - **Error behavior when IDP is unreachable or returns a transient error:**
+    - Returns **502 Bad Gateway**
+    - **Session is preserved** — not deleted, cookie not cleared
+    - Rationale: a transient IDP outage should not destroy an established session. The frontend retries on the next heartbeat interval, and the session only expires if TTL naturally lapses while the IDP remains down
+    - This contrasts with grant revocation (`invalid_grant`), which is a deliberate IDP decision — session is destroyed immediately with 401
+  - 401 if no valid session, token expired with no refresh token, or IDP grant revoked
 
 **Token Exchange Endpoint**:
 - `POST /auth/token/exchange` - Exchanges an IDP access token for an opaque session bearer token (unauthenticated)
   - Request: `{ "accessToken": "<IDP access token>" }`
   - Response: `{ "token": "<session-id>", "expiresIn": 1800, "tokenType": "Bearer" }`
   - Validates token via IDP userinfo endpoint, fetches permissions, creates session hash in Redis
+  - **Error behavior when IDP is unreachable**: returns **503 Service Unavailable** (no session exists yet, nothing to clean up)
 
 **User Endpoints**:
 - `GET /user` - Returns current authenticated user information
@@ -436,7 +441,8 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 - If tokens expired with no refresh token (token exchange sessions), this is expected — native clients re-exchange
 
 **Heartbeat Returns 502**:
-- IDP token refresh failed due to transient error (Auth0 unreachable, rate-limited)
+- IDP token refresh failed due to transient error (Auth0 unreachable, rate-limited, or 5xx)
+- Session is intentionally preserved — frontend will retry on next heartbeat interval
 - Check Auth0 connectivity from Session Gateway
 - Review logs for `IdpTokenRefreshException`
 

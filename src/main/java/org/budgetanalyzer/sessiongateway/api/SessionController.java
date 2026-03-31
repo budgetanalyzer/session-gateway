@@ -165,6 +165,7 @@ public class SessionController {
                       sessionId, newRefreshToken, refreshResult.tokenExpiresAt(), sessionTtlSeconds)
                   .then(buildResponse(sessionData, true));
             })
+        // Grant revocation is a deliberate IDP decision — destroy the session immediately.
         .onErrorResume(
             IdpGrantRevokedException.class,
             ex -> {
@@ -177,6 +178,9 @@ public class SessionController {
                   .deleteSession(sessionId)
                   .then(Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED)));
             })
+        // Transient IDP failure (unreachable, 5xx, non-revocation 4xx): preserve the session so
+        // the frontend can retry on the next heartbeat. The session only expires if TTL lapses
+        // while the IDP remains down.
         .onErrorResume(
             IdpTokenRefreshException.class,
             ex -> {
