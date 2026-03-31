@@ -1,5 +1,6 @@
 package org.budgetanalyzer.sessiongateway.config;
 
+import java.util.Locale;
 import java.util.Objects;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -84,7 +85,7 @@ public record SessionProperties(
           "session.cookie.same-site must be one of Strict, Lax, or None.");
     }
 
-    return switch (sameSite.trim().toLowerCase(java.util.Locale.ROOT)) {
+    return switch (sameSite.trim().toLowerCase(Locale.ROOT)) {
       case "strict" -> "Strict";
       case "lax" -> "Lax";
       case "none" -> "None";

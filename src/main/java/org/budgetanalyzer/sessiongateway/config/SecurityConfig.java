@@ -2,6 +2,7 @@ package org.budgetanalyzer.sessiongateway.config;
 
 import java.net.URI;
 import java.time.Clock;
+import java.time.Instant;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -198,7 +199,7 @@ public class SecurityConfig {
     return authorizedClient.getRefreshToken().getTokenValue();
   }
 
-  private java.time.Instant tokenExpiresAt(OAuth2AuthorizedClient authorizedClient) {
+  private Instant tokenExpiresAt(OAuth2AuthorizedClient authorizedClient) {
     var expiresAt = authorizedClient.getAccessToken().getExpiresAt();
     if (expiresAt != null) {
       return expiresAt;

@@ -22,13 +22,13 @@ import org.springframework.test.context.TestPropertySource;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 
-@Import(SessionWriterTest.FixedClockTestConfiguration.class)
+@Import(SessionWriterIntegrationTest.FixedClockTestConfiguration.class)
 @TestPropertySource(
     properties = {
       "session.key-prefix=session:test:writer:",
       "session.ttl-seconds=900",
     })
-class SessionWriterTest extends AbstractIntegrationTest {
+class SessionWriterIntegrationTest extends AbstractIntegrationTest {
 
   private static final Instant BASE_INSTANT = Instant.parse("2026-03-30T00:00:00Z");
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:writer:";

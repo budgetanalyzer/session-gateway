@@ -3,6 +3,7 @@ package org.budgetanalyzer.sessiongateway.security;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -193,26 +194,26 @@ public class RedisAuthorizationRequestRepository
     return state != null ? Mono.just(state) : Mono.empty();
   }
 
-  private java.util.Optional<String> valueAsString(Map<String, ?> values, String key) {
+  private Optional<String> valueAsString(Map<String, ?> values, String key) {
     var value = values.get(key);
     if (value instanceof String stringValue && !stringValue.isEmpty()) {
-      return java.util.Optional.of(stringValue);
+      return Optional.of(stringValue);
     }
 
-    return java.util.Optional.empty();
+    return Optional.empty();
   }
 
-  private java.util.Optional<String> queryParamValue(String uri, String key) {
+  private Optional<String> queryParamValue(String uri, String key) {
     if (uri == null || uri.isBlank()) {
-      return java.util.Optional.empty();
+      return Optional.empty();
     }
 
     var value = UriComponentsBuilder.fromUriString(uri).build().getQueryParams().getFirst(key);
     if (value == null || value.isBlank()) {
-      return java.util.Optional.empty();
+      return Optional.empty();
     }
 
-    return java.util.Optional.of(value);
+    return Optional.of(value);
   }
 
   private Mono<OAuth2AuthorizationRequest> loadFromRedis(String state) {

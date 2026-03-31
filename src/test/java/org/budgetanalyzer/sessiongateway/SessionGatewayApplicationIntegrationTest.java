@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 
-class SessionGatewayApplicationTests extends AbstractIntegrationTest {
+class SessionGatewayApplicationIntegrationTest extends AbstractIntegrationTest {
 
   @Test
   void contextLoads() {

@@ -23,13 +23,13 @@ import reactor.test.StepVerifier;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 
-@Import(SessionReaderTest.FixedClockTestConfiguration.class)
+@Import(SessionReaderIntegrationTest.FixedClockTestConfiguration.class)
 @TestPropertySource(
     properties = {
       "session.key-prefix=session:test:reader:",
       "session.ttl-seconds=900",
     })
-class SessionReaderTest extends AbstractIntegrationTest {
+class SessionReaderIntegrationTest extends AbstractIntegrationTest {
 
   private static final Instant BASE_INSTANT = Instant.parse("2026-03-30T00:00:00Z");
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:reader:";

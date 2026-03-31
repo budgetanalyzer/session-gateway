@@ -29,14 +29,14 @@ import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
-@Import(SessionControllerTest.FixedClockTestConfiguration.class)
+@Import(SessionControllerIntegrationTest.FixedClockTestConfiguration.class)
 @TestPropertySource(
     properties = {
       "session.key-prefix=session:test:heartbeat:",
       "session.ttl-seconds=900",
       "session.refresh-threshold-seconds=600",
     })
-class SessionControllerTest extends AbstractIntegrationTest {
+class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
   private static final Instant BASE_INSTANT = Instant.parse("2026-03-30T00:00:00Z");
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
