@@ -376,7 +376,7 @@ kubectl exec -n infrastructure deployment/redis -- redis-cli --user "$REDIS_OPS_
 
 Scan all repos for: `BFF`, `dual-write`, `dual write`, `Spring Session`, `extauthz:session:`, `spring:session:`. Update each file in context — not blind find-replace.
 
-### 6a. Organization README
+### 6a. Organization README ✅
 
 **File: `/workspace/.github/profile/README.md`**
 - "Backend For Frontend Oauth2 Security" -> "session-based edge authorization with OAuth2"
@@ -385,7 +385,7 @@ Scan all repos for: `BFF`, `dual-write`, `dual write`, `Spring Session`, `extaut
 - "OAuth2 BFF, session management, Redis dual-write" -> "OAuth2 authentication service, session management"
 - Mermaid diagram: update "Session Dual-Write" label
 
-### 6b. Orchestration — architecture docs
+### 6b. Orchestration — architecture docs ✅
 
 **Rename files:**
 - `bff-security-benefits.md` -> `session-security-benefits.md`
@@ -403,20 +403,20 @@ Scan all repos for: `BFF`, `dual-write`, `dual write`, `Spring Session`, `extaut
 - `orchestration/AGENTS.md` — update service descriptions, remove BFF references
 - `orchestration/README.md` — update service descriptions
 
-### 6c. Session Gateway docs
+### 6c. Session Gateway docs ✅
 
 **Update:**
 - `session-gateway/AGENTS.md` — major rewrite: remove BFF references, update architecture, update components, update session schema, remove dual-write references, add heartbeat endpoint, update security considerations
 - `session-gateway/README.md` — update to match new architecture
 
-### 6d. Budget Analyzer Web docs
+### 6d. Budget Analyzer Web docs ✅
 
 **Update:**
 - `budget-analyzer-web/docs/authentication.md` — remove "BFF", update "dual-write" to single hash, remove "Spring Session" references, update login/logout flow, add heartbeat docs
 - `budget-analyzer-web/AGENTS.md` — update Session Gateway references
 - `budget-analyzer-web/README.md` — update if it references BFF
 
-### 6e. Other service docs
+### 6e. Other service docs ✅
 
 Scan and update references in:
 - `transaction-service/AGENTS.md`, `README.md`

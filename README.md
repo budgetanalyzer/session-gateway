@@ -1,22 +1,23 @@
-# Session Gateway (BFF)
+# Session Gateway
 
-> "Archetype: service. Role: BFF for browser authentication; manages OAuth2 flows and session cookies."
+> "Archetype: service. Role: Session-based edge authorization; manages OAuth2 flows, session cookies, and IDP grant validation."
 >
 > — [AGENTS.md](AGENTS.md#tree-position)
 
 [![Build](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml)
 
-Backend-for-Frontend (BFF) service that manages OAuth2 authentication flows, protects tokens from browser exposure, and writes session data as Redis hashes that the ext_authz HTTP service reads directly for per-request authorization at the Istio ingress.
+Session-based edge authorization service that manages OAuth2 authentication flows, protects tokens from browser exposure, validates IDP grants via session heartbeat, and writes session data as Redis hashes that the ext_authz HTTP service reads directly for per-request authorization at the Istio ingress.
 
 ## Overview
 
-The Session Gateway implements the BFF pattern to provide secure authentication for the Budget Analyzer application:
+Session Gateway provides secure authentication and session management for the Budget Analyzer application:
 
-- Manages OAuth2 flows with Auth0
+- Manages OAuth2 flows with Auth0 (including `offline_access` for refresh tokens)
 - Fetches user roles and permissions from the permission-service on login
 - Writes session data (userId, roles, permissions, refresh token, expiry) as Redis hashes (`session:{id}`)
-- The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema or dual-write
+- The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema
 - Issues HttpOnly session cookies to frontend
+- Provides session heartbeat (`GET /auth/session`) — extends session TTL, refreshes IDP tokens near expiry, detects IDP grant revocation
 - Owns the OAuth2 and session lifecycle endpoints: `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`, `/user`
 - Provides token exchange endpoint for native PKCE/M2M clients (`POST /auth/token/exchange`)
 
@@ -68,6 +69,7 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 | `INFRA_CA_CERT_PATH` | `file:` URI for the infrastructure CA certificate | — |
 | `SESSION_KEY_PREFIX` | Redis key prefix for session hashes | `session:` |
 | `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `1800` |
+| `SESSION_REFRESH_THRESHOLD_SECONDS` | Seconds before IDP token expiry to trigger refresh during heartbeat | `600` |
 
 ### Ports
 
@@ -132,6 +134,12 @@ curl http://localhost:8081/actuator/health
 - Auth0 refresh tokens stored server-side in Redis session hashes — never exposed to browser
 - Browser only sees opaque session cookie; all sensitive data lives in Redis
 - Session hash deleted on logout, cookie cleared
+
+### Session Heartbeat and IDP Grant Validation
+- **Sliding window**: Frontend calls `GET /auth/session` periodically (~5 min) to extend session TTL
+- **Token refresh**: When IDP token is within 10 min of expiry, heartbeat refreshes it via Auth0's token endpoint
+- **Revocation detection**: If Auth0 rejects the refresh (user disabled, consent withdrawn), session is terminated and cookie cleared
+- **Safety margin**: 5-min heartbeat interval, 30-min session TTL = 6x margin before session expires from inactivity
 
 ### ext_authz Session Validation
 - The ext_authz HTTP service reads session hashes (`session:{id}`) directly from Redis — the same hashes Session Gateway writes
