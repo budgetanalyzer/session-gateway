@@ -76,7 +76,7 @@ class RedisSessionSecurityContextRepositoryTest {
             "refresh-token",
             Instant.parse("2026-03-30T00:10:00Z"),
             Instant.parse("2026-03-30T00:00:00Z"),
-            Instant.parse("2026-03-30T00:30:00Z"));
+            Instant.parse("2026-03-30T00:15:00Z"));
 
     when(sessionCookieHelper.readSessionId(mockServerWebExchange)).thenReturn("session-123");
     when(sessionReader.readSession("session-123")).thenReturn(Mono.just(sessionData));

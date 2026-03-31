@@ -80,7 +80,7 @@ class UserControllerTest {
                     "refresh-token",
                     Instant.parse("2026-03-30T00:10:00Z"),
                     Instant.parse("2026-03-30T00:00:00Z"),
-                    Instant.parse("2026-03-30T00:30:00Z"))));
+                    Instant.parse("2026-03-30T00:15:00Z"))));
 
     var result = userController.getCurrentUser(exchange).block();
 

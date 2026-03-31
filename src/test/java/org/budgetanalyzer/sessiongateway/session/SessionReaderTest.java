@@ -27,7 +27,7 @@ import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 @TestPropertySource(
     properties = {
       "session.key-prefix=session:test:reader:",
-      "session.ttl-seconds=1800",
+      "session.ttl-seconds=900",
     })
 class SessionReaderTest extends AbstractIntegrationTest {
 
@@ -63,7 +63,7 @@ class SessionReaderTest extends AbstractIntegrationTest {
             Map.entry(SessionHashFields.CREATED_AT, String.valueOf(BASE_INSTANT.getEpochSecond())),
             Map.entry(
                 SessionHashFields.EXPIRES_AT,
-                String.valueOf(BASE_INSTANT.plusSeconds(1800).getEpochSecond()))),
+                String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond()))),
         Duration.ofMinutes(5));
 
     var sessionData = sessionReader.readSession("session-123").block();
@@ -80,7 +80,7 @@ class SessionReaderTest extends AbstractIntegrationTest {
     assertThat(sessionData.refreshToken()).isNull();
     assertThat(sessionData.tokenExpiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
     assertThat(sessionData.createdAt()).isEqualTo(BASE_INSTANT);
-    assertThat(sessionData.expiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(1800));
+    assertThat(sessionData.expiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
   }
 
   @Test

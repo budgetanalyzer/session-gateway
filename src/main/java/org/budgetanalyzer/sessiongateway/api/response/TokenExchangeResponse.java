@@ -12,5 +12,5 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "Token exchange response")
 public record TokenExchangeResponse(
     @Schema(description = "Opaque bearer token", example = "abc123-session-id") String token,
-    @Schema(description = "Token lifetime in seconds", example = "1800") long expiresIn,
+    @Schema(description = "Token lifetime in seconds", example = "900") long expiresIn,
     @Schema(description = "Token type", example = "Bearer") String tokenType) {}

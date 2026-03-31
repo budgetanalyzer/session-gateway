@@ -62,26 +62,14 @@ spring:
 # Session configuration
 session:
   key-prefix: ${SESSION_KEY_PREFIX:session:}
-  ttl-seconds: ${SESSION_TTL_SECONDS:1800}
+  ttl-seconds: ${SESSION_TTL_SECONDS:900}
   refresh-threshold-seconds: ${SESSION_REFRESH_THRESHOLD_SECONDS:600}
   oauth2-state-ttl-seconds: ${SESSION_OAUTH2_STATE_TTL_SECONDS:900}
   cookie:
-    # Domain override for session cookies.
-    #
-    # WORKAROUND: Envoy Gateway rewrites the Host header to pod IP addresses instead of
-    # preserving the original hostname (app.budgetanalyzer.localhost). This breaks dynamic
-    # domain extraction since IP addresses cannot be used as cookie domains.
-    #
-    # Expected: Host header = "app.budgetanalyzer.localhost" → extracted domain = "budgetanalyzer.localhost"
-    # Actual: Host header = "10.244.0.18:8081" → extracted domain = null (IPs not allowed)
-    #
-    # This override ensures cookies are correctly scoped to share across subdomains.
-    # When Envoy is fixed to preserve Host headers, this can be removed and dynamic
-    # extraction will work. Check logs for "DOMAIN MATCH" to verify.
-    domain-override: budgetanalyzer.localhost
-    name: SESSION
-    secure: true
-    same-site: Strict
+    domain-override: ${SESSION_COOKIE_DOMAIN_OVERRIDE:}
+    name: ${SESSION_COOKIE_NAME:BA_SESSION}
+    secure: ${SESSION_COOKIE_SECURE:true}
+    same-site: ${SESSION_COOKIE_SAME_SITE:Strict}
 
 # IDP configuration
 idp:

@@ -7,13 +7,13 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
+import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 
 /** Reads session data from Redis hashes. */
 @Component
@@ -26,12 +26,10 @@ public class SessionReader {
   private final String keyPrefix;
 
   public SessionReader(
-      ReactiveStringRedisTemplate redisTemplate,
-      Clock clock,
-      @Value("${session.key-prefix:session:}") String keyPrefix) {
+      ReactiveStringRedisTemplate redisTemplate, Clock clock, SessionProperties sessionProperties) {
     this.redisTemplate = redisTemplate;
     this.clock = clock;
-    this.keyPrefix = keyPrefix;
+    this.keyPrefix = sessionProperties.keyPrefix();
   }
 
   /**

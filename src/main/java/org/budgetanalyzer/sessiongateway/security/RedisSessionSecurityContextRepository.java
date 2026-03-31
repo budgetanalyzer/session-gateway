@@ -20,8 +20,8 @@ import org.budgetanalyzer.sessiongateway.session.SessionReader;
  * Bridges the Redis session hash into Spring Security's reactive security context.
  *
  * <p>The login success handler writes the canonical session data to Redis. Subsequent requests load
- * the SESSION cookie, deserialize the Redis hash, and recreate an authenticated principal without
- * depending on OAuth2 client internals.
+ * the public session cookie via {@link SessionCookieHelper}, deserialize the Redis hash, and
+ * recreate an authenticated principal without depending on OAuth2 client internals.
  */
 @Component
 public class RedisSessionSecurityContextRepository implements ServerSecurityContextRepository {

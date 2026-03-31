@@ -6,7 +6,6 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.server.ServerAuthorizationRequestRepository;
@@ -21,6 +20,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
+import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 
 /**
  * Redis-backed storage for OAuth2 authorization requests.
@@ -68,10 +68,10 @@ public class RedisAuthorizationRequestRepository
   public RedisAuthorizationRequestRepository(
       ReactiveStringRedisTemplate redisTemplate,
       ReactiveClientRegistrationRepository clientRegistrationRepository,
-      @Value("${session.oauth2-state-ttl-seconds:900}") long oauth2StateTtlSeconds) {
+      SessionProperties sessionProperties) {
     this.redisTemplate = redisTemplate;
     this.clientRegistrationRepository = clientRegistrationRepository;
-    this.ttl = Duration.ofSeconds(oauth2StateTtlSeconds);
+    this.ttl = Duration.ofSeconds(sessionProperties.oauth2StateTtlSeconds());
   }
 
   /**

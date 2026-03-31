@@ -256,6 +256,7 @@ After successful authentication, the redirect priority is:
 **Session Heartbeat Endpoint**:
 - `GET /auth/session` - Session heartbeat: validates session, extends TTL, refreshes IDP token if near expiry
   - Reads session from Redis via cookie
+  - If the cookie points at a missing or expired Redis session: clears the stale cookie and returns 401
   - If IDP token is within `session.refresh-threshold-seconds` (default 10 min) of expiry: refreshes via Auth0's token endpoint
   - If refresh succeeds: updates session hash with new tokens and resets TTL
   - If IDP grant revoked (`invalid_grant`): deletes session, clears cookie, returns 401
@@ -272,13 +273,13 @@ After successful authentication, the redirect priority is:
 Session Gateway extends the session unconditionally on every `GET /auth/session` call — it does not track or evaluate user activity. The responsibility split is:
 - **Frontend owns the activity decision**: It tracks user activity (mouse movement, keyboard input, tab focus, etc.) and only calls the heartbeat while the user is active
 - **Session Gateway owns the extension**: Every heartbeat call resets `expires_at` and the Redis key TTL to a fresh `session.ttl-seconds` window
-- **Idle timeout is frontend-driven**: When the frontend detects the user is idle, it stops calling the heartbeat. The session TTL (default 30 min) lapses naturally and Redis expires the key — the user is logged out on their next interaction
+- **Idle timeout is frontend-driven**: When the frontend detects the user is idle, it stops calling the heartbeat. The session TTL (default 15 min) lapses naturally and Redis expires the key — the user is logged out on their next interaction
 - **No server-side idle tracking**: Session Gateway has no concept of "idle." An open browser tab that keeps calling the heartbeat on a fixed timer without checking activity would keep the session alive indefinitely — this is a frontend bug, not a feature
 
 **Token Exchange Endpoint**:
 - `POST /auth/token/exchange` - Exchanges an IDP access token for an opaque session bearer token (unauthenticated)
   - Request: `{ "accessToken": "<IDP access token>" }`
-  - Response: `{ "token": "<session-id>", "expiresIn": 1800, "tokenType": "Bearer" }`
+  - Response: `{ "token": "<session-id>", "expiresIn": 900, "tokenType": "Bearer" }`
   - Validates token via IDP userinfo endpoint, fetches permissions, creates session hash in Redis
   - **Error behavior when IDP is unreachable**: returns **503 Service Unavailable** (no session exists yet, nothing to clean up)
 
@@ -311,13 +312,13 @@ grep "SPRING_SECURITY_OAUTH2" .env
 
 **Session**:
 - `session.key-prefix` (`SESSION_KEY_PREFIX`): Redis key prefix for session hashes (default: `session:`)
-- `session.ttl-seconds` (`SESSION_TTL_SECONDS`): TTL for session keys in seconds (default: `1800`)
+- `session.ttl-seconds` (`SESSION_TTL_SECONDS`): TTL for session keys in seconds (default: `900`)
 - `session.refresh-threshold-seconds` (`SESSION_REFRESH_THRESHOLD_SECONDS`): Seconds before IDP token expiry to trigger refresh during heartbeat (default: `600`)
 - `session.oauth2-state-ttl-seconds` (`SESSION_OAUTH2_STATE_TTL_SECONDS`): TTL for OAuth2 authorization request state in Redis (default: `900` / 15 min). Must be long enough for MFA enrollment, SSO handoffs, or slow IDP interactions
-- `session.cookie.name` (`SESSION_COOKIE_NAME`): Cookie name (default: `SESSION`)
-- `session.cookie.domain-override`: Cookie domain (default: `budgetanalyzer.localhost`)
-- `session.cookie.secure`: HTTPS-only cookies (default: `true`)
-- `session.cookie.same-site`: SameSite attribute (default: `Strict`; accepts `Strict`, `Lax`, or `None`, case-insensitively)
+- `session.cookie.name` (`SESSION_COOKIE_NAME`): Public browser session cookie name (default: `BA_SESSION`)
+- `session.cookie.domain-override` (`SESSION_COOKIE_DOMAIN_OVERRIDE`): Optional parent-domain override. Default is unset, which emits host-only cookies
+- `session.cookie.secure` (`SESSION_COOKIE_SECURE`): HTTPS-only cookies (default: `true`)
+- `session.cookie.same-site` (`SESSION_COOKIE_SAME_SITE`): SameSite attribute (default: `Strict`; accepts `Strict`, `Lax`, or `None`, case-insensitively)
 
 **Permission Service**:
 - `permission-service.base-url` (`PERMISSION_SERVICE_URL`): Base URL for the permission-service (default: `http://permission-service:8086`)
@@ -499,7 +500,7 @@ For detailed architecture diagrams and security design:
 - Session hash deleted on logout
 
 **Session Hash Security**:
-- Sessions stored as Redis hashes under `session:{id}` with configurable TTL (default 30 min)
+- Sessions stored as Redis hashes under `session:{id}` with configurable TTL (default 15 min)
 - Fields: `user_id`, `idp_sub`, `email`, `display_name`, `picture`, `roles` (comma-joined), `permissions` (comma-joined), `refresh_token`, `token_expires_at`, `created_at`, `expires_at` (unix timestamps)
 - The ext_authz HTTP service reads these same hashes directly from Redis — no cryptographic verification needed (Redis is trusted internal infrastructure)
 - Session IDs are opaque UUIDs — no sensitive data encoded in the cookie value itself
@@ -508,7 +509,10 @@ For detailed architecture diagrams and security design:
 - HttpOnly: Not accessible via JavaScript
 - Secure: HTTPS only in production
 - SameSite: CSRF protection
-- Short TTL: 30 minutes default
+- Public cookie contract: `BA_SESSION` by default; any framework `SESSION` cookie is internal implementation detail, not the browser auth contract
+- Host-only by default: no `Domain` attribute unless `session.cookie.domain-override` is set
+- Domain override is a workaround/escape hatch, not the primary path
+- Short TTL: 15 minutes default
 
 **OAuth2 Best Practices**:
 - PKCE enabled for authorization code flow

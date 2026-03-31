@@ -68,9 +68,13 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 | `SPRING_DATA_REDIS_SSL_BUNDLE` | Spring SSL bundle name for Redis trust | — |
 | `INFRA_CA_CERT_PATH` | `file:` URI for the infrastructure CA certificate | — |
 | `SESSION_KEY_PREFIX` | Redis key prefix for session hashes | `session:` |
-| `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `1800` |
+| `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `900` |
 | `SESSION_REFRESH_THRESHOLD_SECONDS` | Seconds before IDP token expiry to trigger refresh during heartbeat | `600` |
 | `SESSION_OAUTH2_STATE_TTL_SECONDS` | TTL for OAuth2 authorization request state in Redis | `900` |
+| `SESSION_COOKIE_NAME` | Public browser session cookie contract shared with ext_authz; distinct from any internal framework `SESSION` cookie | `BA_SESSION` |
+| `SESSION_COOKIE_DOMAIN_OVERRIDE` | Optional parent-domain cookie override; unset means host-only cookies | — |
+| `SESSION_COOKIE_SECURE` | Secure cookie flag | `true` |
+| `SESSION_COOKIE_SAME_SITE` | SameSite cookie policy (`Strict`, `Lax`, `None`) | `Strict` |
 
 ### Ports
 
@@ -129,7 +133,11 @@ curl http://localhost:8081/actuator/health
 - **HttpOnly**: Prevents XSS attacks
 - **Secure**: HTTPS only (production)
 - **SameSite=Strict**: CSRF protection
-- **Timeout**: 30 minutes
+- **Public cookie contract**: `BA_SESSION` by default
+- **Framework cookie distinction**: A Spring-managed `SESSION` cookie may appear as an internal implementation detail during framework flows, but Session Gateway and ext_authz do not treat it as the browser auth contract
+- **Host-only by default**: No `Domain` attribute unless `SESSION_COOKIE_DOMAIN_OVERRIDE` is set
+- **Domain override is an escape hatch**: Use it only when ingress/header behavior requires a parent-domain cookie
+- **Timeout**: 15 minutes
 
 ### Token Protection
 - Auth0 refresh tokens stored server-side in Redis session hashes — never exposed to browser
@@ -141,6 +149,7 @@ curl http://localhost:8081/actuator/health
 - **Activity-gated**: Session Gateway extends unconditionally on every heartbeat call. The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
 - **Token refresh**: When IDP token is within 10 min of expiry, heartbeat refreshes it via Auth0's token endpoint
 - **Revocation detection**: If Auth0 rejects the refresh (user disabled, consent withdrawn), session is terminated and cookie cleared
+- **Stale-cookie cleanup**: If the browser presents a cookie for a missing or expired Redis session, heartbeat returns 401 and clears the cookie
 - **Transient IDP errors**: Returns 502 but preserves the session — frontend retries on the next heartbeat interval
 - **Safety margin**: 5-min heartbeat interval, 30-min session TTL = 6x margin before session expires from inactivity
 
@@ -165,6 +174,8 @@ All returnUrl values are validated by `RedirectUrlValidator` to ensure same-orig
 The `returnUrl` value is attached to the OAuth2 authorization request, stored in Redis under the
 `oauth2:state:{state}` key, and recovered after the Auth0 callback. This avoids depending on
 WebSession state during the OAuth2 round-trip.
+
+Session contract and cookie behavior are documented in [docs/session-configuration.md](docs/session-configuration.md).
 
 ## Development
 

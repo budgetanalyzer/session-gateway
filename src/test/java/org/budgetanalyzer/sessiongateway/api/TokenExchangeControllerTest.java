@@ -28,6 +28,7 @@ import reactor.test.StepVerifier;
 
 import org.budgetanalyzer.service.exception.ServiceUnavailableException;
 import org.budgetanalyzer.sessiongateway.api.request.TokenExchangeRequest;
+import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient.PermissionResponse;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
@@ -54,7 +55,12 @@ class TokenExchangeControllerTest {
             sessionWriter,
             "http://localhost:" + wireMockServer.port() + "/idp",
             clock,
-            1800);
+            new SessionProperties(
+                "session:",
+                900,
+                600,
+                900,
+                new SessionProperties.CookieProperties("BA_SESSION", null, true, "Strict")));
   }
 
   @AfterEach
@@ -93,7 +99,7 @@ class TokenExchangeControllerTest {
 
     assertThat(result).isNotNull();
     assertThat(result.token()).isEqualTo("session-123");
-    assertThat(result.expiresIn()).isEqualTo(1800);
+    assertThat(result.expiresIn()).isEqualTo(900);
     assertThat(result.tokenType()).isEqualTo("Bearer");
   }
 
@@ -133,7 +139,7 @@ class TokenExchangeControllerTest {
             List.of("ROLE_USER"),
             List.of("transactions:read"),
             null,
-            Instant.parse("2026-03-30T00:30:00Z"));
+            Instant.parse("2026-03-30T00:15:00Z"));
   }
 
   @Test
@@ -176,7 +182,7 @@ class TokenExchangeControllerTest {
             List.of("ROLE_USER"),
             List.of("transactions:read"),
             null,
-            Instant.parse("2026-03-30T00:30:00Z"));
+            Instant.parse("2026-03-30T00:15:00Z"));
   }
 
   @Test

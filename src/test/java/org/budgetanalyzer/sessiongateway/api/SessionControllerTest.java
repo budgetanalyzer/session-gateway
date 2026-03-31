@@ -33,12 +33,13 @@ import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 @TestPropertySource(
     properties = {
       "session.key-prefix=session:test:heartbeat:",
-      "session.ttl-seconds=1800",
+      "session.ttl-seconds=900",
       "session.refresh-threshold-seconds=600",
     })
 class SessionControllerTest extends AbstractIntegrationTest {
 
   private static final Instant BASE_INSTANT = Instant.parse("2026-03-30T00:00:00Z");
+  private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:heartbeat:";
 
   @Autowired private SessionWriter sessionWriter;
@@ -57,17 +58,18 @@ class SessionControllerTest extends AbstractIntegrationTest {
     var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
     mutableClock.setInstant(heartbeatInstant);
 
-    var response =
+    var exchangeResult =
         webTestClient
             .get()
             .uri("/auth/session")
-            .cookie("SESSION", sessionId)
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
             .isOk()
             .expectBody(SessionStatusResponse.class)
-            .returnResult()
-            .getResponseBody();
+            .returnResult();
+
+    var response = exchangeResult.getResponseBody();
 
     var sessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId);
     var sessionTtl =
@@ -77,33 +79,39 @@ class SessionControllerTest extends AbstractIntegrationTest {
     assertThat(response.authenticated()).isTrue();
     assertThat(response.userId()).isEqualTo("user-123");
     assertThat(response.roles()).containsExactly("ROLE_USER");
-    assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(1800).getEpochSecond());
+    assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(900).getEpochSecond());
     assertThat(response.tokenRefreshed()).isFalse();
+    assertThat(exchangeResult.getResponseCookies().keySet())
+        .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
     assertThat(sessionFields)
         .containsEntry(
             SessionHashFields.EXPIRES_AT,
-            String.valueOf(heartbeatInstant.plusSeconds(1800).getEpochSecond()))
+            String.valueOf(heartbeatInstant.plusSeconds(900).getEpochSecond()))
         .containsEntry(
             SessionHashFields.TOKEN_EXPIRES_AT,
             String.valueOf(BASE_INSTANT.plusSeconds(3600).getEpochSecond()))
         .containsEntry(SessionHashFields.REFRESH_TOKEN, "refresh-token-123");
     assertThat(sessionTtl).isNotNull();
     assertThat(sessionTtl).isPositive();
-    assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(1800));
+    assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
   }
 
   @Test
   void getSessionStatus_returns401ForExpiredSession() {
     var sessionId = createSession(BASE_INSTANT.plusSeconds(3600), "refresh-token-123");
-    mutableClock.setInstant(BASE_INSTANT.plusSeconds(1900));
+    mutableClock.setInstant(BASE_INSTANT.plusSeconds(1000));
 
-    webTestClient
-        .get()
-        .uri("/auth/session")
-        .cookie("SESSION", sessionId)
-        .exchange()
-        .expectStatus()
-        .isUnauthorized();
+    var exchangeResult =
+        webTestClient
+            .get()
+            .uri("/auth/session")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
+            .exchange()
+            .expectStatus()
+            .isUnauthorized()
+            .returnResult(String.class);
+
+    assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
   }
 
   @Test
@@ -126,7 +134,7 @@ class SessionControllerTest extends AbstractIntegrationTest {
         webTestClient
             .get()
             .uri("/auth/session")
-            .cookie("SESSION", sessionId)
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
             .isOk()
@@ -138,7 +146,7 @@ class SessionControllerTest extends AbstractIntegrationTest {
 
     assertThat(response).isNotNull();
     assertThat(response.tokenRefreshed()).isTrue();
-    assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(1800).getEpochSecond());
+    assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(900).getEpochSecond());
     assertThat(sessionFields)
         .containsEntry(SessionHashFields.REFRESH_TOKEN, "rotated-refresh-token")
         .containsEntry(
@@ -146,7 +154,7 @@ class SessionControllerTest extends AbstractIntegrationTest {
             String.valueOf(heartbeatInstant.plusSeconds(7200).getEpochSecond()))
         .containsEntry(
             SessionHashFields.EXPIRES_AT,
-            String.valueOf(heartbeatInstant.plusSeconds(1800).getEpochSecond()));
+            String.valueOf(heartbeatInstant.plusSeconds(900).getEpochSecond()));
   }
 
   @Test
@@ -165,13 +173,14 @@ class SessionControllerTest extends AbstractIntegrationTest {
         webTestClient
             .get()
             .uri("/auth/session")
-            .cookie("SESSION", sessionId)
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
             .isUnauthorized()
             .returnResult(String.class);
 
-    var clearedSessionCookie = exchangeResult.getResponseCookies().getFirst("SESSION");
+    var clearedSessionCookie =
+        exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME);
 
     assertThat(clearedSessionCookie).isNotNull();
     assertCleared(clearedSessionCookie);
@@ -186,7 +195,7 @@ class SessionControllerTest extends AbstractIntegrationTest {
     webTestClient
         .get()
         .uri("/auth/session")
-        .cookie("SESSION", sessionId)
+        .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
         .exchange()
         .expectStatus()
         .isUnauthorized();
@@ -204,7 +213,7 @@ class SessionControllerTest extends AbstractIntegrationTest {
         webTestClient
             .get()
             .uri("/auth/session")
-            .cookie("SESSION", sessionId)
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
             .isOk()
@@ -215,7 +224,55 @@ class SessionControllerTest extends AbstractIntegrationTest {
     assertThat(response).isNotNull();
     assertThat(response.authenticated()).isTrue();
     assertThat(response.tokenRefreshed()).isFalse();
-    assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(1800).getEpochSecond());
+    assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(900).getEpochSecond());
+  }
+
+  @Test
+  void getSessionStatus_ignoresFrameworkSessionCookieWhenPublicCookiePresent() {
+    var sessionId = createSession(BASE_INSTANT.plusSeconds(3600), "refresh-token-123");
+    var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
+    mutableClock.setInstant(heartbeatInstant);
+
+    var exchangeResult =
+        webTestClient
+            .get()
+            .uri("/auth/session")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
+            .cookie("SESSION", "framework-session-123")
+            .exchange()
+            .expectStatus()
+            .isOk()
+            .expectBody(SessionStatusResponse.class)
+            .returnResult();
+
+    var response = exchangeResult.getResponseBody();
+
+    assertThat(response).isNotNull();
+    assertThat(response.authenticated()).isTrue();
+    assertThat(response.userId()).isEqualTo("user-123");
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
+        .containsEntry(SessionHashFields.USER_ID, "user-123");
+  }
+
+  @Test
+  void getSessionStatus_clearsPublicCookieAndDoesNotFallbackToFrameworkSessionCookie() {
+    var sessionId = createSession(BASE_INSTANT.plusSeconds(3600), "refresh-token-123");
+    mutableClock.setInstant(BASE_INSTANT.plusSeconds(300));
+
+    var exchangeResult =
+        webTestClient
+            .get()
+            .uri("/auth/session")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session")
+            .cookie("SESSION", sessionId)
+            .exchange()
+            .expectStatus()
+            .isUnauthorized()
+            .returnResult(String.class);
+
+    assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
+        .containsEntry(SessionHashFields.USER_ID, "user-123");
   }
 
   @Test
@@ -227,12 +284,30 @@ class SessionControllerTest extends AbstractIntegrationTest {
     webTestClient
         .get()
         .uri("/auth/session")
-        .cookie("SESSION", sessionId)
+        .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
         .exchange()
         .expectStatus()
         .isEqualTo(502);
 
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isNotEmpty();
+  }
+
+  @Test
+  void getSessionStatus_clearsCookieWhenSessionHashMissing() {
+    var exchangeResult =
+        webTestClient
+            .get()
+            .uri("/auth/session")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session")
+            .exchange()
+            .expectStatus()
+            .isUnauthorized()
+            .returnResult(String.class);
+
+    assertThat(exchangeResult.getResponseCookies().keySet())
+        .containsExactly(PUBLIC_SESSION_COOKIE_NAME)
+        .doesNotContain("SESSION");
+    assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
   }
 
   private String createSession(Instant tokenExpiresAt, String refreshToken) {
@@ -284,10 +359,14 @@ class SessionControllerTest extends AbstractIntegrationTest {
   }
 
   private void assertCleared(ResponseCookie sessionCookie) {
+    assertThat(sessionCookie).isNotNull();
     assertThat(sessionCookie.getValue()).isEmpty();
+    assertThat(sessionCookie.getDomain()).isNull();
     assertThat(sessionCookie.getMaxAge()).isZero();
     assertThat(sessionCookie.getPath()).isEqualTo("/");
     assertThat(sessionCookie.isHttpOnly()).isTrue();
+    assertThat(sessionCookie.isSecure()).isTrue();
+    assertThat(sessionCookie.getSameSite()).isEqualTo("Strict");
   }
 
   @TestConfiguration(proxyBeanMethods = false)

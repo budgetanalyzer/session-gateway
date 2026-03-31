@@ -1,30 +1,22 @@
 package org.budgetanalyzer.sessiongateway.session;
 
-import java.util.Locale;
-
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+
+import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 
 /** Manages session cookies on HTTP exchanges. */
 @Component
 public class SessionCookieHelper {
 
+  private final SessionProperties.CookieProperties cookieProperties;
   private final String cookieName;
-  private final String domainOverride;
-  private final boolean secure;
-  private final String sameSite;
 
-  public SessionCookieHelper(
-      @Value("${session.cookie.name:SESSION}") String cookieName,
-      @Value("${session.cookie.domain-override:budgetanalyzer.localhost}") String domainOverride,
-      @Value("${session.cookie.secure:true}") boolean secure,
-      @Value("${session.cookie.same-site:Strict}") String sameSite) {
-    this.cookieName = cookieName;
-    this.domainOverride = domainOverride;
-    this.secure = secure;
-    this.sameSite = canonicalizeSameSite(sameSite);
+  /** Creates a helper that reads cookie settings from {@link SessionProperties}. */
+  public SessionCookieHelper(SessionProperties sessionProperties) {
+    this.cookieProperties = sessionProperties.cookie();
+    this.cookieName = cookieProperties.name();
   }
 
   /**
@@ -34,15 +26,7 @@ public class SessionCookieHelper {
    * @param sessionId the session ID to store in the cookie
    */
   public void setSessionCookie(ServerWebExchange exchange, String sessionId) {
-    var cookie =
-        ResponseCookie.from(cookieName, sessionId)
-            .httpOnly(true)
-            .secure(secure)
-            .sameSite(sameSite)
-            .path("/")
-            .domain(domainOverride)
-            .build();
-    exchange.getResponse().addCookie(cookie);
+    exchange.getResponse().addCookie(buildCookie(sessionId).build());
   }
 
   /**
@@ -51,16 +35,7 @@ public class SessionCookieHelper {
    * @param exchange the server web exchange
    */
   public void clearSessionCookie(ServerWebExchange exchange) {
-    var cookie =
-        ResponseCookie.from(cookieName, "")
-            .httpOnly(true)
-            .secure(secure)
-            .sameSite(sameSite)
-            .path("/")
-            .domain(domainOverride)
-            .maxAge(0)
-            .build();
-    exchange.getResponse().addCookie(cookie);
+    exchange.getResponse().addCookie(buildCookie("").maxAge(0).build());
   }
 
   /**
@@ -74,18 +49,18 @@ public class SessionCookieHelper {
     return cookie != null ? cookie.getValue() : null;
   }
 
-  private String canonicalizeSameSite(String sameSite) {
-    var normalizedSameSite = sameSite == null ? "" : sameSite.trim().toLowerCase(Locale.ROOT);
+  private ResponseCookie.ResponseCookieBuilder buildCookie(String value) {
+    var responseCookieBuilder =
+        ResponseCookie.from(cookieName, value)
+            .httpOnly(true)
+            .secure(cookieProperties.secure())
+            .sameSite(cookieProperties.sameSite())
+            .path("/");
 
-    return switch (normalizedSameSite) {
-      case "strict" -> "Strict";
-      case "lax" -> "Lax";
-      case "none" -> "None";
-      default ->
-          throw new IllegalArgumentException(
-              "Unsupported session.cookie.same-site value '"
-                  + sameSite
-                  + "'. Expected Strict, Lax, or None.");
-    };
+    if (cookieProperties.hasDomainOverride()) {
+      responseCookieBuilder.domain(cookieProperties.domainOverride());
+    }
+
+    return responseCookieBuilder;
   }
 }

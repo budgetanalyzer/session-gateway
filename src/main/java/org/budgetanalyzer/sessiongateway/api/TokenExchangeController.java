@@ -27,6 +27,7 @@ import reactor.core.publisher.Mono;
 import org.budgetanalyzer.service.exception.ServiceUnavailableException;
 import org.budgetanalyzer.sessiongateway.api.request.TokenExchangeRequest;
 import org.budgetanalyzer.sessiongateway.api.response.TokenExchangeResponse;
+import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
@@ -55,18 +56,18 @@ public class TokenExchangeController {
    * @param sessionWriter writes unified Redis session hashes
    * @param issuerUri the IDP issuer URI for userinfo endpoint
    * @param clock the clock used for token expiry defaults
-   * @param ttlSeconds the session TTL in seconds
+   * @param sessionProperties validated session configuration
    */
   public TokenExchangeController(
       PermissionServiceClient permissionServiceClient,
       SessionWriter sessionWriter,
       @Value("${spring.security.oauth2.client.provider.idp.issuer-uri}") String issuerUri,
       Clock clock,
-      @Value("${session.ttl-seconds:1800}") long ttlSeconds) {
+      SessionProperties sessionProperties) {
     this.permissionServiceClient = permissionServiceClient;
     this.sessionWriter = sessionWriter;
     this.clock = clock;
-    this.ttlSeconds = ttlSeconds;
+    this.ttlSeconds = sessionProperties.ttlSeconds();
 
     var normalizedIssuer = issuerUri.endsWith("/") ? issuerUri : issuerUri + "/";
     this.userinfoWebClient = WebClient.builder().baseUrl(normalizedIssuer + "userinfo").build();

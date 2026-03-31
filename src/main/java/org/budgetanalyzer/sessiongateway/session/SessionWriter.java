@@ -9,7 +9,6 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
@@ -17,6 +16,7 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
+import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 
 /** Writes and manages session data in Redis as a single hash per session. */
 @Component
@@ -45,14 +45,11 @@ public class SessionWriter {
   private final long ttlSeconds;
 
   public SessionWriter(
-      ReactiveStringRedisTemplate redisTemplate,
-      Clock clock,
-      @Value("${session.key-prefix:session:}") String keyPrefix,
-      @Value("${session.ttl-seconds:1800}") long ttlSeconds) {
+      ReactiveStringRedisTemplate redisTemplate, Clock clock, SessionProperties sessionProperties) {
     this.redisTemplate = redisTemplate;
     this.clock = clock;
-    this.keyPrefix = keyPrefix;
-    this.ttlSeconds = ttlSeconds;
+    this.keyPrefix = sessionProperties.keyPrefix();
+    this.ttlSeconds = sessionProperties.ttlSeconds();
   }
 
   /**

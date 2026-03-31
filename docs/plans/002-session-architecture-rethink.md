@@ -6,7 +6,7 @@ Session Gateway currently uses Spring Cloud Gateway + Spring Session with a dual
 
 1. **TTL drift** — Spring Session (sliding) and ext_authz hash (fixed) diverge
 2. **Dead token refresh** — `TokenRefreshGatewayFilterFactory` is wired to no route
-3. **Hard logout at 30 min** — nothing touches Session Gateway after login, so nothing resets any TTL
+3. **Hard logout at 15 min** — nothing touches Session Gateway after login, so nothing resets any TTL
 4. **Session outlives IDP revocation** — no mechanism to check if Auth0 revoked the user
 5. **Root cause: two Redis keys for one logical session**
 
@@ -91,29 +91,28 @@ Record holding deserialized session data (userId, idpSub, email, displayName, pi
 - `updateSessionExpiry(sessionId, ttlSeconds)` — updates `expires_at` field + Redis key TTL (for heartbeat)
 - `updateTokenAndExpiry(sessionId, refreshToken, tokenExpiresAt, ttlSeconds)` — updates refresh token + expiry fields + TTL (for successful refresh)
 - `deleteSession(sessionId)` — deletes the key
-- Configurable via `session.key-prefix` (default `session:`) and `session.ttl-seconds` (default `1800`)
+- Configurable via `session.key-prefix` (default `session:`) and `session.ttl-seconds` (default `900`)
 
 **New file: `src/main/java/.../session/SessionReader.java`**
 - `readSession(sessionId)` — `HGETALL`, returns `Mono<SessionData>`, checks `expires_at`
 - Returns `Mono.empty()` if not found or expired
 
 **New file: `src/main/java/.../session/SessionCookieHelper.java`**
-- `setSessionCookie(exchange, sessionId)` — writes `Set-Cookie: SESSION={id}; HttpOnly; Secure; SameSite=Strict; Path=/; Domain={configured domain}`
+- `setSessionCookie(exchange, sessionId)` — writes `Set-Cookie: BA_SESSION={id}; HttpOnly; Secure; SameSite=Strict; Path=/` and only adds `Domain={configured domain}` when an override is configured
 - `clearSessionCookie(exchange)` — writes `Set-Cookie` with `Max-Age=0`
 - `readSessionId(exchange)` — extracts session ID from `Cookie` header
-- Domain from `session.cookie.domain-override` config (preserving Envoy workaround)
+- Host-only cookies by default; `session.cookie.domain-override` is an opt-in escape hatch
 
 ### 1g. Add new config properties to `application.yml` ✅
 
 ```yaml
 session:
   key-prefix: ${SESSION_KEY_PREFIX:session:}
-  ttl-seconds: ${SESSION_TTL_SECONDS:1800}
+  ttl-seconds: ${SESSION_TTL_SECONDS:900}
   cookie:
-    domain-override: budgetanalyzer.localhost
-    name: SESSION
-    secure: true
-    same-site: Strict
+    name: ${SESSION_COOKIE_NAME:BA_SESSION}
+    secure: ${SESSION_COOKIE_SECURE:true}
+    same-site: ${SESSION_COOKIE_SAME_SITE:Strict}
 ```
 
 ### 1h. ~~Tests for Phase 1~~ → Moved to 2g (build is broken until Phase 2 rewrites consumers)
@@ -177,7 +176,7 @@ scope:
 ### 2e. Custom `ServerSecurityContextRepository` ✅
 
 **New file: `src/main/java/.../security/RedisSessionSecurityContextRepository.java`**
-- `load(exchange)` — reads SESSION cookie via `sessionCookieHelper`, reads hash via `sessionReader`, creates a simple `Authentication` token from session data
+- `load(exchange)` — reads the public session cookie via `sessionCookieHelper`, reads the hash via `sessionReader`, creates a simple `Authentication` token from session data
 - `save(exchange, context)` — no-op (session hash is written by success handler)
 - This bridges Spring Security's expectations with our Redis-only session
 
@@ -534,16 +533,16 @@ kubectl exec -n infrastructure deployment/redis -- redis-cli --user "$REDIS_OPS_
 # Test login flow
 # 1. Navigate to https://app.budgetanalyzer.localhost/login
 # 2. Complete Auth0 login
-# 3. Verify SESSION cookie in browser
+# 3. Verify BA_SESSION cookie in browser
 # 4. Verify Redis: KEYS "session:*" shows one key
 # 5. Verify Redis: HGETALL "session:{id}" shows all fields including refresh_token
 
 # Test heartbeat
-# curl -b "SESSION={id}" https://app.budgetanalyzer.localhost/auth/session
+# curl -b "BA_SESSION={id}" https://app.budgetanalyzer.localhost/auth/session
 # -> 200 with session metadata
 
 # Test API (ext_authz validation)
-# curl -b "SESSION={id}" https://app.budgetanalyzer.localhost/api/transactions
+# curl -b "BA_SESSION={id}" https://app.budgetanalyzer.localhost/api/transactions
 # -> should succeed (ext_authz reads session:* prefix)
 
 # Test logout

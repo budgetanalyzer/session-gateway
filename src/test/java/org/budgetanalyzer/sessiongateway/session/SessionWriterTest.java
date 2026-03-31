@@ -26,7 +26,7 @@ import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 @TestPropertySource(
     properties = {
       "session.key-prefix=session:test:writer:",
-      "session.ttl-seconds=1800",
+      "session.ttl-seconds=900",
     })
 class SessionWriterTest extends AbstractIntegrationTest {
 
@@ -82,11 +82,11 @@ class SessionWriterTest extends AbstractIntegrationTest {
         .containsEntry(SessionHashFields.CREATED_AT, String.valueOf(BASE_INSTANT.getEpochSecond()))
         .containsEntry(
             SessionHashFields.EXPIRES_AT,
-            String.valueOf(BASE_INSTANT.plusSeconds(1800).getEpochSecond()));
+            String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond()));
 
     assertThat(sessionTtl).isNotNull();
     assertThat(sessionTtl).isPositive();
-    assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(1800));
+    assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
 
     assertThat(sessionData).isNotNull();
     assertThat(sessionData.userId()).isEqualTo("user-123");
@@ -99,7 +99,7 @@ class SessionWriterTest extends AbstractIntegrationTest {
     assertThat(sessionData.refreshToken()).isEqualTo("refresh-token-123");
     assertThat(sessionData.tokenExpiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
     assertThat(sessionData.createdAt()).isEqualTo(BASE_INSTANT);
-    assertThat(sessionData.expiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(1800));
+    assertThat(sessionData.expiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
   }
 
   @Test

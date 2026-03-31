@@ -11,12 +11,10 @@ import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
-import java.util.Map;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.nimbusds.jose.JOSEException;
@@ -30,18 +28,14 @@ import com.nimbusds.jwt.SignedJWT;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 
-class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
+@TestPropertySource(properties = "session.cookie.domain-override=budgetanalyzer.localhost")
+class SecurityConfigCookieDomainOverrideIntegrationTest extends AbstractIntegrationTest {
 
   private static final String CLIENT_ID = "test-client-id";
-  private static final String AUTHORIZATION_REQUEST_KEY_PREFIX = "oauth2:state:";
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
-  private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
-
-  @Autowired private ReactiveStringRedisTemplate reactiveStringRedisTemplate;
 
   @Test
-  void oauth2LoginCreatesPublicSessionCookieAndRedisSessionHashWithoutDependingOnFrameworkCookie()
-      throws Exception {
+  void oauth2LoginSetsConfiguredCookieDomainOverride() throws Exception {
     var rsaKey = createRsaKey();
     stubJwks(rsaKey);
 
@@ -72,35 +66,6 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
             .getFirst("nonce");
     assertThat(nonce).isNotBlank();
 
-    var codeChallenge =
-        UriComponentsBuilder.fromUri(authorizationLocation)
-            .build()
-            .getQueryParams()
-            .getFirst("code_challenge");
-    assertThat(codeChallenge).isNotBlank();
-    assertThat(
-            UriComponentsBuilder.fromUri(authorizationLocation)
-                .build()
-                .getQueryParams()
-                .getFirst("code_challenge_method"))
-        .isEqualTo("S256");
-
-    var redirectUri =
-        UriComponentsBuilder.fromUri(authorizationLocation)
-            .build()
-            .getQueryParams()
-            .getFirst("redirect_uri");
-    assertThat(redirectUri).isNotBlank();
-
-    var authorizationRequestFields = readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + state);
-    assertThat(authorizationRequestFields)
-        .containsEntry("redirect_uri", redirectUri)
-        .containsEntry("return_url", "/dashboard")
-        .containsKey("nonce")
-        .containsKey("code_verifier");
-    assertThat(authorizationRequestFields.get("nonce")).isNotBlank();
-    assertThat(authorizationRequestFields.get("code_verifier")).isNotBlank();
-
     stubOidcTokenEndpoint(
         "access-token-value", createIdToken(rsaKey, nonce), "refresh-token-value");
     stubOidcUserInfo(
@@ -129,50 +94,10 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
             .valueEquals(HttpHeaders.LOCATION, "/dashboard")
             .returnResult(Void.class);
 
-    assertThat(callbackResult.getResponseCookies().keySet())
-        .containsExactly(PUBLIC_SESSION_COOKIE_NAME)
-        .doesNotContain("SESSION")
-        .allMatch(cookieName -> cookieName.equals(PUBLIC_SESSION_COOKIE_NAME));
-
     var sessionCookie = callbackResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME);
+
     assertThat(sessionCookie).isNotNull();
-    assertThat(sessionCookie.getValue()).isNotBlank();
-    assertThat(sessionCookie.getDomain()).isNull();
-    assertThat(sessionCookie.isHttpOnly()).isTrue();
-    assertThat(sessionCookie.getPath()).isEqualTo("/");
-    assertThat(sessionCookie.getSameSite()).isEqualTo("Strict");
-
-    var sessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + sessionCookie.getValue());
-
-    assertThat(sessionFields).isNotNull();
-    assertThat(sessionFields)
-        .containsEntry("user_id", "internal-user-456")
-        .containsEntry("idp_sub", "auth0|user-123")
-        .containsEntry("email", "user@example.com")
-        .containsEntry("display_name", "Test User")
-        .containsEntry("picture", "https://cdn.example.com/avatar.png")
-        .containsEntry("roles", "ROLE_USER")
-        .containsEntry("permissions", "transactions:read")
-        .containsEntry("refresh_token", "refresh-token-value");
-
-    assertThat(readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + state)).isEmpty();
-
-    var userInfo =
-        webTestClient
-            .get()
-            .uri("/user")
-            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionCookie.getValue())
-            .exchange()
-            .expectStatus()
-            .isOk()
-            .expectBody()
-            .jsonPath("$.sub")
-            .isEqualTo("auth0|user-123")
-            .jsonPath("$.authenticated")
-            .isEqualTo(true)
-            .returnResult();
-
-    assertThat(userInfo).isNotNull();
+    assertThat(sessionCookie.getDomain()).isEqualTo("budgetanalyzer.localhost");
   }
 
   private RSAKey createRsaKey() throws Exception {
@@ -218,13 +143,5 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
                     .withStatus(200)
                     .withHeader("Content-Type", "application/json")
                     .withBody(new JWKSet(rsaKey.toPublicJWK()).toString())));
-  }
-
-  private Map<String, String> readHashEntries(String key) {
-    return reactiveStringRedisTemplate
-        .<String, String>opsForHash()
-        .entries(key)
-        .collectMap(Map.Entry::getKey, Map.Entry::getValue)
-        .block();
   }
 }

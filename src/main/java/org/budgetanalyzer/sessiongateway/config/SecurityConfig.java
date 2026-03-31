@@ -5,7 +5,6 @@ import java.time.Clock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -53,7 +52,7 @@ public class SecurityConfig {
   private final SessionWriter sessionWriter;
   private final SessionCookieHelper sessionCookieHelper;
   private final Clock clock;
-  private final long sessionTtlSeconds;
+  private final SessionProperties sessionProperties;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
@@ -64,7 +63,7 @@ public class SecurityConfig {
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
       Clock clock,
-      @Value("${session.ttl-seconds:1800}") long sessionTtlSeconds) {
+      SessionProperties sessionProperties) {
     this.authorizationRequestResolver = authorizationRequestResolver;
     this.authorizationRequestRepository = authorizationRequestRepository;
     this.authorizedClientRepository = authorizedClientRepository;
@@ -73,7 +72,7 @@ public class SecurityConfig {
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
     this.clock = clock;
-    this.sessionTtlSeconds = sessionTtlSeconds;
+    this.sessionProperties = sessionProperties;
   }
 
   @Bean
@@ -205,7 +204,7 @@ public class SecurityConfig {
       return expiresAt;
     }
 
-    return clock.instant().plusSeconds(sessionTtlSeconds);
+    return clock.instant().plusSeconds(sessionProperties.ttlSeconds());
   }
 
   private String resolveRedirectUrl(ServerWebExchange exchange) {

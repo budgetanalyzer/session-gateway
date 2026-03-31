@@ -5,7 +5,6 @@ import java.time.Duration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,6 +21,7 @@ import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
 import org.budgetanalyzer.sessiongateway.api.response.SessionStatusResponse;
+import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 import org.budgetanalyzer.sessiongateway.service.IdpTokenRefreshClient;
 import org.budgetanalyzer.sessiongateway.service.IdpTokenRefreshClient.IdpGrantRevokedException;
 import org.budgetanalyzer.sessiongateway.service.IdpTokenRefreshClient.IdpTokenRefreshException;
@@ -58,8 +58,7 @@ public class SessionController {
    * @param sessionCookieHelper manages session cookies
    * @param idpTokenRefreshClient refreshes IDP tokens
    * @param clock the clock for computing expiry instants
-   * @param sessionTtlSeconds session TTL in seconds
-   * @param refreshThresholdSeconds seconds before token expiry to trigger refresh
+   * @param sessionProperties validated session configuration
    */
   public SessionController(
       SessionReader sessionReader,
@@ -67,15 +66,14 @@ public class SessionController {
       SessionCookieHelper sessionCookieHelper,
       IdpTokenRefreshClient idpTokenRefreshClient,
       Clock clock,
-      @Value("${session.ttl-seconds:1800}") long sessionTtlSeconds,
-      @Value("${session.refresh-threshold-seconds:600}") long refreshThresholdSeconds) {
+      SessionProperties sessionProperties) {
     this.sessionReader = sessionReader;
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
     this.idpTokenRefreshClient = idpTokenRefreshClient;
     this.clock = clock;
-    this.sessionTtlSeconds = sessionTtlSeconds;
-    this.refreshThresholdSeconds = refreshThresholdSeconds;
+    this.sessionTtlSeconds = sessionProperties.ttlSeconds();
+    this.refreshThresholdSeconds = sessionProperties.refreshThresholdSeconds();
   }
 
   /**
@@ -118,7 +116,7 @@ public class SessionController {
 
     return sessionReader
         .readSession(sessionId)
-        .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED)))
+        .switchIfEmpty(unauthorizedAndClearCookie(exchange))
         .flatMap(sessionData -> processHeartbeat(exchange, sessionId, sessionData));
   }
 
@@ -142,7 +140,7 @@ public class SessionController {
       return refreshAndExtend(exchange, sessionId, sessionData);
     }
 
-    return extendSession(sessionId, sessionData);
+    return extendSession(exchange, sessionId, sessionData);
   }
 
   private Mono<SessionStatusResponse> refreshAndExtend(
@@ -169,7 +167,7 @@ public class SessionController {
                           log.warn(
                               "Session {} disappeared during token refresh",
                               SafeLogger.truncateId(sessionId));
-                          return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+                          return unauthorizedAndClearCookie(exchange);
                         }
                         return buildResponse(sessionData, true);
                       });
@@ -201,7 +199,8 @@ public class SessionController {
             });
   }
 
-  private Mono<SessionStatusResponse> extendSession(String sessionId, SessionData sessionData) {
+  private Mono<SessionStatusResponse> extendSession(
+      ServerWebExchange exchange, String sessionId, SessionData sessionData) {
     return sessionWriter
         .updateSessionExpiry(sessionId, sessionTtlSeconds)
         .flatMap(
@@ -209,7 +208,7 @@ public class SessionController {
               if (!updated) {
                 log.warn(
                     "Session {} disappeared during heartbeat", SafeLogger.truncateId(sessionId));
-                return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+                return unauthorizedAndClearCookie(exchange);
               }
               return buildResponse(sessionData, false);
             });
@@ -226,5 +225,13 @@ public class SessionController {
             sessionData.roles(),
             expiresAt.getEpochSecond(),
             tokenRefreshed));
+  }
+
+  private <T> Mono<T> unauthorizedAndClearCookie(ServerWebExchange exchange) {
+    return Mono.defer(
+        () -> {
+          sessionCookieHelper.clearSessionCookie(exchange);
+          return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        });
   }
 }
