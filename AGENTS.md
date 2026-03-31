@@ -260,7 +260,7 @@ After successful authentication, the redirect priority is:
   - If refresh succeeds: updates session hash with new tokens and resets TTL
   - If IDP grant revoked: deletes session, clears cookie, returns 401
   - If session is healthy: resets `expires_at` + Redis key TTL (sliding window)
-  - Response: `{ "authenticated": true, "userId": "...", "roles": [...], "expiresAt": <epoch>, "expiresInSeconds": <seconds>, "tokenRefreshed": false }`
+  - Response: `{ "authenticated": true, "userId": "...", "roles": [...], "expiresAt": <epoch>, "tokenRefreshed": false }`
   - 401 if no valid session or IDP grant revoked
   - 502 if IDP token refresh fails due to transient error
 

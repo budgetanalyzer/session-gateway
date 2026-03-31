@@ -204,7 +204,6 @@ public class SessionController {
             sessionData.userId(),
             sessionData.roles(),
             expiresAt.getEpochSecond(),
-            sessionTtlSeconds,
             tokenRefreshed));
   }
 }

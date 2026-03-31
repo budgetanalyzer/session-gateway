@@ -78,7 +78,6 @@ class SessionControllerTest extends AbstractIntegrationTest {
     assertThat(response.userId()).isEqualTo("user-123");
     assertThat(response.roles()).containsExactly("ROLE_USER");
     assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(1800).getEpochSecond());
-    assertThat(response.expiresInSeconds()).isEqualTo(1800);
     assertThat(response.tokenRefreshed()).isFalse();
     assertThat(sessionFields)
         .containsEntry(
@@ -140,7 +139,6 @@ class SessionControllerTest extends AbstractIntegrationTest {
     assertThat(response).isNotNull();
     assertThat(response.tokenRefreshed()).isTrue();
     assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(1800).getEpochSecond());
-    assertThat(response.expiresInSeconds()).isEqualTo(1800);
     assertThat(sessionFields)
         .containsEntry(SessionHashFields.REFRESH_TOKEN, "rotated-refresh-token")
         .containsEntry(

@@ -279,7 +279,6 @@ Implementation note:
   "userId": "user123",
   "roles": ["ADMIN", "USER"],
   "expiresAt": 1711720800,
-  "expiresInSeconds": 1740,
   "tokenRefreshed": false
 }
 ```
