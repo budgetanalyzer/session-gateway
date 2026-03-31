@@ -113,7 +113,7 @@ session:
     domain-override: budgetanalyzer.localhost
     name: SESSION
     secure: true
-    same-site: strict
+    same-site: Strict
 ```
 
 ### 1h. ~~Tests for Phase 1~~ → Moved to 2g (build is broken until Phase 2 rewrites consumers)

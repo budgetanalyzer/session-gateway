@@ -132,6 +132,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(sessionCookie.getValue()).isNotBlank();
     assertThat(sessionCookie.isHttpOnly()).isTrue();
     assertThat(sessionCookie.getPath()).isEqualTo("/");
+    assertThat(sessionCookie.getSameSite()).isEqualTo("Strict");
 
     var sessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + sessionCookie.getValue());
 

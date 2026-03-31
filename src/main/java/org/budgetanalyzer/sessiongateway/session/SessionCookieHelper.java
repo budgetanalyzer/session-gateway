@@ -1,5 +1,7 @@
 package org.budgetanalyzer.sessiongateway.session;
 
+import java.util.Locale;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
@@ -18,11 +20,11 @@ public class SessionCookieHelper {
       @Value("${session.cookie.name:SESSION}") String cookieName,
       @Value("${session.cookie.domain-override:budgetanalyzer.localhost}") String domainOverride,
       @Value("${session.cookie.secure:true}") boolean secure,
-      @Value("${session.cookie.same-site:strict}") String sameSite) {
+      @Value("${session.cookie.same-site:Strict}") String sameSite) {
     this.cookieName = cookieName;
     this.domainOverride = domainOverride;
     this.secure = secure;
-    this.sameSite = sameSite;
+    this.sameSite = canonicalizeSameSite(sameSite);
   }
 
   /**
@@ -70,5 +72,20 @@ public class SessionCookieHelper {
   public String readSessionId(ServerWebExchange exchange) {
     var cookie = exchange.getRequest().getCookies().getFirst(cookieName);
     return cookie != null ? cookie.getValue() : null;
+  }
+
+  private String canonicalizeSameSite(String sameSite) {
+    var normalizedSameSite = sameSite == null ? "" : sameSite.trim().toLowerCase(Locale.ROOT);
+
+    return switch (normalizedSameSite) {
+      case "strict" -> "Strict";
+      case "lax" -> "Lax";
+      case "none" -> "None";
+      default ->
+          throw new IllegalArgumentException(
+              "Unsupported session.cookie.same-site value '"
+                  + sameSite
+                  + "'. Expected Strict, Lax, or None.");
+    };
   }
 }

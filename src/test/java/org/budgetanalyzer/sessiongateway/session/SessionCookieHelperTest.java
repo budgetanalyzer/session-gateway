@@ -1,6 +1,7 @@
 package org.budgetanalyzer.sessiongateway.session;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpCookie;
@@ -27,7 +28,7 @@ class SessionCookieHelperTest {
     assertThat(responseCookie.getPath()).isEqualTo("/");
     assertThat(responseCookie.isHttpOnly()).isTrue();
     assertThat(responseCookie.isSecure()).isTrue();
-    assertThat(responseCookie.getSameSite()).isEqualTo("strict");
+    assertThat(responseCookie.getSameSite()).isEqualTo("Strict");
   }
 
   @Test
@@ -45,8 +46,17 @@ class SessionCookieHelperTest {
     assertThat(responseCookie.getPath()).isEqualTo("/");
     assertThat(responseCookie.isHttpOnly()).isTrue();
     assertThat(responseCookie.isSecure()).isTrue();
-    assertThat(responseCookie.getSameSite()).isEqualTo("strict");
+    assertThat(responseCookie.getSameSite()).isEqualTo("Strict");
     assertThat(responseCookie.getMaxAge()).isZero();
+  }
+
+  @Test
+  void constructorRejectsUnsupportedSameSiteValue() {
+    assertThatThrownBy(
+            () -> new SessionCookieHelper("SESSION", "budgetanalyzer.localhost", true, "bogus"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("session.cookie.same-site")
+        .hasMessageContaining("Strict, Lax, or None");
   }
 
   @Test

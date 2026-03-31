@@ -310,7 +310,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - `session.cookie.name` (`SESSION_COOKIE_NAME`): Cookie name (default: `SESSION`)
 - `session.cookie.domain-override`: Cookie domain (default: `budgetanalyzer.localhost`)
 - `session.cookie.secure`: HTTPS-only cookies (default: `true`)
-- `session.cookie.same-site`: SameSite attribute (default: `strict`)
+- `session.cookie.same-site`: SameSite attribute (default: `Strict`; accepts `Strict`, `Lax`, or `None`, case-insensitively)
 
 **Permission Service**:
 - `permission-service.base-url` (`PERMISSION_SERVICE_URL`): Base URL for the permission-service (default: `http://permission-service:8086`)

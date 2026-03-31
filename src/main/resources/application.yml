@@ -81,7 +81,7 @@ session:
     domain-override: budgetanalyzer.localhost
     name: SESSION
     secure: true
-    same-site: strict
+    same-site: Strict
 
 # IDP configuration
 idp:
