@@ -139,6 +139,14 @@ class SessionWriterTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void updateSessionExpiryReturnsFalseWhenSessionDoesNotExist() {
+    var updated = sessionWriter.updateSessionExpiry("nonexistent-session", 600).block();
+
+    assertThat(updated).isFalse();
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + "nonexistent-session")).isEmpty();
+  }
+
+  @Test
   void updateTokenAndExpiryUpdatesTokenFieldsAndSessionTtl() {
     var sessionId = createSession();
     var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
@@ -163,6 +171,17 @@ class SessionWriterTest extends AbstractIntegrationTest {
     assertThat(sessionTtl).isNotNull();
     assertThat(sessionTtl).isPositive();
     assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
+  }
+
+  @Test
+  void updateTokenAndExpiryReturnsFalseWhenSessionDoesNotExist() {
+    var updated =
+        sessionWriter
+            .updateTokenAndExpiry("nonexistent-session", "refresh-token", BASE_INSTANT, 600)
+            .block();
+
+    assertThat(updated).isFalse();
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + "nonexistent-session")).isEmpty();
   }
 
   private String createSession() {

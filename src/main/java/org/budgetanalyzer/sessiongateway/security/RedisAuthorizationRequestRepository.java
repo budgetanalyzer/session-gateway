@@ -6,6 +6,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.server.ServerAuthorizationRequestRepository;
@@ -53,7 +54,6 @@ public class RedisAuthorizationRequestRepository
       LoggerFactory.getLogger(RedisAuthorizationRequestRepository.class);
 
   private static final String KEY_PREFIX = "oauth2:state:";
-  private static final Duration TTL = Duration.ofMinutes(10);
   private static final String REGISTRATION_ID = "idp";
 
   private static final String FIELD_REDIRECT_URI = "redirect_uri";
@@ -63,12 +63,15 @@ public class RedisAuthorizationRequestRepository
 
   private final ReactiveStringRedisTemplate redisTemplate;
   private final ReactiveClientRegistrationRepository clientRegistrationRepository;
+  private final Duration ttl;
 
   public RedisAuthorizationRequestRepository(
       ReactiveStringRedisTemplate redisTemplate,
-      ReactiveClientRegistrationRepository clientRegistrationRepository) {
+      ReactiveClientRegistrationRepository clientRegistrationRepository,
+      @Value("${session.oauth2-state-ttl-seconds:900}") long oauth2StateTtlSeconds) {
     this.redisTemplate = redisTemplate;
     this.clientRegistrationRepository = clientRegistrationRepository;
+    this.ttl = Duration.ofSeconds(oauth2StateTtlSeconds);
   }
 
   /**
@@ -137,7 +140,7 @@ public class RedisAuthorizationRequestRepository
     return redisTemplate
         .<String, String>opsForHash()
         .putAll(key, fields)
-        .then(redisTemplate.expire(key, TTL))
+        .then(redisTemplate.expire(key, ttl))
         .then();
   }
 

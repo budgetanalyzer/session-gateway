@@ -44,7 +44,7 @@ class SessionGatewayApplicationTests extends AbstractIntegrationTest {
   }
 
   @Test
-  void logoutRequiresAuthentication() {
+  void logoutRedirectsToIdpLogoutWithoutAuthentication() {
     webTestClient
         .get()
         .uri("/logout")
@@ -52,7 +52,7 @@ class SessionGatewayApplicationTests extends AbstractIntegrationTest {
         .expectStatus()
         .is3xxRedirection()
         .expectHeader()
-        .valueMatches("Location", ".*/oauth2/authorization/idp.*");
+        .valueMatches("Location", ".*/v2/logout.*");
   }
 
   @Test

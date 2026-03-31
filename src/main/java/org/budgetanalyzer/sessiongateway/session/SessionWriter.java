@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import reactor.core.publisher.Mono;
@@ -22,6 +23,21 @@ import org.budgetanalyzer.core.logging.SafeLogger;
 public class SessionWriter {
 
   private static final Logger log = LoggerFactory.getLogger(SessionWriter.class);
+
+  /** Updates hash fields and TTL only if the key already exists. Returns 1 if updated, 0 if not. */
+  private static final RedisScript<Long> CONDITIONAL_UPDATE_SCRIPT =
+      RedisScript.of(
+          """
+          if redis.call('exists', KEYS[1]) == 1 then
+            for i = 1, #ARGV - 1, 2 do
+              redis.call('hset', KEYS[1], ARGV[i], ARGV[i + 1])
+            end
+            redis.call('expire', KEYS[1], tonumber(ARGV[#ARGV]))
+            return 1
+          end
+          return 0
+          """,
+          Long.class);
 
   private final ReactiveStringRedisTemplate redisTemplate;
   private final Clock clock;
@@ -98,46 +114,58 @@ public class SessionWriter {
   /**
    * Updates the session expiry for heartbeat-driven sliding window.
    *
-   * <p>Resets the {@code expires_at} hash field and the Redis key TTL.
+   * <p>Atomically checks that the session hash exists before writing. Returns false if the session
+   * was deleted or expired between the caller's read and this write.
    *
    * @param sessionId the session ID
    * @param ttlSeconds the new TTL in seconds
-   * @return true if the key TTL was set
+   * @return true if updated, false if the session no longer exists
    */
   public Mono<Boolean> updateSessionExpiry(String sessionId, long ttlSeconds) {
     var key = keyPrefix + sessionId;
     var expiresAt = String.valueOf(clock.instant().plusSeconds(ttlSeconds).getEpochSecond());
 
     return redisTemplate
-        .<String, String>opsForHash()
-        .put(key, SessionHashFields.EXPIRES_AT, expiresAt)
-        .then(redisTemplate.expire(key, Duration.ofSeconds(ttlSeconds)));
+        .execute(
+            CONDITIONAL_UPDATE_SCRIPT,
+            List.of(key),
+            List.of(SessionHashFields.EXPIRES_AT, expiresAt, String.valueOf(ttlSeconds)))
+        .single()
+        .map(result -> result == 1L);
   }
 
   /**
    * Updates the refresh token, token expiry, and session expiry after a successful IDP refresh.
    *
+   * <p>Atomically checks that the session hash exists before writing. Returns false if the session
+   * was deleted or expired between the caller's read and this write, preventing creation of partial
+   * session hashes that lack identity fields.
+   *
    * @param sessionId the session ID
    * @param refreshToken the new IDP refresh token
    * @param tokenExpiresAt when the new IDP access token expires
    * @param ttlSeconds the new session TTL in seconds
-   * @return true if the key TTL was set
+   * @return true if updated, false if the session no longer exists
    */
   public Mono<Boolean> updateTokenAndExpiry(
       String sessionId, String refreshToken, Instant tokenExpiresAt, long ttlSeconds) {
     var key = keyPrefix + sessionId;
     var expiresAt = String.valueOf(clock.instant().plusSeconds(ttlSeconds).getEpochSecond());
 
-    var fields =
-        Map.of(
-            SessionHashFields.REFRESH_TOKEN, refreshToken,
-            SessionHashFields.TOKEN_EXPIRES_AT, String.valueOf(tokenExpiresAt.getEpochSecond()),
-            SessionHashFields.EXPIRES_AT, expiresAt);
-
     return redisTemplate
-        .<String, String>opsForHash()
-        .putAll(key, fields)
-        .then(redisTemplate.expire(key, Duration.ofSeconds(ttlSeconds)));
+        .execute(
+            CONDITIONAL_UPDATE_SCRIPT,
+            List.of(key),
+            List.of(
+                SessionHashFields.REFRESH_TOKEN,
+                refreshToken,
+                SessionHashFields.TOKEN_EXPIRES_AT,
+                String.valueOf(tokenExpiresAt.getEpochSecond()),
+                SessionHashFields.EXPIRES_AT,
+                expiresAt,
+                String.valueOf(ttlSeconds)))
+        .single()
+        .map(result -> result == 1L);
   }
 
   /**

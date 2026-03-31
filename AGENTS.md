@@ -306,6 +306,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - `session.key-prefix` (`SESSION_KEY_PREFIX`): Redis key prefix for session hashes (default: `session:`)
 - `session.ttl-seconds` (`SESSION_TTL_SECONDS`): TTL for session keys in seconds (default: `1800`)
 - `session.refresh-threshold-seconds` (`SESSION_REFRESH_THRESHOLD_SECONDS`): Seconds before IDP token expiry to trigger refresh during heartbeat (default: `600`)
+- `session.oauth2-state-ttl-seconds` (`SESSION_OAUTH2_STATE_TTL_SECONDS`): TTL for OAuth2 authorization request state in Redis (default: `900` / 15 min). Must be long enough for MFA enrollment, SSO handoffs, or slow IDP interactions
 - `session.cookie.name` (`SESSION_COOKIE_NAME`): Cookie name (default: `SESSION`)
 - `session.cookie.domain-override`: Cookie domain (default: `budgetanalyzer.localhost`)
 - `session.cookie.secure`: HTTPS-only cookies (default: `true`)

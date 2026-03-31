@@ -163,7 +163,16 @@ public class SessionController {
               return sessionWriter
                   .updateTokenAndExpiry(
                       sessionId, newRefreshToken, refreshResult.tokenExpiresAt(), sessionTtlSeconds)
-                  .then(buildResponse(sessionData, true));
+                  .flatMap(
+                      updated -> {
+                        if (!updated) {
+                          log.warn(
+                              "Session {} disappeared during token refresh",
+                              SafeLogger.truncateId(sessionId));
+                          return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+                        }
+                        return buildResponse(sessionData, true);
+                      });
             })
         // Grant revocation is a deliberate IDP decision — destroy the session immediately.
         .onErrorResume(
@@ -195,7 +204,15 @@ public class SessionController {
   private Mono<SessionStatusResponse> extendSession(String sessionId, SessionData sessionData) {
     return sessionWriter
         .updateSessionExpiry(sessionId, sessionTtlSeconds)
-        .then(buildResponse(sessionData, false));
+        .flatMap(
+            updated -> {
+              if (!updated) {
+                log.warn(
+                    "Session {} disappeared during heartbeat", SafeLogger.truncateId(sessionId));
+                return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+              }
+              return buildResponse(sessionData, false);
+            });
   }
 
   private Mono<SessionStatusResponse> buildResponse(
