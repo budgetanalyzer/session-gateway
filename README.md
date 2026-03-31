@@ -70,6 +70,7 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 | `SESSION_KEY_PREFIX` | Redis key prefix for session hashes | `session:` |
 | `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `1800` |
 | `SESSION_REFRESH_THRESHOLD_SECONDS` | Seconds before IDP token expiry to trigger refresh during heartbeat | `600` |
+| `SESSION_OAUTH2_STATE_TTL_SECONDS` | TTL for OAuth2 authorization request state in Redis | `900` |
 
 ### Ports
 
@@ -137,8 +138,10 @@ curl http://localhost:8081/actuator/health
 
 ### Session Heartbeat and IDP Grant Validation
 - **Sliding window**: Frontend calls `GET /auth/session` periodically (~5 min) to extend session TTL
+- **Activity-gated**: Session Gateway extends unconditionally on every heartbeat call. The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
 - **Token refresh**: When IDP token is within 10 min of expiry, heartbeat refreshes it via Auth0's token endpoint
 - **Revocation detection**: If Auth0 rejects the refresh (user disabled, consent withdrawn), session is terminated and cookie cleared
+- **Transient IDP errors**: Returns 502 but preserves the session — frontend retries on the next heartbeat interval
 - **Safety margin**: 5-min heartbeat interval, 30-min session TTL = 6x margin before session expires from inactivity
 
 ### ext_authz Session Validation

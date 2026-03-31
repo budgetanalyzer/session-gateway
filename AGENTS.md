@@ -95,7 +95,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - **Behind Istio Ingress**: Browser auth and OAuth2 protocol endpoints reach Session Gateway through Istio ingress; bare `/login` is frontend-owned and served through NGINX
 - **Stateful Sessions**: Redis hashes (`session:{id}`) provide distributed session storage — identity, roles, permissions, refresh token, expiry — read by both Session Gateway and the ext_authz service
 - **Multi-Client Support**: Browser clients use OAuth2 login + cookies; native PKCE/M2M clients use `POST /auth/token/exchange`
-- **Sliding Sessions with IDP Grant Validation**: Frontend heartbeat (`GET /auth/session`) resets session TTL and refreshes IDP tokens near expiry — if the IDP revokes the grant, the session is terminated
+- **Sliding Sessions with IDP Grant Validation**: Frontend heartbeat (`GET /auth/session`) resets session TTL and refreshes IDP tokens near expiry — if the IDP revokes the grant, the session is terminated. Session Gateway extends unconditionally on every heartbeat call; the frontend is responsible for calling only when the user is active (idle users = no heartbeat = session expires naturally)
 
 ## Service Architecture
 
@@ -267,6 +267,13 @@ After successful authentication, the redirect priority is:
     - Rationale: a transient IDP outage should not destroy an established session. The frontend retries on the next heartbeat interval, and the session only expires if TTL naturally lapses while the IDP remains down
     - This contrasts with grant revocation (`invalid_grant`), which is a deliberate IDP decision — session is destroyed immediately with 401
   - 401 if no valid session, token expired with no refresh token, or IDP grant revoked
+
+**Heartbeat Responsibility Contract**:
+Session Gateway extends the session unconditionally on every `GET /auth/session` call — it does not track or evaluate user activity. The responsibility split is:
+- **Frontend owns the activity decision**: It tracks user activity (mouse movement, keyboard input, tab focus, etc.) and only calls the heartbeat while the user is active
+- **Session Gateway owns the extension**: Every heartbeat call resets `expires_at` and the Redis key TTL to a fresh `session.ttl-seconds` window
+- **Idle timeout is frontend-driven**: When the frontend detects the user is idle, it stops calling the heartbeat. The session TTL (default 30 min) lapses naturally and Redis expires the key — the user is logged out on their next interaction
+- **No server-side idle tracking**: Session Gateway has no concept of "idle." An open browser tab that keeps calling the heartbeat on a fixed timer without checking activity would keep the session alive indefinitely — this is a frontend bug, not a feature
 
 **Token Exchange Endpoint**:
 - `POST /auth/token/exchange` - Exchanges an IDP access token for an opaque session bearer token (unauthenticated)
@@ -575,7 +582,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 9. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production. OAuth2 callback path (`/login/oauth2/code/**`) is excluded from HTTP logging (defense-in-depth).
 10. **Session Key Prefix Alignment**: `session.key-prefix` must match the ext_authz service's expected prefix so it can find session hashes
 11. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required)
-12. **Heartbeat Interval**: Frontend should call `GET /auth/session` every ~5 min. With 30-min TTL and 10-min refresh threshold, this provides a 6x safety margin for session liveness and timely IDP grant revocation detection
+12. **Heartbeat Interval**: Frontend should call `GET /auth/session` every ~5 min **only while the user is active**. With 30-min TTL and 10-min refresh threshold, this provides a 6x safety margin for session liveness and timely IDP grant revocation detection. Session Gateway extends unconditionally — if the frontend calls on a fixed timer without checking activity, sessions never expire for open tabs
 13. **Token Exchange Sessions**: Sessions created via `POST /auth/token/exchange` have no refresh token — heartbeat extends TTL but cannot refresh IDP tokens. Native clients handle their own token lifecycle
 
 ## NOTES FOR AI AGENTS
