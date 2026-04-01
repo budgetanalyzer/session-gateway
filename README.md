@@ -25,6 +25,7 @@ Bare `/login` is a frontend route served through NGINX. It starts the real OAuth
 
 Browser login depends on Auth0 refresh tokens. The configured OAuth2 scope set includes
 `offline_access`, and the Auth0 application must allow refresh tokens with rotation enabled.
+Recommended Auth0 dashboard values are documented in [docs/auth0-settings.md](docs/auth0-settings.md).
 
 ## Architecture
 
@@ -57,7 +58,7 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 | `AUTH0_CLIENT_ID` | Auth0 application client ID | `placeholder-client-id` |
 | `AUTH0_CLIENT_SECRET` | Auth0 application client secret | `placeholder-client-secret` |
 | `AUTH0_ISSUER_URI` | Auth0 tenant issuer URI | `https://placeholder.auth0.com/` |
-| `IDP_AUDIENCE` | Auth0 API audience identifier | — |
+| `IDP_AUDIENCE` | Auth0 API audience identifier | `https://api.budgetanalyzer.org` |
 | `IDP_LOGOUT_RETURN_TO` | URL to redirect after Auth0 logout | `https://app.budgetanalyzer.localhost/peace` |
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8086` |
 | `SPRING_DATA_REDIS_HOST` | Redis host for session storage | `localhost` |
@@ -69,7 +70,7 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 | `INFRA_CA_CERT_PATH` | `file:` URI for the infrastructure CA certificate | — |
 | `SESSION_KEY_PREFIX` | Redis key prefix for session hashes | `session:` |
 | `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `900` |
-| `SESSION_REFRESH_THRESHOLD_SECONDS` | Seconds before IDP token expiry to trigger refresh during heartbeat | `600` |
+| `SESSION_REFRESH_THRESHOLD_SECONDS` | Seconds before IDP token expiry to trigger refresh during heartbeat | `300` |
 | `SESSION_OAUTH2_STATE_TTL_SECONDS` | TTL for OAuth2 authorization request state in Redis | `900` |
 | `SESSION_COOKIE_NAME` | Public browser session cookie contract shared with ext_authz; distinct from any internal framework `SESSION` cookie | `BA_SESSION` |
 | `SESSION_COOKIE_DOMAIN_OVERRIDE` | Optional parent-domain cookie override; unset means host-only cookies | — |
@@ -145,13 +146,13 @@ curl http://localhost:8081/actuator/health
 - Session hash deleted on logout, cookie cleared
 
 ### Session Heartbeat and IDP Grant Validation
-- **Sliding window**: Frontend calls `GET /auth/session` periodically (~3 min) to extend session TTL
+- **Sliding window**: Frontend calls `GET /auth/session` periodically (~2 min) to extend session TTL
 - **Activity-gated**: Session Gateway extends unconditionally on every heartbeat call. The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
-- **Token refresh**: When IDP token is within 10 min of expiry, heartbeat refreshes it via Auth0's token endpoint
+- **Token refresh**: When IDP token is within 5 min of expiry, heartbeat refreshes it via Auth0's token endpoint
 - **Revocation detection**: If Auth0 rejects the refresh (user disabled, consent withdrawn), session is terminated and cookie cleared
 - **Stale-cookie cleanup**: If the browser presents a cookie for a missing or expired Redis session, heartbeat returns 401 and clears the cookie
 - **Transient IDP errors**: Returns 502 but preserves the session — frontend retries on the next heartbeat interval
-- **Operational defaults**: 15-minute session TTL, 10-minute refresh threshold, 3-minute frontend heartbeat cadence
+- **Operational defaults**: 15-minute session TTL, 5-minute refresh threshold, 2-minute frontend heartbeat cadence
 
 ### ext_authz Session Validation
 - The ext_authz HTTP service reads session hashes (`session:{id}`) directly from Redis — the same hashes Session Gateway writes
@@ -180,6 +181,7 @@ to `/login?error=auth_failed&returnUrl=...` so the frontend can retry without lo
 deep link.
 
 Session contract and cookie behavior are documented in [docs/session-configuration.md](docs/session-configuration.md).
+Recommended Auth0 dashboard values are documented in [docs/auth0-settings.md](docs/auth0-settings.md).
 
 ## Development
 
@@ -203,5 +205,6 @@ Session contract and cookie behavior are documented in [docs/session-configurati
 
 ## References
 
+- [Recommended Auth0 Settings](docs/auth0-settings.md)
 - [Authentication Implementation Plan](../orchestration/docs/architecture/authentication-implementation-plan.md)
 - [Security Architecture](../orchestration/docs/architecture/security-architecture.md)

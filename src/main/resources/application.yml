@@ -63,7 +63,7 @@ spring:
 session:
   key-prefix: ${SESSION_KEY_PREFIX:session:}
   ttl-seconds: ${SESSION_TTL_SECONDS:900}
-  refresh-threshold-seconds: ${SESSION_REFRESH_THRESHOLD_SECONDS:600}
+  refresh-threshold-seconds: ${SESSION_REFRESH_THRESHOLD_SECONDS:300}
   oauth2-state-ttl-seconds: ${SESSION_OAUTH2_STATE_TTL_SECONDS:900}
   cookie:
     domain-override: ${SESSION_COOKIE_DOMAIN_OVERRIDE:}
