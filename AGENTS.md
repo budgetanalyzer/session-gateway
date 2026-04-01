@@ -247,6 +247,10 @@ After successful authentication, the redirect priority is:
 1. **Explicit returnUrl parameter**: If `?returnUrl=/path` was provided to `/oauth2/authorization/idp` (carried through OAuth2 round-trip via `RedisAuthorizationRequestRepository`)
 2. **Default**: Redirects to `/` if no returnUrl was provided
 
+If the OAuth2 callback fails after the flow started with `?returnUrl=...`, Session Gateway
+redirects to `/login?error=auth_failed&returnUrl=...` so the frontend can retry the flow without
+losing the original deep link.
+
 **Return URL Security**:
 - All redirect URLs validated by `RedirectUrlValidator` (src/main/java/.../security/RedirectUrlValidator.java:27)
 - Only same-origin URLs allowed (prevents open redirect attacks)

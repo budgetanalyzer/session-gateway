@@ -175,6 +175,10 @@ The `returnUrl` value is attached to the OAuth2 authorization request, stored in
 `oauth2:state:{state}` key, and recovered after the Auth0 callback. This avoids depending on
 WebSession state during the OAuth2 round-trip.
 
+If the OAuth2 callback fails after the flow started with a `returnUrl`, Session Gateway redirects
+to `/login?error=auth_failed&returnUrl=...` so the frontend can retry without losing the original
+deep link.
+
 Session contract and cookie behavior are documented in [docs/session-configuration.md](docs/session-configuration.md).
 
 ## Development
