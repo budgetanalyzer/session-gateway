@@ -69,7 +69,7 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 | `INFRA_CA_CERT_PATH` | `file:` URI for the infrastructure CA certificate | — |
 | `SESSION_KEY_PREFIX` | Redis key prefix for session hashes | `session:` |
 | `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `900` |
-| `SESSION_REFRESH_THRESHOLD_SECONDS` | Seconds before IDP token expiry to trigger refresh during heartbeat | `600` |
+| `SESSION_REFRESH_THRESHOLD_SECONDS` | Seconds before IDP token expiry to trigger refresh during heartbeat | `300` |
 | `SESSION_OAUTH2_STATE_TTL_SECONDS` | TTL for OAuth2 authorization request state in Redis | `900` |
 | `SESSION_COOKIE_NAME` | Public browser session cookie contract shared with ext_authz; distinct from any internal framework `SESSION` cookie | `BA_SESSION` |
 | `SESSION_COOKIE_DOMAIN_OVERRIDE` | Optional parent-domain cookie override; unset means host-only cookies | — |
@@ -145,13 +145,13 @@ curl http://localhost:8081/actuator/health
 - Session hash deleted on logout, cookie cleared
 
 ### Session Heartbeat and IDP Grant Validation
-- **Sliding window**: Frontend calls `GET /auth/session` periodically (~3 min) to extend session TTL
+- **Sliding window**: Frontend calls `GET /auth/session` periodically (~2 min) to extend session TTL
 - **Activity-gated**: Session Gateway extends unconditionally on every heartbeat call. The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
-- **Token refresh**: When IDP token is within 10 min of expiry, heartbeat refreshes it via Auth0's token endpoint
+- **Token refresh**: When IDP token is within 5 min of expiry, heartbeat refreshes it via Auth0's token endpoint
 - **Revocation detection**: If Auth0 rejects the refresh (user disabled, consent withdrawn), session is terminated and cookie cleared
 - **Stale-cookie cleanup**: If the browser presents a cookie for a missing or expired Redis session, heartbeat returns 401 and clears the cookie
 - **Transient IDP errors**: Returns 502 but preserves the session — frontend retries on the next heartbeat interval
-- **Operational defaults**: 15-minute session TTL, 10-minute refresh threshold, 3-minute frontend heartbeat cadence
+- **Operational defaults**: 15-minute session TTL, 5-minute refresh threshold, 2-minute frontend heartbeat cadence
 
 ### ext_authz Session Validation
 - The ext_authz HTTP service reads session hashes (`session:{id}`) directly from Redis — the same hashes Session Gateway writes

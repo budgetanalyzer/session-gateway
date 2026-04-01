@@ -40,7 +40,7 @@ class SessionPropertiesTest {
 
           assertThat(sessionProperties.keyPrefix()).isEqualTo("session:");
           assertThat(sessionProperties.ttlSeconds()).isEqualTo(900);
-          assertThat(sessionProperties.refreshThresholdSeconds()).isEqualTo(600);
+          assertThat(sessionProperties.refreshThresholdSeconds()).isEqualTo(300);
           assertThat(sessionProperties.oauth2StateTtlSeconds()).isEqualTo(900);
           assertThat(sessionProperties.cookie().name()).isEqualTo(PUBLIC_SESSION_COOKIE_NAME);
           assertThat(sessionProperties.cookie().domainOverride()).isNull();

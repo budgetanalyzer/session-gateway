@@ -261,7 +261,7 @@ losing the original deep link.
 - `GET /auth/session` - Session heartbeat: validates session, extends TTL, refreshes IDP token if near expiry
   - Reads session from Redis via cookie
   - If the cookie points at a missing or expired Redis session: clears the stale cookie and returns 401
-  - If IDP token is within `session.refresh-threshold-seconds` (default 10 min) of expiry: refreshes via Auth0's token endpoint
+  - If IDP token is within `session.refresh-threshold-seconds` (default 5 min) of expiry: refreshes via Auth0's token endpoint
   - If refresh succeeds: updates session hash with new tokens and resets TTL
   - If IDP grant revoked (`invalid_grant`): deletes session, clears cookie, returns 401
   - If session is healthy: resets `expires_at` + Redis key TTL (sliding window)
@@ -317,7 +317,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 **Session**:
 - `session.key-prefix` (`SESSION_KEY_PREFIX`): Redis key prefix for session hashes (default: `session:`)
 - `session.ttl-seconds` (`SESSION_TTL_SECONDS`): TTL for session keys in seconds (default: `900`)
-- `session.refresh-threshold-seconds` (`SESSION_REFRESH_THRESHOLD_SECONDS`): Seconds before IDP token expiry to trigger refresh during heartbeat (default: `600`)
+- `session.refresh-threshold-seconds` (`SESSION_REFRESH_THRESHOLD_SECONDS`): Seconds before IDP token expiry to trigger refresh during heartbeat (default: `300`)
 - `session.oauth2-state-ttl-seconds` (`SESSION_OAUTH2_STATE_TTL_SECONDS`): TTL for OAuth2 authorization request state in Redis (default: `900` / 15 min). Must be long enough for MFA enrollment, SSO handoffs, or slow IDP interactions
 - `session.cookie.name` (`SESSION_COOKIE_NAME`): Public browser session cookie name (default: `BA_SESSION`)
 - `session.cookie.domain-override` (`SESSION_COOKIE_DOMAIN_OVERRIDE`): Optional parent-domain override. Default is unset, which emits host-only cookies
@@ -526,7 +526,7 @@ For detailed architecture diagrams and security design:
 **IDP Grant Validation**:
 - Frontend heartbeat (`GET /auth/session`) triggers IDP token refresh when near expiry
 - If Auth0 has revoked the grant (user disabled, consent withdrawn), refresh fails → session terminated → 401
-- Operational defaults: 15-minute session TTL, 10-minute refresh threshold, 3-minute frontend heartbeat cadence
+- Operational defaults: 15-minute session TTL, 5-minute refresh threshold, 2-minute frontend heartbeat cadence
 
 **No CORS Needed**:
 Same-origin architecture eliminates CORS complexity. Browser traffic stays on the same origin (`app.budgetanalyzer.localhost`), with `/login` served by the frontend and auth protocol endpoints handled by Session Gateway behind the same ingress.
@@ -590,7 +590,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 9. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production. OAuth2 callback path (`/login/oauth2/code/**`) is excluded from HTTP logging (defense-in-depth).
 10. **Session Key Prefix Alignment**: `session.key-prefix` must match the ext_authz service's expected prefix so it can find session hashes
 11. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required)
-12. **Heartbeat Interval**: Frontend should call `GET /auth/session` every ~3 min **only while the user is active**. The current defaults are a 15-minute session TTL and a 10-minute refresh threshold. Session Gateway extends unconditionally — if the frontend calls on a fixed timer without checking activity, sessions never expire for open tabs
+12. **Heartbeat Interval**: Frontend should call `GET /auth/session` every ~2 min **only while the user is active**. The current defaults are a 15-minute session TTL and a 5-minute refresh threshold. Session Gateway extends unconditionally — if the frontend calls on a fixed timer without checking activity, sessions never expire for open tabs
 13. **Token Exchange Sessions**: Sessions created via `POST /auth/token/exchange` have no refresh token — heartbeat extends TTL but cannot refresh IDP tokens. Native clients handle their own token lifecycle
 
 ## NOTES FOR AI AGENTS

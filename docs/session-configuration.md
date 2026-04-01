@@ -20,7 +20,7 @@ Defaults:
 
 - `SESSION_KEY_PREFIX=session:`
 - `SESSION_TTL_SECONDS=900`
-- `SESSION_REFRESH_THRESHOLD_SECONDS=600`
+- `SESSION_REFRESH_THRESHOLD_SECONDS=300`
 - `SESSION_OAUTH2_STATE_TTL_SECONDS=900`
 - `SESSION_COOKIE_NAME=BA_SESSION`
 - `SESSION_COOKIE_DOMAIN_OVERRIDE` unset
@@ -49,8 +49,8 @@ domain override is enabled.
 The current runtime defaults across the active browser-session path are:
 
 - `SESSION_TTL_SECONDS=900` (15 minutes)
-- `SESSION_REFRESH_THRESHOLD_SECONDS=600` (10 minutes before IDP token expiry)
-- frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=180000` (3 minutes in `budget-analyzer-web`)
+- `SESSION_REFRESH_THRESHOLD_SECONDS=300` (5 minutes before IDP token expiry)
+- frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes in `budget-analyzer-web`)
 
 That heartbeat cadence is frontend-owned, not Session Gateway-owned. Session Gateway extends the
 session on every `GET /auth/session` call; the frontend decides when to call based on user
