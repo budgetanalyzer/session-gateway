@@ -3,6 +3,7 @@ package org.budgetanalyzer.sessiongateway.config;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.web.server.ServerAuthorizationRequestRepository;
@@ -26,6 +28,7 @@ import org.springframework.security.web.server.authentication.RedirectServerAuth
 import org.springframework.security.web.server.context.ServerSecurityContextRepository;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import org.springframework.web.server.ServerWebExchange;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import reactor.core.publisher.Mono;
 
@@ -42,6 +45,10 @@ public class SecurityConfig {
 
   private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
   private static final String DEFAULT_REDIRECT_URL = "/";
+  private static final String LOGIN_PATH = "/login";
+  private static final String LOGIN_ERROR_PARAMETER = "error";
+  private static final String LOGIN_ERROR_AUTH_FAILED = "auth_failed";
+  private static final String LOGIN_RETURN_URL_PARAMETER = "returnUrl";
   private static final String RETURN_URL_PARAMETER = "return_url";
 
   private final ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
@@ -117,7 +124,8 @@ public class SecurityConfig {
                     .authorizationRequestRepository(authorizationRequestRepository)
                     .authorizedClientRepository(authorizedClientRepository)
                     .securityContextRepository(serverSecurityContextRepository)
-                    .authenticationSuccessHandler(this::handleAuthenticationSuccess))
+                    .authenticationSuccessHandler(this::handleAuthenticationSuccess)
+                    .authenticationFailureHandler(this::handleAuthenticationFailure))
         .securityContextRepository(serverSecurityContextRepository)
         .csrf(ServerHttpSecurity.CsrfSpec::disable)
         .exceptionHandling(
@@ -176,6 +184,14 @@ public class SecurityConfig {
                                     })));
   }
 
+  private Mono<Void> handleAuthenticationFailure(
+      WebFilterExchange webFilterExchange, AuthenticationException exception) {
+    log.warn("OAuth2 authentication failed: {}", exception.getMessage());
+    return redirect(
+        webFilterExchange.getExchange(),
+        resolveAuthenticationFailureRedirectUrl(webFilterExchange.getExchange()));
+  }
+
   private Mono<OAuth2AuthorizedClient> loadAuthorizedClient(
       ServerWebExchange exchange, OAuth2AuthenticationToken oauth2AuthenticationToken) {
     return authorizedClientRepository.loadAuthorizedClient(
@@ -209,19 +225,33 @@ public class SecurityConfig {
   }
 
   private String resolveRedirectUrl(ServerWebExchange exchange) {
+    return resolveRequestedReturnUrl(exchange).orElse(DEFAULT_REDIRECT_URL);
+  }
+
+  private String resolveAuthenticationFailureRedirectUrl(ServerWebExchange exchange) {
+    var uriComponentsBuilder =
+        UriComponentsBuilder.fromPath(LOGIN_PATH)
+            .queryParam(LOGIN_ERROR_PARAMETER, LOGIN_ERROR_AUTH_FAILED);
+    resolveRequestedReturnUrl(exchange)
+        .ifPresent(
+            returnUrl -> uriComponentsBuilder.queryParam(LOGIN_RETURN_URL_PARAMETER, returnUrl));
+    return uriComponentsBuilder.build().toUriString();
+  }
+
+  private Optional<String> resolveRequestedReturnUrl(ServerWebExchange exchange) {
     var authorizationRequest =
         exchange.getAttribute(RedisAuthorizationRequestRepository.AUTHORIZATION_REQUEST_ATTRIBUTE);
     if (!(authorizationRequest instanceof OAuth2AuthorizationRequest oauth2AuthorizationRequest)) {
-      return DEFAULT_REDIRECT_URL;
+      return Optional.empty();
     }
 
     var returnUrl = oauth2AuthorizationRequest.getAdditionalParameters().get(RETURN_URL_PARAMETER);
     if (returnUrl instanceof String stringValue
         && RedirectUrlValidator.isValidRedirectUrl(stringValue)) {
-      return stringValue;
+      return Optional.of(stringValue);
     }
 
-    return DEFAULT_REDIRECT_URL;
+    return Optional.empty();
   }
 
   private Mono<Void> redirect(ServerWebExchange exchange, String location) {

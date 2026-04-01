@@ -2,6 +2,7 @@ package org.budgetanalyzer.sessiongateway.config;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -173,6 +174,105 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
             .returnResult();
 
     assertThat(userInfo).isNotNull();
+  }
+
+  @Test
+  void oauth2CallbackRedirectsToLoginOnTokenEndpointFailure() {
+    stubTokenEndpointError();
+
+    var authorizationResult =
+        webTestClient
+            .get()
+            .uri("/oauth2/authorization/idp")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var authorizationLocation = authorizationResult.getResponseHeaders().getLocation();
+    assertThat(authorizationLocation).isNotNull();
+
+    var state =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("state");
+    assertThat(state).isNotBlank();
+    state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+
+    var callbackResult =
+        webTestClient
+            .get()
+            .uri(
+                UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                    .queryParam("code", "test-code")
+                    .queryParam("state", state)
+                    .build()
+                    .toUriString())
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var redirectLocation = callbackResult.getResponseHeaders().getLocation();
+    assertThat(redirectLocation).isNotNull();
+    assertThat(redirectLocation.getPath()).isEqualTo("/login");
+    var redirectQueryParams =
+        UriComponentsBuilder.fromUri(redirectLocation).build().getQueryParams();
+    assertThat(redirectQueryParams.getFirst("error")).isEqualTo("auth_failed");
+    assertThat(redirectQueryParams.getFirst("returnUrl")).isNull();
+  }
+
+  @Test
+  void oauth2CallbackPreservesReturnUrlOnTokenEndpointFailure() {
+    stubTokenEndpointError();
+
+    var authorizationResult =
+        webTestClient
+            .get()
+            .uri("/oauth2/authorization/idp?returnUrl=/dashboard")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var authorizationLocation = authorizationResult.getResponseHeaders().getLocation();
+    assertThat(authorizationLocation).isNotNull();
+
+    var state =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("state");
+    assertThat(state).isNotBlank();
+    state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+
+    var callbackResult =
+        webTestClient
+            .get()
+            .uri(
+                UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                    .queryParam("code", "test-code")
+                    .queryParam("state", state)
+                    .build()
+                    .toUriString())
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var redirectLocation = callbackResult.getResponseHeaders().getLocation();
+    assertThat(redirectLocation).isNotNull();
+    assertThat(redirectLocation.getPath()).isEqualTo("/login");
+    var redirectQueryParams =
+        UriComponentsBuilder.fromUri(redirectLocation).build().getQueryParams();
+    assertThat(redirectQueryParams.getFirst("error")).isEqualTo("auth_failed");
+    assertThat(redirectQueryParams.getFirst("returnUrl")).isEqualTo("/dashboard");
+  }
+
+  private void stubTokenEndpointError() {
+    wireMockServer.stubFor(
+        post(urlEqualTo("/idp/oauth/token")).willReturn(aResponse().withStatus(500)));
   }
 
   private RSAKey createRsaKey() throws Exception {
