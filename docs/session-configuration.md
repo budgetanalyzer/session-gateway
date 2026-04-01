@@ -56,6 +56,9 @@ That heartbeat cadence is frontend-owned, not Session Gateway-owned. Session Gat
 session on every `GET /auth/session` call; the frontend decides when to call based on user
 activity.
 
+The operational Auth0 dashboard values that pair with these defaults are documented in
+[auth0-settings.md](auth0-settings.md).
+
 ## Cookie Behavior
 
 The public browser session contract is `BA_SESSION` by default. Session Gateway reads, sets, and

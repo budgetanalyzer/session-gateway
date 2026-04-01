@@ -25,6 +25,7 @@ Bare `/login` is a frontend route served through NGINX. It starts the real OAuth
 
 Browser login depends on Auth0 refresh tokens. The configured OAuth2 scope set includes
 `offline_access`, and the Auth0 application must allow refresh tokens with rotation enabled.
+Recommended Auth0 dashboard values are documented in [docs/auth0-settings.md](docs/auth0-settings.md).
 
 ## Architecture
 
@@ -57,7 +58,7 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 | `AUTH0_CLIENT_ID` | Auth0 application client ID | `placeholder-client-id` |
 | `AUTH0_CLIENT_SECRET` | Auth0 application client secret | `placeholder-client-secret` |
 | `AUTH0_ISSUER_URI` | Auth0 tenant issuer URI | `https://placeholder.auth0.com/` |
-| `IDP_AUDIENCE` | Auth0 API audience identifier | — |
+| `IDP_AUDIENCE` | Auth0 API audience identifier | `https://api.budgetanalyzer.org` |
 | `IDP_LOGOUT_RETURN_TO` | URL to redirect after Auth0 logout | `https://app.budgetanalyzer.localhost/peace` |
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8086` |
 | `SPRING_DATA_REDIS_HOST` | Redis host for session storage | `localhost` |
@@ -180,6 +181,7 @@ to `/login?error=auth_failed&returnUrl=...` so the frontend can retry without lo
 deep link.
 
 Session contract and cookie behavior are documented in [docs/session-configuration.md](docs/session-configuration.md).
+Recommended Auth0 dashboard values are documented in [docs/auth0-settings.md](docs/auth0-settings.md).
 
 ## Development
 
@@ -203,5 +205,6 @@ Session contract and cookie behavior are documented in [docs/session-configurati
 
 ## References
 
+- [Recommended Auth0 Settings](docs/auth0-settings.md)
 - [Authentication Implementation Plan](../orchestration/docs/architecture/authentication-implementation-plan.md)
 - [Security Architecture](../orchestration/docs/architecture/security-architecture.md)

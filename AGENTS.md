@@ -239,7 +239,7 @@ cat src/main/resources/application.yml | grep -A 5 "routes:"
   - Example: `/oauth2/authorization/idp?returnUrl=/dashboard`
   - Security: All returnUrl values validated by RedirectUrlValidator (same-origin only)
 - `GET /login/oauth2/code/idp` - OAuth2 callback (receives code from Auth0)
-- `POST /logout` - Invalidates session, clears cookies, redirects to Auth0 logout
+- `GET /logout` - Invalidates session, clears cookies, redirects to Auth0 logout
 - Bare `/login` is not a Session Gateway endpoint. It is a frontend route that initiates `GET /oauth2/authorization/idp`.
 
 **Return URL Flow**:
@@ -313,6 +313,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - Scopes: openid, profile, email, offline_access
 - Redirect URI for callback
 - `offline_access` scope enables Auth0 refresh tokens for IDP grant validation (Auth0 must allow refresh tokens with rotation enabled)
+- Recommended Auth0 dashboard values and rationale are documented in [docs/auth0-settings.md](docs/auth0-settings.md)
 
 **Session**:
 - `session.key-prefix` (`SESSION_KEY_PREFIX`): Redis key prefix for session hashes (default: `session:`)
@@ -527,6 +528,7 @@ For detailed architecture diagrams and security design:
 - Frontend heartbeat (`GET /auth/session`) triggers IDP token refresh when near expiry
 - If Auth0 has revoked the grant (user disabled, consent withdrawn), refresh fails → session terminated → 401
 - Operational defaults: 15-minute session TTL, 5-minute refresh threshold, 2-minute frontend heartbeat cadence
+- Recommended Auth0 dashboard values that pair with these defaults are documented in [docs/auth0-settings.md](docs/auth0-settings.md)
 
 **No CORS Needed**:
 Same-origin architecture eliminates CORS complexity. Browser traffic stays on the same origin (`app.budgetanalyzer.localhost`), with `/login` served by the frontend and auth protocol endpoints handled by Session Gateway behind the same ingress.
