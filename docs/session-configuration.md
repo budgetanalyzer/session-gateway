@@ -44,6 +44,18 @@ ext_authz.
 After startup completes, Session Gateway logs the configured public cookie name and whether a
 domain override is enabled.
 
+## Operational Defaults
+
+The current runtime defaults across the active browser-session path are:
+
+- `SESSION_TTL_SECONDS=900` (15 minutes)
+- `SESSION_REFRESH_THRESHOLD_SECONDS=600` (10 minutes before IDP token expiry)
+- frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=180000` (3 minutes in `budget-analyzer-web`)
+
+That heartbeat cadence is frontend-owned, not Session Gateway-owned. Session Gateway extends the
+session on every `GET /auth/session` call; the frontend decides when to call based on user
+activity.
+
 ## Cookie Behavior
 
 The public browser session contract is `BA_SESSION` by default. Session Gateway reads, sets, and

@@ -145,13 +145,13 @@ curl http://localhost:8081/actuator/health
 - Session hash deleted on logout, cookie cleared
 
 ### Session Heartbeat and IDP Grant Validation
-- **Sliding window**: Frontend calls `GET /auth/session` periodically (~5 min) to extend session TTL
+- **Sliding window**: Frontend calls `GET /auth/session` periodically (~3 min) to extend session TTL
 - **Activity-gated**: Session Gateway extends unconditionally on every heartbeat call. The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
 - **Token refresh**: When IDP token is within 10 min of expiry, heartbeat refreshes it via Auth0's token endpoint
 - **Revocation detection**: If Auth0 rejects the refresh (user disabled, consent withdrawn), session is terminated and cookie cleared
 - **Stale-cookie cleanup**: If the browser presents a cookie for a missing or expired Redis session, heartbeat returns 401 and clears the cookie
 - **Transient IDP errors**: Returns 502 but preserves the session — frontend retries on the next heartbeat interval
-- **Safety margin**: 5-min heartbeat interval, 30-min session TTL = 6x margin before session expires from inactivity
+- **Operational defaults**: 15-minute session TTL, 10-minute refresh threshold, 3-minute frontend heartbeat cadence
 
 ### ext_authz Session Validation
 - The ext_authz HTTP service reads session hashes (`session:{id}`) directly from Redis — the same hashes Session Gateway writes
