@@ -26,26 +26,19 @@ repositories {
     mavenCentral()
 }
 
-dependencyManagement {
-    imports {
-        mavenBom(libs.spring.cloud.dependencies.get().toString())
-    }
-}
-
 dependencies {
     // Budget Analyzer Common Libraries
     // Provides: exception handling, HTTP logging, correlation IDs, safe logging utilities
     implementation(libs.service.web)
 
-    // Spring Cloud Gateway
-    implementation(libs.spring.cloud.starter.gateway.server.webflux)
+    // Spring WebFlux (reactive web)
+    implementation(libs.spring.boot.starter.webflux)
 
     // OAuth2 Client for Auth0 integration
     implementation(libs.spring.boot.starter.oauth2.client)
 
     // Redis for session storage
     implementation(libs.spring.boot.starter.data.redis)
-    implementation(libs.spring.session.data.redis)
 
     // Actuator for health checks
     implementation(libs.spring.boot.starter.actuator)

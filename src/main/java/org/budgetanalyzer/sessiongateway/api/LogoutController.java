@@ -8,29 +8,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 
 import reactor.core.publisher.Mono;
 
-import org.budgetanalyzer.sessiongateway.session.ExtAuthzSessionWriter;
+import org.budgetanalyzer.core.logging.SafeLogger;
+import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
+import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 /**
  * Logout controller for Session Gateway.
  *
- * <p>Phase 2 Task 2.5: Implement Logout Endpoint
- *
- * <ul>
- *   <li>Invalidates Redis session
- *   <li>Clears session cookie
- *   <li>Removes OAuth2 authorized client from session
- *   <li>Deletes ext_authz session from Redis
- *   <li>Redirects to IDP logout (with returnTo parameter)
- * </ul>
+ * <p>Deletes the Redis session hash, clears the session cookie, and redirects to the IDP logout
+ * endpoint.
  */
 @RestController
 public class LogoutController {
@@ -40,12 +32,12 @@ public class LogoutController {
   private final String idpLogoutUrlTemplate;
   private final String clientId;
   private final String returnToUrl;
-  private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
-  private final ExtAuthzSessionWriter extAuthzSessionWriter;
+  private final SessionWriter sessionWriter;
+  private final SessionCookieHelper sessionCookieHelper;
 
   public LogoutController(
-      ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
-      ExtAuthzSessionWriter extAuthzSessionWriter,
+      SessionWriter sessionWriter,
+      SessionCookieHelper sessionCookieHelper,
       @Value(
               "${idp.logout.url-template:"
                   + "${spring.security.oauth2.client.provider.idp.issuer-uri:}"
@@ -53,8 +45,8 @@ public class LogoutController {
           String idpLogoutUrlTemplate,
       @Value("${spring.security.oauth2.client.registration.idp.client-id:}") String clientId,
       @Value("${idp.logout.return-to:http://localhost:8080}") String returnToUrl) {
-    this.authorizedClientRepository = authorizedClientRepository;
-    this.extAuthzSessionWriter = extAuthzSessionWriter;
+    this.sessionWriter = sessionWriter;
+    this.sessionCookieHelper = sessionCookieHelper;
     this.idpLogoutUrlTemplate = idpLogoutUrlTemplate;
     this.clientId = clientId;
     this.returnToUrl = returnToUrl;
@@ -63,78 +55,31 @@ public class LogoutController {
   /**
    * Logout endpoint that invalidates the session and redirects to IDP logout.
    *
-   * <p>Steps:
-   *
-   * <ol>
-   *   <li>Remove OAuth2 authorized client (clears tokens from session)
-   *   <li>Invalidate the session (clears Redis session)
-   *   <li>Clear session cookie
-   *   <li>Redirect to IDP logout (which redirects back to returnTo URL)
-   * </ol>
-   *
    * @param exchange the server web exchange
-   * @param authentication the current authentication
    * @return redirect to IDP logout
    */
   @GetMapping("/logout")
-  public Mono<Void> logout(ServerWebExchange exchange, Authentication authentication) {
-    log.info("Processing logout request for user: {}", authentication.getName());
+  public Mono<Void> logout(ServerWebExchange exchange) {
+    var sessionId = sessionCookieHelper.readSessionId(exchange);
 
-    return removeAuthorizedClient(exchange, authentication)
-        .then(deleteExtAuthzSession(exchange))
-        .then(invalidateSession(exchange))
+    log.info("Processing logout request for sessionId={}", SafeLogger.truncateId(sessionId));
+
+    return deleteSession(sessionId)
+        .then(Mono.fromRunnable(() -> sessionCookieHelper.clearSessionCookie(exchange)))
         .then(redirectToIdpLogout(exchange))
-        .doOnSuccess(v -> log.info("Successfully logged out user: {}", authentication.getName()))
+        .doOnSuccess(
+            v -> log.info("Successfully logged out sessionId={}", SafeLogger.truncateId(sessionId)))
         .doOnError(error -> log.error("Error during logout", error));
   }
 
-  /**
-   * Removes the OAuth2 authorized client from the session.
-   *
-   * @param exchange the server web exchange
-   * @param authentication the current authentication
-   * @return completion signal
-   */
-  private Mono<Void> removeAuthorizedClient(
-      ServerWebExchange exchange, Authentication authentication) {
-    if (authentication instanceof OAuth2AuthenticationToken oauth2Token) {
-      var registrationId = oauth2Token.getAuthorizedClientRegistrationId();
-
-      log.debug("Removing authorized client: {}", registrationId);
-
-      return authorizedClientRepository.removeAuthorizedClient(
-          registrationId, authentication, exchange);
+  private Mono<Void> deleteSession(String sessionId) {
+    if (sessionId == null || sessionId.isBlank()) {
+      log.debug("No session cookie present during logout");
+      return Mono.empty();
     }
 
-    return Mono.empty();
-  }
-
-  /**
-   * Deletes the ext_authz session from Redis.
-   *
-   * @param exchange the server web exchange
-   * @return completion signal
-   */
-  private Mono<Void> deleteExtAuthzSession(ServerWebExchange exchange) {
-    return exchange
-        .getSession()
-        .flatMap(session -> extAuthzSessionWriter.deleteSession(session.getId()));
-  }
-
-  /**
-   * Invalidates the current session.
-   *
-   * @param exchange the server web exchange
-   * @return completion signal
-   */
-  private Mono<Void> invalidateSession(ServerWebExchange exchange) {
-    return exchange
-        .getSession()
-        .flatMap(
-            session -> {
-              log.debug("Invalidating session: {}", session.getId());
-              return session.invalidate();
-            });
+    log.debug("Deleting session {}", SafeLogger.truncateId(sessionId));
+    return sessionWriter.deleteSession(sessionId).then();
   }
 
   /**
@@ -152,7 +97,6 @@ public class LogoutController {
     var encodedReturnTo = URLEncoder.encode(returnToUrl, StandardCharsets.UTF_8);
     var idpLogoutUrl =
         idpLogoutUrlTemplate.replace("{returnTo}", encodedReturnTo).replace("{clientId}", clientId);
-    // Normalize double slashes (handles issuer-uri with trailing slash)
     idpLogoutUrl = idpLogoutUrl.replace("//v2/logout", "/v2/logout");
 
     log.debug("Redirecting to IDP logout: {}", idpLogoutUrl);

@@ -1,27 +1,30 @@
-# Session Gateway (BFF)
+# Session Gateway
 
-> "Archetype: service. Role: BFF for browser authentication; manages OAuth2 flows, session cookies, and ext_authz session dual-writes."
+> "Archetype: service. Role: Session-based edge authorization; manages OAuth2 flows, session cookies, and IDP grant validation."
 >
 > — [AGENTS.md](AGENTS.md#tree-position)
 
 [![Build](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml/badge.svg)](https://github.com/budgetanalyzer/session-gateway/actions/workflows/build.yml)
 
-Backend-for-Frontend (BFF) service that manages OAuth2 authentication flows, protects tokens from browser exposure, and dual-writes session data to the ext_authz Redis schema for per-request authorization at the Istio ingress.
+Session-based edge authorization service that manages OAuth2 authentication flows, protects tokens from browser exposure, validates IDP grants via session heartbeat, and writes session data as Redis hashes that the ext_authz HTTP service reads directly for per-request authorization at the Istio ingress.
 
 ## Overview
 
-The Session Gateway implements the BFF pattern to provide secure authentication for the Budget Analyzer application:
+Session Gateway provides secure authentication and session management for the Budget Analyzer application:
 
-- Manages OAuth2 flows with Auth0
+- Manages OAuth2 flows with Auth0 (including `offline_access` for refresh tokens)
 - Fetches user roles and permissions from the permission-service on login
-- Dual-writes session data (userId, roles, permissions) to ext_authz Redis schema for ingress ext_authz validation
-- Stores Auth0 tokens, user identity, and permissions in Redis — never exposed to browser
+- Writes session data (userId, roles, permissions, refresh token, expiry) as Redis hashes (`session:{id}`)
+- The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema
 - Issues HttpOnly session cookies to frontend
+- Provides session heartbeat (`GET /auth/session`) — extends session TTL, refreshes IDP tokens near expiry, detects IDP grant revocation
 - Owns the OAuth2 and session lifecycle endpoints: `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`, `/user`
-- Implements proactive token refresh with permission re-fetch and ext_authz session update
 - Provides token exchange endpoint for native PKCE/M2M clients (`POST /auth/token/exchange`)
 
 Bare `/login` is a frontend route served through NGINX. It starts the real OAuth2 flow through `/oauth2/authorization/idp`.
+
+Browser login depends on Auth0 refresh tokens. The configured OAuth2 scope set includes
+`offline_access`, and the Auth0 application must allow refresh tokens with rotation enabled.
 
 ## Architecture
 
@@ -30,7 +33,7 @@ Browser → Istio Ingress (:443)
   ├─ /oauth2/*, /auth/*, /login/oauth2/*, /logout, /user
   │      → Session Gateway (:8081) ← OAuth2 → Auth0
   │           ├─ Permission Service (:8086) [email/displayName]
-  │           └─ Redis (:6379) [Spring Session + extauthz:session:*]
+  │           └─ Redis (:6379) [session:*]
   ├─ /login, /* → NGINX (:8080) → budget-analyzer-web
   └─ /api/* → ext-authz HTTP service (:9002) → NGINX (:8080) → Backend Services
 
@@ -39,11 +42,11 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 
 ## Technology Stack
 
-- **Spring Cloud Gateway**: Reactive gateway for routing and filtering
+- **Spring WebFlux**: Reactive web framework
 - **Spring Security OAuth2 Client**: Auth0 integration
-- **Spring Session**: Redis-backed session storage
+- **Custom Redis Sessions**: Session hashes via `SessionWriter`/`SessionReader` (not Spring Session)
 - **Service Common (service-web)**: Reactive HTTP logging, correlation IDs, safe logging, exception handling
-- **Redis**: Session store (Spring Session + ext_authz session schema)
+- **Redis**: Session store (`session:{id}` hashes)
 
 ## Configuration
 
@@ -57,15 +60,21 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 | `IDP_AUDIENCE` | Auth0 API audience identifier | — |
 | `IDP_LOGOUT_RETURN_TO` | URL to redirect after Auth0 logout | `https://app.budgetanalyzer.localhost/peace` |
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8086` |
-| `SPRING_DATA_REDIS_HOST` | Redis host for Spring Session storage | `localhost` |
-| `SPRING_DATA_REDIS_PORT` | Redis port for Spring Session storage | `6379` |
+| `SPRING_DATA_REDIS_HOST` | Redis host for session storage | `localhost` |
+| `SPRING_DATA_REDIS_PORT` | Redis port for session storage | `6379` |
 | `SPRING_DATA_REDIS_USERNAME` | Redis ACL username | `session-gateway` |
 | `SPRING_DATA_REDIS_PASSWORD` | Redis ACL password | — |
 | `SPRING_DATA_REDIS_SSL_ENABLED` | Enable TLS for Redis connections | `false` |
 | `SPRING_DATA_REDIS_SSL_BUNDLE` | Spring SSL bundle name for Redis trust | — |
 | `INFRA_CA_CERT_PATH` | `file:` URI for the infrastructure CA certificate | — |
-| `EXTAUTHZ_SESSION_KEY_PREFIX` | Redis key prefix for ext_authz sessions | `extauthz:session:` |
-| `EXTAUTHZ_SESSION_TTL_SECONDS` | TTL for ext_authz session keys (must match Spring Session timeout) | `1800` |
+| `SESSION_KEY_PREFIX` | Redis key prefix for session hashes | `session:` |
+| `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `900` |
+| `SESSION_REFRESH_THRESHOLD_SECONDS` | Seconds before IDP token expiry to trigger refresh during heartbeat | `600` |
+| `SESSION_OAUTH2_STATE_TTL_SECONDS` | TTL for OAuth2 authorization request state in Redis | `900` |
+| `SESSION_COOKIE_NAME` | Public browser session cookie contract shared with ext_authz; distinct from any internal framework `SESSION` cookie | `BA_SESSION` |
+| `SESSION_COOKIE_DOMAIN_OVERRIDE` | Optional parent-domain cookie override; unset means host-only cookies | — |
+| `SESSION_COOKIE_SECURE` | Secure cookie flag | `true` |
+| `SESSION_COOKIE_SAME_SITE` | SameSite cookie policy (`Strict`, `Lax`, `None`) | `Strict` |
 
 ### Ports
 
@@ -75,7 +84,7 @@ Native Client → POST /auth/token/exchange (IDP token → opaque session token)
 - **9002**: ext_authz HTTP service (called by the Istio ingress Envoy proxy on `/api/*`)
 - **8090**: ext_authz health endpoint
 - **8086**: Permission Service (user roles and permissions)
-- **6379**: Redis (session storage + ext_authz session schema)
+- **6379**: Redis (session storage)
 
 ## Running Locally
 
@@ -124,33 +133,49 @@ curl http://localhost:8081/actuator/health
 - **HttpOnly**: Prevents XSS attacks
 - **Secure**: HTTPS only (production)
 - **SameSite=Strict**: CSRF protection
-- **Timeout**: 30 minutes
+- **Public cookie contract**: `BA_SESSION` by default
+- **Framework cookie distinction**: A Spring-managed `SESSION` cookie may appear as an internal implementation detail during framework flows, but Session Gateway and ext_authz do not treat it as the browser auth contract
+- **Host-only by default**: No `Domain` attribute unless `SESSION_COOKIE_DOMAIN_OVERRIDE` is set
+- **Domain override is an escape hatch**: Use it only when ingress/header behavior requires a parent-domain cookie
+- **Timeout**: 15 minutes
 
 ### Token Protection
-- Auth0 tokens stored server-side in Redis — never exposed to browser
-- Session data dual-written to ext_authz Redis hash — browser only sees opaque session cookie
-- All session data cleared on logout (both Spring Session and ext_authz session)
-- Automatic Auth0 token refresh before expiration, with permission re-fetch and ext_authz session update
+- Auth0 refresh tokens stored server-side in Redis session hashes — never exposed to browser
+- Browser only sees opaque session cookie; all sensitive data lives in Redis
+- Session hash deleted on logout, cookie cleared
+
+### Session Heartbeat and IDP Grant Validation
+- **Sliding window**: Frontend calls `GET /auth/session` periodically (~5 min) to extend session TTL
+- **Activity-gated**: Session Gateway extends unconditionally on every heartbeat call. The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
+- **Token refresh**: When IDP token is within 10 min of expiry, heartbeat refreshes it via Auth0's token endpoint
+- **Revocation detection**: If Auth0 rejects the refresh (user disabled, consent withdrawn), session is terminated and cookie cleared
+- **Stale-cookie cleanup**: If the browser presents a cookie for a missing or expired Redis session, heartbeat returns 401 and clears the cookie
+- **Transient IDP errors**: Returns 502 but preserves the session — frontend retries on the next heartbeat interval
+- **Safety margin**: 5-min heartbeat interval, 30-min session TTL = 6x margin before session expires from inactivity
 
 ### ext_authz Session Validation
-- The Istio ingress Envoy proxy validates sessions through the ext-authz HTTP service, which reads directly from Redis
+- The ext_authz HTTP service reads session hashes (`session:{id}`) directly from Redis — the same hashes Session Gateway writes
 - On valid session: injects `X-User-Id`, `X-Roles`, `X-Permissions` headers into proxied requests
 - On invalid/missing session: returns 401 to the ingress proxy, request rejected before reaching backend
 - No cryptographic verification needed — Redis is trusted internal infrastructure
-- Session IDs are opaque — no sensitive data encoded in the token itself
+- Session IDs are opaque UUIDs — no sensitive data encoded in the cookie value
 
 ### Return URL Support
-- **Automatic saved requests**: Users return to originally requested page after login
 - **Explicit parameter**: `/oauth2/authorization/idp?returnUrl=/settings`
 - **Security validation**: All redirects validated to prevent open redirect attacks
-- **Priority order**: Explicit returnUrl → Saved request → Default `/`
+- **Priority order**: Explicit returnUrl → Default `/`
 
 After authentication, users are redirected based on priority:
 1. Explicit `?returnUrl=` parameter if provided
-2. Original requested URL if redirected to login from a protected resource
-3. Default `/` homepage
+2. Default `/` homepage
 
 All returnUrl values are validated by `RedirectUrlValidator` to ensure same-origin only, preventing open redirect vulnerabilities.
+
+The `returnUrl` value is attached to the OAuth2 authorization request, stored in Redis under the
+`oauth2:state:{state}` key, and recovered after the Auth0 callback. This avoids depending on
+WebSession state during the OAuth2 round-trip.
+
+Session contract and cookie behavior are documented in [docs/session-configuration.md](docs/session-configuration.md).
 
 ## Development
 

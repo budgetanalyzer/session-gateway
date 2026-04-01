@@ -1,6 +1,6 @@
 package org.budgetanalyzer.sessiongateway.api;
 
-import java.util.ArrayList;
+import java.time.Clock;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -8,12 +8,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
-import org.springframework.session.ReactiveSessionRepository;
-import org.springframework.session.Session;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.server.ResponseStatusException;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,11 +24,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.service.exception.ServiceUnavailableException;
 import org.budgetanalyzer.sessiongateway.api.request.TokenExchangeRequest;
 import org.budgetanalyzer.sessiongateway.api.response.TokenExchangeResponse;
+import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
-import org.budgetanalyzer.sessiongateway.session.ExtAuthzSessionWriter;
-import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
+import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 /**
  * Token exchange controller for native PKCE/M2M clients.
@@ -43,34 +44,30 @@ public class TokenExchangeController {
   private static final Logger log = LoggerFactory.getLogger(TokenExchangeController.class);
 
   private final PermissionServiceClient permissionServiceClient;
-  private final ExtAuthzSessionWriter extAuthzSessionWriter;
-
-  @SuppressWarnings("unchecked")
-  private final ReactiveSessionRepository<Session> reactiveSessionRepository;
-
+  private final SessionWriter sessionWriter;
   private final WebClient userinfoWebClient;
+  private final Clock clock;
   private final long ttlSeconds;
 
   /**
    * Creates a new TokenExchangeController.
    *
    * @param permissionServiceClient the permission service client
-   * @param extAuthzSessionWriter the ext_authz session writer
-   * @param reactiveSessionRepository the reactive session repository
+   * @param sessionWriter writes unified Redis session hashes
    * @param issuerUri the IDP issuer URI for userinfo endpoint
-   * @param ttlSeconds the session TTL in seconds
+   * @param clock the clock used for token expiry defaults
+   * @param sessionProperties validated session configuration
    */
-  @SuppressWarnings("unchecked")
   public TokenExchangeController(
       PermissionServiceClient permissionServiceClient,
-      ExtAuthzSessionWriter extAuthzSessionWriter,
-      ReactiveSessionRepository<? extends Session> reactiveSessionRepository,
+      SessionWriter sessionWriter,
       @Value("${spring.security.oauth2.client.provider.idp.issuer-uri}") String issuerUri,
-      @Value("${extauthz.session.ttl-seconds:1800}") long ttlSeconds) {
+      Clock clock,
+      SessionProperties sessionProperties) {
     this.permissionServiceClient = permissionServiceClient;
-    this.extAuthzSessionWriter = extAuthzSessionWriter;
-    this.reactiveSessionRepository = (ReactiveSessionRepository<Session>) reactiveSessionRepository;
-    this.ttlSeconds = ttlSeconds;
+    this.sessionWriter = sessionWriter;
+    this.clock = clock;
+    this.ttlSeconds = sessionProperties.ttlSeconds();
 
     var normalizedIssuer = issuerUri.endsWith("/") ? issuerUri : issuerUri + "/";
     this.userinfoWebClient = WebClient.builder().baseUrl(normalizedIssuer + "userinfo").build();
@@ -115,15 +112,22 @@ public class TokenExchangeController {
   private Mono<Map<String, Object>> validateTokenViaUserinfo(String accessToken) {
     return userinfoWebClient
         .get()
-        .headers(h -> h.setBearerAuth(accessToken))
+        .headers(headers -> headers.setBearerAuth(accessToken))
         .retrieve()
         .onStatus(
-            status -> status.is4xxClientError() || status.is5xxServerError(),
+            HttpStatusCode::is4xxClientError,
             response ->
                 Mono.error(
                     new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED, "Invalid IDP access token")))
-        .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+        .onStatus(
+            HttpStatusCode::is5xxServerError,
+            response ->
+                Mono.error(new ServiceUnavailableException("IDP userinfo endpoint unavailable")))
+        .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+        .onErrorMap(
+            WebClientRequestException.class,
+            ex -> new ServiceUnavailableException("IDP userinfo endpoint unreachable", ex));
   }
 
   private Mono<TokenExchangeResponse> createSessionAndRespond(
@@ -131,6 +135,7 @@ public class TokenExchangeController {
     var idpSub = (String) userinfoResponse.get("sub");
     var email = (String) userinfoResponse.getOrDefault("email", "");
     var displayName = (String) userinfoResponse.getOrDefault("name", "");
+    var picture = (String) userinfoResponse.getOrDefault("picture", "");
 
     log.debug("Token validated for idpSub={}, fetching permissions", idpSub);
 
@@ -138,30 +143,18 @@ public class TokenExchangeController {
         .fetchPermissions(idpSub, email, displayName)
         .flatMap(
             permissionResponse ->
-                reactiveSessionRepository
-                    .createSession()
-                    .flatMap(
-                        session -> {
-                          session.setAttribute(
-                              SessionAttributes.SESSION_USER_ID, permissionResponse.userId());
-                          session.setAttribute(
-                              SessionAttributes.SESSION_ROLES,
-                              new ArrayList<>(permissionResponse.roles()));
-                          session.setAttribute(
-                              SessionAttributes.SESSION_PERMISSIONS,
-                              new ArrayList<>(permissionResponse.permissions()));
-
-                          return reactiveSessionRepository
-                              .save(session)
-                              .then(
-                                  extAuthzSessionWriter.writeSession(
-                                      session.getId(),
-                                      permissionResponse.userId(),
-                                      permissionResponse.roles(),
-                                      permissionResponse.permissions()))
-                              .thenReturn(
-                                  new TokenExchangeResponse(session.getId(), ttlSeconds, "Bearer"));
-                        }))
+                sessionWriter
+                    .createSession(
+                        permissionResponse.userId(),
+                        idpSub,
+                        email,
+                        displayName,
+                        picture,
+                        permissionResponse.roles(),
+                        permissionResponse.permissions(),
+                        null,
+                        clock.instant().plusSeconds(ttlSeconds))
+                    .map(sessionId -> new TokenExchangeResponse(sessionId, ttlSeconds, "Bearer")))
         .doOnSuccess(response -> log.info("Token exchange successful, session created"))
         .onErrorMap(
             ex -> !(ex instanceof ResponseStatusException),

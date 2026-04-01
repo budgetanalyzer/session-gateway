@@ -2,164 +2,94 @@ package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.server.MockWebSession;
-import org.springframework.security.authentication.TestingAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
-import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
+import org.mockito.Mockito;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.server.ServerWebExchange;
 
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import org.budgetanalyzer.sessiongateway.session.SessionAttributes;
+import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
+import org.budgetanalyzer.sessiongateway.session.SessionData;
+import org.budgetanalyzer.sessiongateway.session.SessionReader;
 
 class UserControllerTest {
 
-  private final UserController userController = new UserController();
+  private final SessionReader sessionReader = Mockito.mock(SessionReader.class);
+  private final SessionCookieHelper sessionCookieHelper = Mockito.mock(SessionCookieHelper.class);
+  private final UserController userController =
+      new UserController(sessionReader, sessionCookieHelper);
+  private final ServerWebExchange exchange = Mockito.mock(ServerWebExchange.class);
 
   @Test
-  void getCurrentUser_returnsEmptyWhenAuthenticationIsNull() {
-    var session = new MockWebSession();
-    StepVerifier.create(userController.getCurrentUser(null, session)).verifyComplete();
+  void getCurrentUser_returns401WhenSessionCookieMissing() {
+    Mockito.when(sessionCookieHelper.readSessionId(exchange)).thenReturn(null);
+
+    StepVerifier.create(userController.getCurrentUser(exchange))
+        .expectErrorMatches(
+            error ->
+                error instanceof ResponseStatusException responseStatusException
+                    && responseStatusException.getStatusCode() == HttpStatus.UNAUTHORIZED)
+        .verify();
   }
 
   @Test
-  void getCurrentUser_returnsUserInfoForOauthToken() {
-    var attributes =
-        Map.<String, Object>of(
-            "sub", "auth0|abc123",
-            "name", "Jane Doe",
-            "email", "jane@example.com",
-            "picture", "https://example.com/photo.jpg",
-            "email_verified", true);
+  void getCurrentUser_returns401WhenSessionCookieBlank() {
+    Mockito.when(sessionCookieHelper.readSessionId(exchange)).thenReturn("  ");
 
-    var oauth2User =
-        new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
+    StepVerifier.create(userController.getCurrentUser(exchange))
+        .expectErrorMatches(
+            error ->
+                error instanceof ResponseStatusException responseStatusException
+                    && responseStatusException.getStatusCode() == HttpStatus.UNAUTHORIZED)
+        .verify();
+  }
 
-    var session = new MockWebSession();
-    session.getAttributes().put(SessionAttributes.SESSION_ROLES, List.of("USER"));
+  @Test
+  void getCurrentUser_returns401WhenSessionMissingFromRedis() {
+    Mockito.when(sessionCookieHelper.readSessionId(exchange)).thenReturn("session-123");
+    Mockito.when(sessionReader.readSession("session-123")).thenReturn(Mono.empty());
 
-    var result = userController.getCurrentUser(token, session).block();
+    StepVerifier.create(userController.getCurrentUser(exchange))
+        .expectErrorMatches(
+            error ->
+                error instanceof ResponseStatusException responseStatusException
+                    && responseStatusException.getStatusCode() == HttpStatus.UNAUTHORIZED)
+        .verify();
+  }
+
+  @Test
+  void getCurrentUser_returnsUserInfoFromSessionHash() {
+    Mockito.when(sessionCookieHelper.readSessionId(exchange)).thenReturn("session-123");
+    Mockito.when(sessionReader.readSession("session-123"))
+        .thenReturn(
+            Mono.just(
+                new SessionData(
+                    "user-1",
+                    "auth0|abc123",
+                    "jane@example.com",
+                    "Jane Doe",
+                    "https://example.com/photo.jpg",
+                    List.of("USER"),
+                    List.of("transactions:read"),
+                    "refresh-token",
+                    Instant.parse("2026-03-30T00:10:00Z"),
+                    Instant.parse("2026-03-30T00:00:00Z"),
+                    Instant.parse("2026-03-30T00:15:00Z"))));
+
+    var result = userController.getCurrentUser(exchange).block();
 
     assertThat(result).isNotNull();
     assertThat(result.sub()).isEqualTo("auth0|abc123");
     assertThat(result.name()).isEqualTo("Jane Doe");
     assertThat(result.email()).isEqualTo("jane@example.com");
     assertThat(result.picture()).isEqualTo("https://example.com/photo.jpg");
-    assertThat(result.emailVerified()).isTrue();
     assertThat(result.authenticated()).isTrue();
-    assertThat(result.registrationId()).isEqualTo("idp");
-    assertThat(result.roles()).containsExactly("USER");
-  }
-
-  @Test
-  void getCurrentUser_returnsNullAttributesWhenOauthUserMissingFields() {
-    var attributes = Map.<String, Object>of("sub", "auth0|abc123");
-    var oauth2User =
-        new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
-
-    var session = new MockWebSession();
-
-    var result = userController.getCurrentUser(token, session).block();
-
-    assertThat(result).isNotNull();
-    assertThat(result.sub()).isEqualTo("auth0|abc123");
-    assertThat(result.name()).isNull();
-    assertThat(result.email()).isNull();
-    assertThat(result.picture()).isNull();
-    assertThat(result.emailVerified()).isNull();
-  }
-
-  @Test
-  void getCurrentUser_returnsNameAndAuthenticatedForNonOauthAuth() {
-    var auth = new TestingAuthenticationToken("bob", "secret", "ROLE_USER");
-    var session = new MockWebSession();
-
-    var result = userController.getCurrentUser(auth, session).block();
-
-    assertThat(result).isNotNull();
-    assertThat(result.name()).isEqualTo("bob");
-    assertThat(result.authenticated()).isTrue();
-    assertThat(result.sub()).isNull();
-    assertThat(result.email()).isNull();
-  }
-
-  @Test
-  void getCurrentUser_returnsCorrectRegistrationId() {
-    var attributes = Map.<String, Object>of("sub", "google|xyz");
-    var oauth2User =
-        new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "google");
-
-    var session = new MockWebSession();
-    session.getAttributes().put(SessionAttributes.SESSION_ROLES, List.of("USER"));
-
-    var result = userController.getCurrentUser(token, session).block();
-
-    assertThat(result).isNotNull();
-    assertThat(result.registrationId()).isEqualTo("google");
-  }
-
-  @Test
-  void getCurrentUser_returnsMonoWithSingleElement() {
-    var attributes = Map.<String, Object>of("sub", "auth0|abc123");
-    var oauth2User =
-        new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
-
-    var session = new MockWebSession();
-
-    StepVerifier.create(userController.getCurrentUser(token, session))
-        .expectNextCount(1)
-        .verifyComplete();
-  }
-
-  @Test
-  void getCurrentUser_returnsRolesFromSession() {
-    var attributes = Map.<String, Object>of("sub", "auth0|admin1");
-    var oauth2User =
-        new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_ADMIN")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
-
-    var session = new MockWebSession();
-    session.getAttributes().put(SessionAttributes.SESSION_ROLES, List.of("ADMIN"));
-
-    var result = userController.getCurrentUser(token, session).block();
-
-    assertThat(result).isNotNull();
-    assertThat(result.roles()).containsExactly("ADMIN");
-  }
-
-  @Test
-  void getCurrentUser_returnsEmptyRolesWhenSessionHasNoRoles() {
-    var attributes = Map.<String, Object>of("sub", "auth0|abc123");
-    var oauth2User =
-        new DefaultOAuth2User(List.of(new SimpleGrantedAuthority("ROLE_USER")), attributes, "sub");
-    var token = new OAuth2AuthenticationToken(oauth2User, oauth2User.getAuthorities(), "idp");
-
-    var session = new MockWebSession();
-    // No roles set in session
-
-    var result = userController.getCurrentUser(token, session).block();
-
-    assertThat(result).isNotNull();
-    assertThat(result.roles()).isEmpty();
-  }
-
-  @Test
-  void getCurrentUser_returnsRolesForNonOauthAuth() {
-    var auth = new TestingAuthenticationToken("bob", "secret", "ROLE_USER");
-    var session = new MockWebSession();
-    session.getAttributes().put(SessionAttributes.SESSION_ROLES, List.of("USER"));
-
-    var result = userController.getCurrentUser(auth, session).block();
-
-    assertThat(result).isNotNull();
     assertThat(result.roles()).containsExactly("USER");
   }
 }
