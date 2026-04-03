@@ -392,6 +392,17 @@ The build includes:
 - All unit and integration tests
 - JAR file creation
 
+**Troubleshooting:**
+
+If the build cannot resolve `org.budgetanalyzer:service-web:0.0.1-SNAPSHOT` or other
+service-common artifacts:
+```bash
+cd ../service-common
+./gradlew clean build publishToMavenLocal
+cd ../session-gateway
+./gradlew clean build
+```
+
 **Run locally:**
 ```bash
 ./gradlew bootRun
@@ -651,3 +662,19 @@ When working on this service:
 - Frontend heartbeat (`GET /auth/session`) is the only mechanism for sliding session TTL and IDP grant validation — API activity through ext_authz does NOT extend sessions
 - `offline_access` scope is required for IDP token refresh — Auth0 must allow refresh tokens with rotation enabled
 - Follow the hybrid architecture: Istio ingress (edge auth/routing) → Session Gateway for auth endpoints, and Istio ingress → ext_authz → NGINX for `/api/*`
+
+---
+
+## External Links (GitHub Web Viewing)
+
+*The relative paths in this document are optimized for Claude Code. When viewing on GitHub, use these links to access other repositories:*
+
+- [Service-Common Repository](https://github.com/budgetanalyzer/service-common)
+- [Service-Common AGENTS.md](https://github.com/budgetanalyzer/service-common/blob/main/AGENTS.md)
+- [Error Handling Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/error-handling.md)
+- [Testing Patterns Documentation](https://github.com/budgetanalyzer/service-common/blob/main/docs/testing-patterns.md)
+- [Code Quality Standards](https://github.com/budgetanalyzer/service-common/blob/main/docs/code-quality-standards.md)
+- [Orchestration Repository](https://github.com/budgetanalyzer/orchestration)
+- [Orchestration AGENTS.md](https://github.com/budgetanalyzer/orchestration/blob/main/AGENTS.md)
+- [Permission Service Repository](https://github.com/budgetanalyzer/permission-service)
+- [Permission Service AGENTS.md](https://github.com/budgetanalyzer/permission-service/blob/main/AGENTS.md)

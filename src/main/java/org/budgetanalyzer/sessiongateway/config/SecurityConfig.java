@@ -3,7 +3,6 @@ package org.budgetanalyzer.sessiongateway.config;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.web.server.ServerAuthorizationRequestRepository;
@@ -28,11 +26,10 @@ import org.springframework.security.web.server.authentication.RedirectServerAuth
 import org.springframework.security.web.server.context.ServerSecurityContextRepository;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import org.springframework.web.server.ServerWebExchange;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import reactor.core.publisher.Mono;
 
-import org.budgetanalyzer.sessiongateway.security.RedirectUrlValidator;
+import org.budgetanalyzer.sessiongateway.security.OAuth2CallbackRedirectResolver;
 import org.budgetanalyzer.sessiongateway.security.RedisAuthorizationRequestRepository;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
@@ -44,12 +41,6 @@ import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 public class SecurityConfig {
 
   private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
-  private static final String DEFAULT_REDIRECT_URL = "/";
-  private static final String LOGIN_PATH = "/login";
-  private static final String LOGIN_ERROR_PARAMETER = "error";
-  private static final String LOGIN_ERROR_AUTH_FAILED = "auth_failed";
-  private static final String LOGIN_RETURN_URL_PARAMETER = "returnUrl";
-  private static final String RETURN_URL_PARAMETER = "return_url";
 
   private final ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
   private final ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest>
@@ -59,6 +50,7 @@ public class SecurityConfig {
   private final PermissionServiceClient permissionServiceClient;
   private final SessionWriter sessionWriter;
   private final SessionCookieHelper sessionCookieHelper;
+  private final OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver;
   private final Clock clock;
   private final SessionProperties sessionProperties;
 
@@ -70,6 +62,7 @@ public class SecurityConfig {
       PermissionServiceClient permissionServiceClient,
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
+      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
       Clock clock,
       SessionProperties sessionProperties) {
     this.authorizationRequestResolver = authorizationRequestResolver;
@@ -79,6 +72,7 @@ public class SecurityConfig {
     this.permissionServiceClient = permissionServiceClient;
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
+    this.oauth2CallbackRedirectResolver = oauth2CallbackRedirectResolver;
     this.clock = clock;
     this.sessionProperties = sessionProperties;
   }
@@ -92,7 +86,6 @@ public class SecurityConfig {
                     .permitAll()
                     .pathMatchers(
                         "/login/**",
-                        "/error",
                         "/oauth2/**",
                         "/auth/token/exchange",
                         "/auth/session",
@@ -100,18 +93,6 @@ public class SecurityConfig {
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html")
-                    .permitAll()
-                    .pathMatchers(
-                        "/",
-                        "/index.html",
-                        "/peace",
-                        "/unauthorized",
-                        "/assets/**",
-                        "/src/**",
-                        "/node_modules/**",
-                        "/@vite/**",
-                        "/@react-refresh",
-                        "/vite.svg")
                     .permitAll()
                     .pathMatchers("/api/**")
                     .authenticated()
@@ -125,7 +106,18 @@ public class SecurityConfig {
                     .authorizedClientRepository(authorizedClientRepository)
                     .securityContextRepository(serverSecurityContextRepository)
                     .authenticationSuccessHandler(this::handleAuthenticationSuccess)
-                    .authenticationFailureHandler(this::handleAuthenticationFailure))
+                    .authenticationFailureHandler(
+                        (webFilterExchange, exception) -> {
+                          log.warn(
+                              "OAuth2 authentication failed with exceptionType={},"
+                                  + " redirecting to controlled login path",
+                              exception.getClass().getSimpleName());
+                          return redirect(
+                              webFilterExchange.getExchange(),
+                              oauth2CallbackRedirectResolver
+                                  .resolveAuthenticationFailureRedirectUrl(
+                                      webFilterExchange.getExchange()));
+                        }))
         .securityContextRepository(serverSecurityContextRepository)
         .csrf(ServerHttpSecurity.CsrfSpec::disable)
         .exceptionHandling(
@@ -148,7 +140,10 @@ public class SecurityConfig {
   private Mono<Void> handleAuthenticationSuccess(
       WebFilterExchange webFilterExchange, Authentication authentication) {
     if (!(authentication instanceof OAuth2AuthenticationToken oauth2AuthenticationToken)) {
-      return redirect(webFilterExchange.getExchange(), DEFAULT_REDIRECT_URL);
+      return redirect(
+          webFilterExchange.getExchange(),
+          oauth2CallbackRedirectResolver.resolveAuthenticationSuccessRedirectUrl(
+              webFilterExchange.getExchange()));
     }
 
     var exchange = webFilterExchange.getExchange();
@@ -180,16 +175,21 @@ public class SecurityConfig {
                                 .flatMap(
                                     sessionId -> {
                                       sessionCookieHelper.setSessionCookie(exchange, sessionId);
-                                      return redirect(exchange, resolveRedirectUrl(exchange));
-                                    })));
-  }
-
-  private Mono<Void> handleAuthenticationFailure(
-      WebFilterExchange webFilterExchange, AuthenticationException exception) {
-    log.warn("OAuth2 authentication failed: {}", exception.getMessage());
-    return redirect(
-        webFilterExchange.getExchange(),
-        resolveAuthenticationFailureRedirectUrl(webFilterExchange.getExchange()));
+                                      return redirect(
+                                          exchange,
+                                          oauth2CallbackRedirectResolver
+                                              .resolveAuthenticationSuccessRedirectUrl(exchange));
+                                    })))
+        .onErrorResume(
+            Exception.class,
+            exception -> {
+              log.error(
+                  "OAuth2 callback completion failed after authentication success"
+                      + " exceptionType={}, redirecting to /oops",
+                  exception.getClass().getSimpleName());
+              return redirect(
+                  exchange, oauth2CallbackRedirectResolver.resolveUnexpectedFailureRedirectUrl());
+            });
   }
 
   private Mono<OAuth2AuthorizedClient> loadAuthorizedClient(
@@ -222,36 +222,6 @@ public class SecurityConfig {
     }
 
     return clock.instant().plusSeconds(sessionProperties.ttlSeconds());
-  }
-
-  private String resolveRedirectUrl(ServerWebExchange exchange) {
-    return resolveRequestedReturnUrl(exchange).orElse(DEFAULT_REDIRECT_URL);
-  }
-
-  private String resolveAuthenticationFailureRedirectUrl(ServerWebExchange exchange) {
-    var uriComponentsBuilder =
-        UriComponentsBuilder.fromPath(LOGIN_PATH)
-            .queryParam(LOGIN_ERROR_PARAMETER, LOGIN_ERROR_AUTH_FAILED);
-    resolveRequestedReturnUrl(exchange)
-        .ifPresent(
-            returnUrl -> uriComponentsBuilder.queryParam(LOGIN_RETURN_URL_PARAMETER, returnUrl));
-    return uriComponentsBuilder.build().toUriString();
-  }
-
-  private Optional<String> resolveRequestedReturnUrl(ServerWebExchange exchange) {
-    var authorizationRequest =
-        exchange.getAttribute(RedisAuthorizationRequestRepository.AUTHORIZATION_REQUEST_ATTRIBUTE);
-    if (!(authorizationRequest instanceof OAuth2AuthorizationRequest oauth2AuthorizationRequest)) {
-      return Optional.empty();
-    }
-
-    var returnUrl = oauth2AuthorizationRequest.getAdditionalParameters().get(RETURN_URL_PARAMETER);
-    if (returnUrl instanceof String stringValue
-        && RedirectUrlValidator.isValidRedirectUrl(stringValue)) {
-      return Optional.of(stringValue);
-    }
-
-    return Optional.empty();
   }
 
   private Mono<Void> redirect(ServerWebExchange exchange, String location) {

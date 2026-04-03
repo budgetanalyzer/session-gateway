@@ -34,11 +34,26 @@ session:
     secure: true
     same-site: Strict
 
+idp:
+  audience: https://api.budgetanalyzer.test
+  http-client:
+    pool-name: idp-oidc-callback
+    max-connections: 50
+    pending-acquire-max-count: 100
+    pending-acquire-timeout: 5s
+    max-idle-time: 30s
+    max-life-time: 5m
+    eviction-interval: 30s
+    connect-timeout: 5s
+    response-timeout: 10s
+    read-timeout: 10s
+    write-timeout: 10s
+
 # Logging
 logging:
   level:
-    org.springframework.security: DEBUG
-    org.springframework.security.oauth2: DEBUG
+    org.springframework.security: INFO
+    org.springframework.security.oauth2: INFO
     org.budgetanalyzer.sessiongateway: DEBUG
 
 # Permission service (overridden by @DynamicPropertySource in tests)
