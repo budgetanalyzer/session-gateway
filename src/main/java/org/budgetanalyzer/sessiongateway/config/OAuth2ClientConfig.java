@@ -48,7 +48,6 @@ import org.budgetanalyzer.sessiongateway.security.OAuth2CallbackIdpClientLogging
  * </ul>
  */
 @Configuration
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2ClientConfig {
 
   private static final String RETURN_URL_QUERY_PARAMETER = "returnUrl";

@@ -52,7 +52,6 @@ import org.budgetanalyzer.sessiongateway.security.OAuth2CallbackTransportFailure
       "idp.http-client.read-timeout=250ms",
       "idp.http-client.write-timeout=250ms"
     })
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
 
   private static final String SECRET_AUTH_CODE = "secret-auth-code";

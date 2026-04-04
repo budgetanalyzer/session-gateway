@@ -19,7 +19,6 @@ import ch.qos.logback.core.read.ListAppender;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 class OAuth2CallbackIdpClientLoggingFilterTest {
 
   private static final String SECRET_AUTH_CODE = "secret-auth-code";

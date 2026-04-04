@@ -21,7 +21,6 @@ import io.netty.handler.timeout.WriteTimeoutException;
 import reactor.netty.http.client.PrematureCloseException;
 
 /** Classifies browser OAuth2 callback failures into stable diagnostic categories. */
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public final class OAuth2CallbackFailureClassifier {
 
   private static final Set<String> POOL_ACQUIRE_FAILURE_SIMPLE_NAMES =

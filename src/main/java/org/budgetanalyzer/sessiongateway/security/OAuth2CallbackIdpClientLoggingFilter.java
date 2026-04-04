@@ -13,7 +13,6 @@ import org.springframework.web.reactive.function.client.ExchangeFunction;
 import reactor.core.publisher.Mono;
 
 /** Logs sanitized diagnostics for dedicated IdP HTTP traffic used by the OAuth2 callback path. */
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public final class OAuth2CallbackIdpClientLoggingFilter implements ExchangeFilterFunction {
 
   private static final Logger log =

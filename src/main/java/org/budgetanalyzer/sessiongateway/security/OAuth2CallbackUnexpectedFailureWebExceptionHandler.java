@@ -19,7 +19,6 @@ import reactor.core.publisher.Mono;
  * stay on the dedicated callback redirect path.
  */
 @Component
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2CallbackUnexpectedFailureWebExceptionHandler
     implements WebExceptionHandler, Ordered {
 

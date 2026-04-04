@@ -1,7 +1,6 @@
 package org.budgetanalyzer.sessiongateway.security;
 
 /** Marker exception for dedicated IdP transport failures on the browser OAuth2 callback path. */
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public final class OAuth2CallbackIdpTransportException extends RuntimeException {
 
   private final OAuth2CallbackFailureClassification callbackFailureClassification;

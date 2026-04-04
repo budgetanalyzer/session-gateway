@@ -9,7 +9,6 @@ import org.springframework.mock.web.server.MockServerWebExchange;
 
 import reactor.test.StepVerifier;
 
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 class OAuth2CallbackUnexpectedFailureWebExceptionHandlerTest {
 
   @Test

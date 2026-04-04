@@ -16,7 +16,6 @@ import reactor.core.publisher.Mono;
  * expiry before writing our Redis session hash.
  */
 @Component
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class ExchangeServerOAuth2AuthorizedClientRepository
     implements ServerOAuth2AuthorizedClientRepository {
 

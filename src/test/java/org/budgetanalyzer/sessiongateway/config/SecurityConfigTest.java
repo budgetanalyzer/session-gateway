@@ -49,7 +49,6 @@ import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 @ExtendWith(MockitoExtension.class)
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 class SecurityConfigTest {
 
   private static final Instant NOW = Instant.parse("2026-04-02T21:30:00Z");

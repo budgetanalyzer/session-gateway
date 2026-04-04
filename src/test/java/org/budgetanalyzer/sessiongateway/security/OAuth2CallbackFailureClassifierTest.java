@@ -13,7 +13,6 @@ import org.springframework.web.reactive.function.client.WebClientRequestExceptio
 
 import io.netty.handler.timeout.ReadTimeoutException;
 
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 class OAuth2CallbackFailureClassifierTest {
 
   @Test

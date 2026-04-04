@@ -21,7 +21,6 @@ import reactor.netty.resources.ConnectionProvider;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 class OAuth2ClientConfigIntegrationTest extends AbstractIntegrationTest {
 
   @Autowired

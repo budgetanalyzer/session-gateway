@@ -1,7 +1,6 @@
 package org.budgetanalyzer.sessiongateway.security;
 
 /** Classification categories for browser OAuth2 callback failures. */
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public enum OAuth2CallbackFailureClassification {
   POOL_ACQUIRE_TIMEOUT("pool_acquire_timeout"),
   CONNECT_FAILURE("connect_failure"),

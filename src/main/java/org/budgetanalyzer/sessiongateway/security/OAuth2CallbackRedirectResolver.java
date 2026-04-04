@@ -9,7 +9,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 /** Resolves post-callback redirects for OAuth2 browser login success and failure flows. */
 @Component
-// CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2CallbackRedirectResolver {
 
   private static final String DEFAULT_REDIRECT_URL = "/";
