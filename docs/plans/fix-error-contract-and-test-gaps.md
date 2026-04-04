@@ -1,5 +1,15 @@
 # Fix: Error contract and test gaps via service-common ErrorWebExceptionHandler
 
+## Status
+
+- Step 1 is implemented in
+  `src/main/java/org/budgetanalyzer/sessiongateway/security/BrowserErrorRedirectHandler.java`.
+- Step 2 is implemented by deleting `BrowserNavigationRequestClassifier` and its dedicated unit
+  test.
+- Step 3 is implemented in
+  `src/test/java/org/budgetanalyzer/sessiongateway/config/BrowserErrorRedirectIntegrationTest.java`.
+- Step 4 Javadoc references are implemented.
+
 ## Context
 
 Code review found two bugs in the global error handler:

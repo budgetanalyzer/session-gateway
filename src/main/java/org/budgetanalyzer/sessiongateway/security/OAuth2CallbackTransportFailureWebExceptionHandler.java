@@ -12,7 +12,12 @@ import org.springframework.web.server.WebExceptionHandler;
 
 import reactor.core.publisher.Mono;
 
-/** Redirects callback-path transport failures through the controlled OAuth2 login failure route. */
+/**
+ * Redirects callback-path transport failures through the controlled OAuth2 login failure route.
+ *
+ * <p>This handler runs before {@link BrowserErrorRedirectHandler} so callback transport failures
+ * stay on the dedicated login-failure redirect path.
+ */
 @Component
 // CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2CallbackTransportFailureWebExceptionHandler

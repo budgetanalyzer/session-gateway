@@ -12,7 +12,12 @@ import org.springframework.web.server.WebExceptionHandler;
 
 import reactor.core.publisher.Mono;
 
-/** Redirects unexpected callback-completion failures to the frontend-owned app error route. */
+/**
+ * Redirects unexpected callback-completion failures to the frontend-owned app error route.
+ *
+ * <p>This handler runs before {@link BrowserErrorRedirectHandler} so callback completion failures
+ * stay on the dedicated callback redirect path.
+ */
 @Component
 // CHECKSTYLE.SUPPRESS: AbbreviationAsWordInName
 public class OAuth2CallbackUnexpectedFailureWebExceptionHandler
