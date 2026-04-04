@@ -160,7 +160,11 @@ public class SessionController {
 
               return sessionWriter
                   .updateTokenAndExpiry(
-                      sessionId, newRefreshToken, refreshResult.tokenExpiresAt(), sessionTtlSeconds)
+                      sessionId,
+                      sessionData.userId(),
+                      newRefreshToken,
+                      refreshResult.tokenExpiresAt(),
+                      sessionTtlSeconds)
                   .flatMap(
                       updated -> {
                         if (!updated) {
@@ -202,7 +206,7 @@ public class SessionController {
   private Mono<SessionStatusResponse> extendSession(
       ServerWebExchange exchange, String sessionId, SessionData sessionData) {
     return sessionWriter
-        .updateSessionExpiry(sessionId, sessionTtlSeconds)
+        .updateSessionExpiry(sessionId, sessionData.userId(), sessionTtlSeconds)
         .flatMap(
             updated -> {
               if (!updated) {

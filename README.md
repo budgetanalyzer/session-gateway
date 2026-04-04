@@ -15,10 +15,12 @@ Session Gateway provides secure authentication and session management for the Bu
 - Manages OAuth2 flows with Auth0 (including `offline_access` for refresh tokens)
 - Fetches user roles and permissions from the permission-service on login
 - Writes session data (userId, roles, permissions, refresh token, expiry) as Redis hashes (`session:{id}`)
+- Maintains per-user session indexes in Redis (`user_sessions:{userId}`) for targeted revocation
 - The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema
 - Issues HttpOnly session cookies to frontend
 - Provides session heartbeat (`GET /auth/session`) — extends session TTL, refreshes IDP tokens near expiry, detects IDP grant revocation
 - Owns the OAuth2 and session lifecycle endpoints: `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`, `/user`
+- Exposes internal session revocation for permission-service: `DELETE /internal/v1/sessions/users/{userId}`
 - Provides token exchange endpoint for native PKCE/M2M clients (`POST /auth/token/exchange`)
 
 Bare `/login` is a frontend route served through NGINX. It starts the real OAuth2 flow through `/oauth2/authorization/idp`.
@@ -160,6 +162,11 @@ curl http://localhost:8081/actuator/health
 - On invalid/missing session: returns 401 to the ingress proxy, request rejected before reaching backend
 - No cryptographic verification needed — Redis is trusted internal infrastructure
 - Session IDs are opaque UUIDs — no sensitive data encoded in the cookie value
+
+### Internal Session Revocation
+- Session Gateway maintains `user_sessions:{userId}` Redis sets so permission-service can locate every active session for a user without scanning `session:*`
+- `DELETE /internal/v1/sessions/users/{userId}` revokes all indexed sessions for that user and returns `204 No Content` whether the user had sessions or not
+- The route is intentionally narrow in application security: only that exact path is unauthenticated, with network-level controls expected to restrict callers
 
 ### Return URL Support
 - **Explicit parameter**: `/oauth2/authorization/idp?returnUrl=/settings`

@@ -3,6 +3,9 @@ package org.budgetanalyzer.sessiongateway.session;
 /** Constants for Redis hash field names in the session data structure. */
 public final class SessionHashFields {
 
+  /** Key prefix for the per-user session index SET. */
+  public static final String USER_SESSIONS_KEY_PREFIX = "user_sessions:";
+
   /** User's internal ID from the permission service. */
   public static final String USER_ID = "user_id";
 

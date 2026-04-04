@@ -59,10 +59,12 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - Manages OAuth2/OIDC authentication flows with Auth0 (including `offline_access` for refresh tokens)
 - Fetches user roles and permissions from the permission-service on login
 - Writes session data (userId, roles, permissions, refresh token, expiry) as Redis hashes (`session:{id}`)
+- Maintains per-user session indexes in Redis (`user_sessions:{userId}`) for targeted revocation
 - The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema
 - Issues HTTP-only, Secure, SameSite session cookies to browsers
 - Provides session heartbeat (`GET /auth/session`) — extends session TTL, refreshes IDP tokens near expiry, detects IDP grant revocation
 - Owns `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`, and `/user`
+- Exposes internal session revocation for permission-service (`DELETE /internal/v1/sessions/users/{userId}`)
 - Provides token exchange endpoint for native PKCE/M2M clients (`POST /auth/token/exchange`)
 
 ## Coding Standards
@@ -94,6 +96,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - **Session-Based Auth**: Browser clients use cookies; native clients use opaque bearer tokens from token exchange
 - **Behind Istio Ingress**: Browser auth and OAuth2 protocol endpoints reach Session Gateway through Istio ingress; bare `/login` is frontend-owned and served through NGINX
 - **Stateful Sessions**: Redis hashes (`session:{id}`) provide distributed session storage — identity, roles, permissions, refresh token, expiry — read by both Session Gateway and the ext_authz service
+- **Targeted Session Revocation**: Redis sets (`user_sessions:{userId}`) index all active sessions for a user so permission-service can revoke them without scanning `session:*`
 - **Multi-Client Support**: Browser clients use OAuth2 login + cookies; native PKCE/M2M clients use `POST /auth/token/exchange`
 - **Sliding Sessions with IDP Grant Validation**: Frontend heartbeat (`GET /auth/session`) resets session TTL and refreshes IDP tokens near expiry — if the IDP revokes the grant, the session is terminated. Session Gateway extends unconditionally on every heartbeat call; the frontend is responsible for calling only when the user is active (idle users = no heartbeat = session expires naturally)
 
@@ -289,6 +292,9 @@ Session Gateway extends the session unconditionally on every `GET /auth/session`
 
 **User Endpoints**:
 - `GET /user` - Returns current authenticated user information
+- `DELETE /internal/v1/sessions/users/{userId}` - Internal service-to-service revocation of all indexed sessions for a user
+  - Returns 204 whether sessions existed or not
+  - Intended for permission-service during user deactivation
 
 **Note**: Session Gateway does not proxy downstream routes. It only handles auth/session lifecycle endpoints. The Istio ingress routes `/api/*` through ext_authz → NGINX, and `/*` through NGINX directly.
 

@@ -84,6 +84,8 @@ public class SecurityConfig {
                 exchanges
                     .pathMatchers("/actuator/health/**")
                     .permitAll()
+                    .pathMatchers("/internal/v1/sessions/users/*")
+                    .permitAll()
                     .pathMatchers(
                         "/login/**",
                         "/oauth2/**",

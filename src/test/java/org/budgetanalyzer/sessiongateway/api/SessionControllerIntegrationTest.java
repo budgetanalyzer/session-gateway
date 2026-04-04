@@ -24,6 +24,8 @@ import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.ResponseCookie;
 import org.springframework.test.context.TestPropertySource;
 
+import reactor.core.publisher.Mono;
+
 import org.budgetanalyzer.sessiongateway.api.response.SessionStatusResponse;
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
@@ -41,6 +43,11 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   private static final Instant BASE_INSTANT = Instant.parse("2026-03-30T00:00:00Z");
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:heartbeat:";
+  private static final String TEST_USER_ID = "heartbeat-user-primary";
+  private static final String USER_SESSIONS_KEY_PATTERN =
+      SessionHashFields.USER_SESSIONS_KEY_PREFIX + "heartbeat-user-*";
+  private static final String TEST_USER_SESSIONS_KEY =
+      SessionHashFields.USER_SESSIONS_KEY_PREFIX + TEST_USER_ID;
 
   @Autowired private SessionWriter sessionWriter;
   @Autowired private ReactiveStringRedisTemplate reactiveStringRedisTemplate;
@@ -57,6 +64,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var sessionId = createSession(BASE_INSTANT.plusSeconds(3600), "refresh-token-123");
     var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
     mutableClock.setInstant(heartbeatInstant);
+    reactiveStringRedisTemplate.expire(TEST_USER_SESSIONS_KEY, Duration.ofSeconds(30)).block();
 
     var exchangeResult =
         webTestClient
@@ -74,10 +82,11 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var sessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId);
     var sessionTtl =
         reactiveStringRedisTemplate.getExpire(TEST_SESSION_KEY_PREFIX + sessionId).block();
+    var userSessionsTtl = reactiveStringRedisTemplate.getExpire(TEST_USER_SESSIONS_KEY).block();
 
     assertThat(response).isNotNull();
     assertThat(response.authenticated()).isTrue();
-    assertThat(response.userId()).isEqualTo("user-123");
+    assertThat(response.userId()).isEqualTo(TEST_USER_ID);
     assertThat(response.roles()).containsExactly("ROLE_USER");
     assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(900).getEpochSecond());
     assertThat(response.tokenRefreshed()).isFalse();
@@ -94,6 +103,10 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(sessionTtl).isNotNull();
     assertThat(sessionTtl).isPositive();
     assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
+    assertThat(userSessionsTtl).isNotNull();
+    assertThat(userSessionsTtl).isGreaterThan(Duration.ofSeconds(30));
+    assertThat(userSessionsTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).containsExactly(sessionId);
   }
 
   @Test
@@ -116,9 +129,10 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
   @Test
   void getSessionStatus_refreshesNearExpiryTokenAndUpdatesSessionHash() {
-    var sessionId = createSession(BASE_INSTANT.plusSeconds(500), "refresh-token-123");
     var heartbeatInstant = BASE_INSTANT.plusSeconds(100);
     mutableClock.setInstant(heartbeatInstant);
+    var sessionId = createSession(BASE_INSTANT.plusSeconds(500), "refresh-token-123");
+    reactiveStringRedisTemplate.expire(TEST_USER_SESSIONS_KEY, Duration.ofSeconds(30)).block();
     stubRefreshTokenEndpoint(
         200,
         """
@@ -143,6 +157,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
             .getResponseBody();
 
     var sessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId);
+    var userSessionsTtl = reactiveStringRedisTemplate.getExpire(TEST_USER_SESSIONS_KEY).block();
 
     assertThat(response).isNotNull();
     assertThat(response.tokenRefreshed()).isTrue();
@@ -155,6 +170,9 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .containsEntry(
             SessionHashFields.EXPIRES_AT,
             String.valueOf(heartbeatInstant.plusSeconds(900).getEpochSecond()));
+    assertThat(userSessionsTtl).isNotNull();
+    assertThat(userSessionsTtl).isGreaterThan(Duration.ofSeconds(30));
+    assertThat(userSessionsTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
   }
 
   @Test
@@ -185,6 +203,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(clearedSessionCookie).isNotNull();
     assertCleared(clearedSessionCookie);
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).isEmpty();
   }
 
   @Test
@@ -225,6 +244,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(response.authenticated()).isTrue();
     assertThat(response.tokenRefreshed()).isFalse();
     assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(900).getEpochSecond());
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).containsExactly(sessionId);
   }
 
   @Test
@@ -249,9 +269,9 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     assertThat(response).isNotNull();
     assertThat(response.authenticated()).isTrue();
-    assertThat(response.userId()).isEqualTo("user-123");
+    assertThat(response.userId()).isEqualTo(TEST_USER_ID);
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
-        .containsEntry(SessionHashFields.USER_ID, "user-123");
+        .containsEntry(SessionHashFields.USER_ID, TEST_USER_ID);
   }
 
   @Test
@@ -272,7 +292,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
-        .containsEntry(SessionHashFields.USER_ID, "user-123");
+        .containsEntry(SessionHashFields.USER_ID, TEST_USER_ID);
   }
 
   @Test
@@ -290,6 +310,35 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo(502);
 
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isNotEmpty();
+  }
+
+  @Test
+  void getSessionStatusReindexesSessionSoInternalRevocationCanDeleteIt() {
+    var sessionId = createSession(BASE_INSTANT.plusSeconds(3600), "refresh-token-123");
+    var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
+    mutableClock.setInstant(heartbeatInstant);
+
+    reactiveStringRedisTemplate.opsForSet().remove(TEST_USER_SESSIONS_KEY, sessionId).block();
+
+    webTestClient
+        .get()
+        .uri("/auth/session")
+        .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
+        .exchange()
+        .expectStatus()
+        .isOk();
+
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).containsExactly(sessionId);
+
+    webTestClient
+        .delete()
+        .uri("/internal/v1/sessions/users/{userId}", TEST_USER_ID)
+        .exchange()
+        .expectStatus()
+        .isNoContent();
+
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).isEmpty();
   }
 
   @Test
@@ -313,7 +362,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   private String createSession(Instant tokenExpiresAt, String refreshToken) {
     return sessionWriter
         .createSession(
-            "user-123",
+            TEST_USER_ID,
             "auth0|heartbeat",
             "heartbeat@example.com",
             "Heartbeat User",
@@ -336,16 +385,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   private void deleteTestKeys() {
-    reactiveStringRedisTemplate
-        .keys(TEST_SESSION_KEY_PREFIX + "*")
-        .collectList()
-        .flatMap(
-            keys ->
-                keys.isEmpty()
-                    ? reactor.core.publisher.Mono.empty()
-                    : reactiveStringRedisTemplate
-                        .delete(reactor.core.publisher.Flux.fromIterable(keys))
-                        .then())
+    Mono.when(deleteKeys(TEST_SESSION_KEY_PREFIX + "*"), deleteKeys(USER_SESSIONS_KEY_PATTERN))
         .block();
   }
 
@@ -356,6 +396,26 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .collectMap(Map.Entry::getKey, Map.Entry::getValue)
         .blockOptional()
         .orElse(Map.of());
+  }
+
+  private List<String> readSetMembers(String key) {
+    return reactiveStringRedisTemplate
+        .opsForSet()
+        .members(key)
+        .collectSortedList()
+        .blockOptional()
+        .orElse(List.of());
+  }
+
+  private Mono<Void> deleteKeys(String pattern) {
+    return reactiveStringRedisTemplate
+        .keys(pattern)
+        .collectList()
+        .flatMap(
+            keys ->
+                keys.isEmpty()
+                    ? Mono.empty()
+                    : reactiveStringRedisTemplate.delete(keys.toArray(String[]::new)).then());
   }
 
   private void assertCleared(ResponseCookie sessionCookie) {
