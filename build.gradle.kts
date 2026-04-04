@@ -105,7 +105,7 @@ tasks.withType<Test> {
 tasks.withType<Javadoc> {
     options {
         (this as StandardJavadocDocletOptions).apply {
-            addStringOption("Xdoclint:none", "-quiet")
+            addStringOption("Xdoclint:all,-missing", "-quiet")
         }
     }
 }
