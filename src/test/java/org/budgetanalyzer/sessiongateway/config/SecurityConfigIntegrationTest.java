@@ -4,9 +4,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
@@ -20,6 +22,7 @@ import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import com.github.tomakehurst.wiremock.http.Fault;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -37,13 +40,14 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
   private static final String AUTHORIZATION_REQUEST_KEY_PREFIX = "oauth2:state:";
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
+  private static final RSAKey TEST_RSA_KEY = createTestRsaKey();
 
   @Autowired private ReactiveStringRedisTemplate reactiveStringRedisTemplate;
 
   @Test
   void oauth2LoginCreatesPublicSessionCookieAndRedisSessionHashWithoutDependingOnFrameworkCookie()
       throws Exception {
-    var rsaKey = createRsaKey();
+    var rsaKey = TEST_RSA_KEY;
     stubJwks(rsaKey);
 
     var authorizationResult =
@@ -224,6 +228,53 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void oauth2CallbackRedirectsToLoginOnTokenEndpointTransportFailure() {
+    stubTokenEndpointTransportFailure();
+
+    var authorizationResult =
+        webTestClient
+            .get()
+            .uri("/oauth2/authorization/idp")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var authorizationLocation = authorizationResult.getResponseHeaders().getLocation();
+    assertThat(authorizationLocation).isNotNull();
+
+    var state =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("state");
+    assertThat(state).isNotBlank();
+    state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+
+    var callbackResult =
+        webTestClient
+            .get()
+            .uri(
+                UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                    .queryParam("code", "test-code")
+                    .queryParam("state", state)
+                    .build()
+                    .toUriString())
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var redirectLocation = callbackResult.getResponseHeaders().getLocation();
+    assertThat(redirectLocation).isNotNull();
+    assertThat(redirectLocation.getPath()).isEqualTo("/login");
+    var redirectQueryParams =
+        UriComponentsBuilder.fromUri(redirectLocation).build().getQueryParams();
+    assertThat(redirectQueryParams.getFirst("error")).isEqualTo("auth_failed");
+    assertThat(redirectQueryParams.getFirst("returnUrl")).isNull();
+  }
+
+  @Test
   void oauth2CallbackPreservesReturnUrlOnTokenEndpointFailure() {
     stubTokenEndpointError();
 
@@ -270,21 +321,161 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(redirectQueryParams.getFirst("returnUrl")).isEqualTo("/dashboard");
   }
 
+  @Test
+  void oauth2CallbackPreservesReturnUrlOnJwksTransportFailure() throws Exception {
+    var authorizationResult =
+        webTestClient
+            .get()
+            .uri("/oauth2/authorization/idp?returnUrl=/dashboard")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var authorizationLocation = authorizationResult.getResponseHeaders().getLocation();
+    assertThat(authorizationLocation).isNotNull();
+
+    var state =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("state");
+    assertThat(state).isNotBlank();
+    state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+
+    var nonce =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("nonce");
+    assertThat(nonce).isNotBlank();
+
+    var rsaKey = TEST_RSA_KEY;
+    stubOidcTokenEndpoint(
+        "access-token-value", createIdToken(rsaKey, nonce), "refresh-token-value");
+    stubJwksTransportFailure();
+
+    var callbackResult =
+        webTestClient
+            .get()
+            .uri(
+                UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                    .queryParam("code", "test-code")
+                    .queryParam("state", state)
+                    .build()
+                    .toUriString())
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var redirectLocation = callbackResult.getResponseHeaders().getLocation();
+    assertThat(redirectLocation).isNotNull();
+    assertThat(redirectLocation.getPath()).isEqualTo("/login");
+    var redirectQueryParams =
+        UriComponentsBuilder.fromUri(redirectLocation).build().getQueryParams();
+    assertThat(redirectQueryParams.getFirst("error")).isEqualTo("auth_failed");
+    assertThat(redirectQueryParams.getFirst("returnUrl")).isEqualTo("/dashboard");
+  }
+
+  @Test
+  void oauth2CallbackRedirectsToOopsOnPermissionServiceTransportFailure() throws Exception {
+    var rsaKey = TEST_RSA_KEY;
+    stubJwks(rsaKey);
+
+    var authorizationResult =
+        webTestClient
+            .get()
+            .uri("/oauth2/authorization/idp?returnUrl=/dashboard")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var authorizationLocation = authorizationResult.getResponseHeaders().getLocation();
+    assertThat(authorizationLocation).isNotNull();
+
+    var state =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("state");
+    assertThat(state).isNotBlank();
+    state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+
+    var nonce =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("nonce");
+    assertThat(nonce).isNotBlank();
+
+    stubOidcTokenEndpoint(
+        "access-token-value", createIdToken(rsaKey, nonce), "refresh-token-value");
+    stubOidcUserInfo(
+        "auth0|user-123", "user@example.com", "Test User", "https://cdn.example.com/avatar.png");
+    stubPermissionServiceTransportFailure("auth0|user-123");
+
+    var callbackResult =
+        webTestClient
+            .get()
+            .uri(
+                UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                    .queryParam("code", "test-code")
+                    .queryParam("state", state)
+                    .build()
+                    .toUriString())
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var redirectLocation = callbackResult.getResponseHeaders().getLocation();
+    assertThat(redirectLocation).isNotNull();
+    assertThat(redirectLocation.getPath()).isEqualTo("/oops");
+    assertThat(callbackResult.getResponseCookies().keySet())
+        .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
+  }
+
   private void stubTokenEndpointError() {
     wireMockServer.stubFor(
         post(urlEqualTo("/idp/oauth/token")).willReturn(aResponse().withStatus(500)));
   }
 
-  private RSAKey createRsaKey() throws Exception {
-    var keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-    keyPairGenerator.initialize(2048);
+  private void stubTokenEndpointTransportFailure() {
+    wireMockServer.stubFor(
+        post(urlEqualTo("/idp/oauth/token"))
+            .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+  }
 
-    var keyPair = keyPairGenerator.generateKeyPair();
+  private void stubJwksTransportFailure() {
+    wireMockServer.stubFor(
+        get(urlEqualTo("/idp/.well-known/jwks.json"))
+            .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+  }
 
-    return new RSAKey.Builder((RSAPublicKey) keyPair.getPublic())
-        .privateKey((RSAPrivateKey) keyPair.getPrivate())
-        .keyID("test-key-id")
-        .build();
+  private void stubPermissionServiceTransportFailure(String idpSub) {
+    var encodedIdpSub = URLEncoder.encode(idpSub, StandardCharsets.UTF_8);
+
+    wireMockServer.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/" + encodedIdpSub + "/permissions"))
+            .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+  }
+
+  private static RSAKey createTestRsaKey() {
+    try {
+      var keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+      keyPairGenerator.initialize(2048);
+
+      var keyPair = keyPairGenerator.generateKeyPair();
+
+      return new RSAKey.Builder((RSAPublicKey) keyPair.getPublic())
+          .privateKey((RSAPrivateKey) keyPair.getPrivate())
+          .keyID("test-key-id")
+          .build();
+    } catch (Exception exception) {
+      throw new IllegalStateException("Failed to create test RSA key", exception);
+    }
   }
 
   private String createIdToken(RSAKey rsaKey, String nonce) throws JOSEException {

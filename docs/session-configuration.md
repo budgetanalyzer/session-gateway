@@ -59,6 +59,51 @@ activity.
 The operational Auth0 dashboard values that pair with these defaults are documented in
 [auth0-settings.md](auth0-settings.md).
 
+## IdP Callback HTTP Client
+
+Browser OAuth2 callback traffic now uses a dedicated outbound IdP/OIDC client instead of the
+default shared Reactor Netty client state. This dedicated path covers:
+
+- authorization-code token exchange during `oauth2Login`
+- OIDC userinfo retrieval during browser login
+- JWKS retrieval for ID token verification
+
+Defaults:
+
+- `IDP_HTTP_CLIENT_POOL_NAME=idp-oidc-callback`
+- `IDP_HTTP_CLIENT_MAX_CONNECTIONS=50`
+- `IDP_HTTP_CLIENT_PENDING_ACQUIRE_MAX_COUNT=100`
+- `IDP_HTTP_CLIENT_PENDING_ACQUIRE_TIMEOUT=5s`
+- `IDP_HTTP_CLIENT_MAX_IDLE_TIME=30s`
+- `IDP_HTTP_CLIENT_MAX_LIFE_TIME=5m`
+- `IDP_HTTP_CLIENT_EVICTION_INTERVAL=30s`
+- `IDP_HTTP_CLIENT_CONNECT_TIMEOUT=5s`
+- `IDP_HTTP_CLIENT_RESPONSE_TIMEOUT=10s`
+- `IDP_HTTP_CLIENT_READ_TIMEOUT=10s`
+- `IDP_HTTP_CLIENT_WRITE_TIMEOUT=10s`
+
+These settings are intentionally scoped to IdP/OIDC callback traffic. They do not change the
+permission-service WebClient or create a new generic application-wide HTTP client default.
+
+## Callback Diagnostics
+
+The dedicated IdP callback client emits sanitized diagnostics for failure cases that matter during
+browser login:
+
+- `pool_acquire_timeout`
+- `connect_failure`
+- `response_timeout`
+- `upstream_4xx`
+- `upstream_5xx`
+
+These logs intentionally record only stable failure classification, HTTP method, sanitized path,
+HTTP status when one exists, and exception type. They do not log raw OAuth codes, tokens, cookies,
+or raw `state` values.
+
+Framework-level `org.springframework.security.oauth2` and
+`org.springframework.web.reactive.function.client` logging stay at `INFO` by default so generic
+debug logging does not become the primary callback diagnostic path.
+
 ## Cookie Behavior
 
 The public browser session contract is `BA_SESSION` by default. Session Gateway reads, sets, and

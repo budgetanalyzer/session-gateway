@@ -180,6 +180,18 @@ If the OAuth2 callback fails after the flow started with a `returnUrl`, Session 
 to `/login?error=auth_failed&returnUrl=...` so the frontend can retry without losing the original
 deep link.
 
+### Browser Error Strategy
+
+Session Gateway never serves Spring Boot white-label HTML for uncommitted browser document requests:
+
+- **Callback IdP/auth failures** redirect to `/login?error=auth_failed`
+- **Callback non-auth failures** redirect to `/oops`
+- **All other browser navigation failures** redirect to `/oops` via a global `ErrorWebExceptionHandler`
+- **API and machine requests** always receive JSON error responses, never redirects
+
+Browser navigation is classified using `Sec-Fetch-Mode`, `Sec-Fetch-Dest`, and `Accept: text/html`
+signals, with explicit API path exclusion to protect JSON contracts.
+
 Session contract and cookie behavior are documented in [docs/session-configuration.md](docs/session-configuration.md).
 Recommended Auth0 dashboard values are documented in [docs/auth0-settings.md](docs/auth0-settings.md).
 
