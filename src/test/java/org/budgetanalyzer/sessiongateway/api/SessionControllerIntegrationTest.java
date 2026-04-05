@@ -69,7 +69,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         webTestClient
             .get()
-            .uri("/auth/session")
+            .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
@@ -117,7 +117,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         webTestClient
             .get()
-            .uri("/auth/session")
+            .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
@@ -147,7 +147,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var response =
         webTestClient
             .get()
-            .uri("/auth/session")
+            .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
@@ -190,7 +190,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         webTestClient
             .get()
-            .uri("/auth/session")
+            .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
@@ -213,7 +213,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     webTestClient
         .get()
-        .uri("/auth/session")
+        .uri("/auth/v1/session")
         .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
         .exchange()
         .expectStatus()
@@ -231,7 +231,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var response =
         webTestClient
             .get()
-            .uri("/auth/session")
+            .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
@@ -256,7 +256,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         webTestClient
             .get()
-            .uri("/auth/session")
+            .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .cookie("SESSION", "framework-session-123")
             .exchange()
@@ -282,7 +282,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         webTestClient
             .get()
-            .uri("/auth/session")
+            .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session")
             .cookie("SESSION", sessionId)
             .exchange()
@@ -303,7 +303,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     webTestClient
         .get()
-        .uri("/auth/session")
+        .uri("/auth/v1/session")
         .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
         .exchange()
         .expectStatus()
@@ -322,7 +322,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     webTestClient
         .get()
-        .uri("/auth/session")
+        .uri("/auth/v1/session")
         .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
         .exchange()
         .expectStatus()
@@ -346,7 +346,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         webTestClient
             .get()
-            .uri("/auth/session")
+            .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session")
             .exchange()
             .expectStatus()

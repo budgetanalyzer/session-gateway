@@ -105,7 +105,7 @@ public class SessionController {
             description = "No valid session or IDP grant revoked",
             content = @Content)
       })
-  @GetMapping("/auth/session")
+  @GetMapping("/auth/v1/session")
   public Mono<SessionStatusResponse> getSessionStatus(ServerWebExchange exchange) {
     var sessionId = sessionCookieHelper.readSessionId(exchange);
     if (sessionId == null || sessionId.isBlank()) {

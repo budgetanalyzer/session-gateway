@@ -62,8 +62,8 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - Maintains per-user session indexes in Redis (`user_sessions:{userId}`) for targeted revocation
 - The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema
 - Issues HTTP-only, Secure, SameSite session cookies to browsers
-- Provides session heartbeat (`GET /auth/session`) — extends session TTL, refreshes IDP tokens near expiry, detects IDP grant revocation
-- Owns `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`, and `/user`
+- Provides session heartbeat (`GET /auth/v1/session`) — extends session TTL, refreshes IDP tokens near expiry, detects IDP grant revocation
+- Owns `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, and `/logout`
 - Exposes internal session revocation for permission-service (`DELETE /internal/v1/sessions/users/{userId}`)
 - Provides token exchange endpoint for native PKCE/M2M clients (`POST /auth/token/exchange`)
 
@@ -98,7 +98,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - **Stateful Sessions**: Redis hashes (`session:{id}`) provide distributed session storage — identity, roles, permissions, refresh token, expiry — read by both Session Gateway and the ext_authz service
 - **Targeted Session Revocation**: Redis sets (`user_sessions:{userId}`) index all active sessions for a user so permission-service can revoke them without scanning `session:*`
 - **Multi-Client Support**: Browser clients use OAuth2 login + cookies; native PKCE/M2M clients use `POST /auth/token/exchange`
-- **Sliding Sessions with IDP Grant Validation**: Frontend heartbeat (`GET /auth/session`) resets session TTL and refreshes IDP tokens near expiry — if the IDP revokes the grant, the session is terminated. Session Gateway extends unconditionally on every heartbeat call; the frontend is responsible for calling only when the user is active (idle users = no heartbeat = session expires naturally)
+- **Sliding Sessions with IDP Grant Validation**: Frontend heartbeat (`GET /auth/v1/session`) resets session TTL and refreshes IDP tokens near expiry — if the IDP revokes the grant, the session is terminated. Session Gateway extends unconditionally on every heartbeat call; the frontend is responsible for calling only when the user is active (idle users = no heartbeat = session expires naturally)
 
 ## Service Architecture
 
@@ -107,7 +107,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 **Architecture Flow**:
 ```text
 Browser → Istio Ingress (:443)
-  ├─ /oauth2/*, /auth/*, /login/oauth2/*, /logout, /user
+  ├─ /oauth2/*, /auth/*, /login/oauth2/*, /logout
   │      → Session Gateway (:8081) ← OAuth2 → Auth0
   │           ├─ Permission Service (:8086) [email/displayName]
   │           └─ Redis (:6379) [session:*]
@@ -261,7 +261,7 @@ losing the original deep link.
 - Invalid URLs safely default to `/` redirect
 
 **Session Heartbeat Endpoint**:
-- `GET /auth/session` - Session heartbeat: validates session, extends TTL, refreshes IDP token if near expiry
+- `GET /auth/v1/session` - Session heartbeat: validates session, extends TTL, refreshes IDP token if near expiry
   - Reads session from Redis via cookie
   - If the cookie points at a missing or expired Redis session: clears the stale cookie and returns 401
   - If IDP token is within `session.refresh-threshold-seconds` (default 5 min) of expiry: refreshes via Auth0's token endpoint
@@ -277,7 +277,7 @@ losing the original deep link.
   - 401 if no valid session, token expired with no refresh token, or IDP grant revoked
 
 **Heartbeat Responsibility Contract**:
-Session Gateway extends the session unconditionally on every `GET /auth/session` call — it does not track or evaluate user activity. The responsibility split is:
+Session Gateway extends the session unconditionally on every `GET /auth/v1/session` call — it does not track or evaluate user activity. The responsibility split is:
 - **Frontend owns the activity decision**: It tracks user activity (mouse movement, keyboard input, tab focus, etc.) and only calls the heartbeat while the user is active
 - **Session Gateway owns the extension**: Every heartbeat call resets `expires_at` and the Redis key TTL to a fresh `session.ttl-seconds` window
 - **Idle timeout is frontend-driven**: When the frontend detects the user is idle, it stops calling the heartbeat. The session TTL (default 15 min) lapses naturally and Redis expires the key — the user is logged out on their next interaction
@@ -291,7 +291,7 @@ Session Gateway extends the session unconditionally on every `GET /auth/session`
   - **Error behavior when IDP is unreachable**: returns **503 Service Unavailable** (no session exists yet, nothing to clean up)
 
 **User Endpoints**:
-- `GET /user` - Returns current authenticated user information
+- `GET /auth/v1/user` - Returns current authenticated user information
 - `DELETE /internal/v1/sessions/users/{userId}` - Internal service-to-service revocation of all indexed sessions for a user
   - Returns 204 whether sessions existed or not
   - Intended for permission-service during user deactivation
@@ -489,7 +489,7 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 ## Integration Points
 
 **Upstream (Receives From)**:
-- Istio ingress gateway routing `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`, and `/user`
+- Istio ingress gateway routing `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, and `/logout`
 - Browser login page `/login`, which is frontend-owned and initiates `/oauth2/authorization/idp`
 
 **Downstream (Sends To)**:
@@ -503,7 +503,7 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 3. Istio ingress routes the OAuth2 request to Session Gateway
 4. Session Gateway completes OAuth2 with Auth0 and fetches permissions from permission-service
 5. Session Gateway writes a session hash to Redis (`session:{id}`) and sets the session cookie
-6. Frontend periodically calls `GET /auth/session` (heartbeat) — extends session TTL, refreshes IDP tokens, detects revocation
+6. Frontend periodically calls `GET /auth/v1/session` (heartbeat) — extends session TTL, refreshes IDP tokens, detects revocation
 7. Browser later calls `/api/*`
 8. Istio ingress Envoy calls the ext_authz HTTP service, which reads the session hash from Redis and injects X-User-Id/X-Roles/X-Permissions
 9. NGINX forwards the validated API request to the backend service
@@ -542,7 +542,7 @@ For detailed architecture diagrams and security design:
 - Redirect URI validation
 
 **IDP Grant Validation**:
-- Frontend heartbeat (`GET /auth/session`) triggers IDP token refresh when near expiry
+- Frontend heartbeat (`GET /auth/v1/session`) triggers IDP token refresh when near expiry
 - If Auth0 has revoked the grant (user disabled, consent withdrawn), refresh fails → session terminated → 401
 - Operational defaults: 15-minute session TTL, 5-minute refresh threshold, 2-minute frontend heartbeat cadence
 - Recommended Auth0 dashboard values that pair with these defaults are documented in [docs/auth0-settings.md](docs/auth0-settings.md)
@@ -600,7 +600,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
 1. **Secure Token Storage**: Never expose Auth0 tokens to the browser — refresh tokens stored in Redis session hashes, browser only sees opaque session cookie
 2. **Comprehensive Logging**: Enable OAuth2 debug logging for troubleshooting
-3. **Session Timeout**: Balance security (short timeout) vs UX (longer timeout). Frontend heartbeat provides sliding window — session only dies if browser stops calling `GET /auth/session`
+3. **Session Timeout**: Balance security (short timeout) vs UX (longer timeout). Frontend heartbeat provides sliding window — session only dies if browser stops calling `GET /auth/v1/session`
 4. **Graceful Logout**: Delete session hash from Redis, clear cookie, and redirect to Auth0 logout
 5. **Health Checks**: Monitor Redis connectivity and Auth0 availability
 6. **Environment Parity**: Use same Auth0 tenant structure for dev/staging/prod
@@ -609,7 +609,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 9. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production. OAuth2 callback path (`/login/oauth2/code/**`) is excluded from HTTP logging (defense-in-depth).
 10. **Session Key Prefix Alignment**: `session.key-prefix` must match the ext_authz service's expected prefix so it can find session hashes
 11. **Permission-Service Dependency**: Login fails if permission-service is unreachable (permissions are required)
-12. **Heartbeat Interval**: Frontend should call `GET /auth/session` every ~2 min **only while the user is active**. The current defaults are a 15-minute session TTL and a 5-minute refresh threshold. Session Gateway extends unconditionally — if the frontend calls on a fixed timer without checking activity, sessions never expire for open tabs
+12. **Heartbeat Interval**: Frontend should call `GET /auth/v1/session` every ~2 min **only while the user is active**. The current defaults are a 15-minute session TTL and a 5-minute refresh threshold. Session Gateway extends unconditionally — if the frontend calls on a fixed timer without checking activity, sessions never expire for open tabs
 13. **Token Exchange Sessions**: Sessions created via `POST /auth/token/exchange` have no refresh token — heartbeat extends TTL but cannot refresh IDP tokens. Native clients handle their own token lifecycle
 
 ## NOTES FOR AI AGENTS
@@ -665,7 +665,7 @@ When working on this service:
 - Redis is critical dependency - session loss means user re-authentication
 - Spring WebFlux reactive stack - avoid blocking operations
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
-- Frontend heartbeat (`GET /auth/session`) is the only mechanism for sliding session TTL and IDP grant validation — API activity through ext_authz does NOT extend sessions
+- Frontend heartbeat (`GET /auth/v1/session`) is the only mechanism for sliding session TTL and IDP grant validation — API activity through ext_authz does NOT extend sessions
 - `offline_access` scope is required for IDP token refresh — Auth0 must allow refresh tokens with rotation enabled
 - Follow the hybrid architecture: Istio ingress (edge auth/routing) → Session Gateway for auth endpoints, and Istio ingress → ext_authz → NGINX for `/api/*`
 

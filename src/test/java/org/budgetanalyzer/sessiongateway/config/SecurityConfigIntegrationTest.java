@@ -165,7 +165,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     var userInfo =
         webTestClient
             .get()
-            .uri("/user")
+            .uri("/auth/v1/user")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionCookie.getValue())
             .exchange()
             .expectStatus()

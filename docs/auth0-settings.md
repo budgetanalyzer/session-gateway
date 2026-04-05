@@ -31,7 +31,7 @@ In Auth0, open `Applications > [browser app] > Settings`.
 - **ID Token Expiration**: `3600` seconds
 
 The refresh-token settings matter more than the ID-token setting. Session Gateway stores the
-refresh token server-side and uses it during `GET /auth/session` to validate the IdP grant and
+refresh token server-side and uses it during `GET /auth/v1/session` to validate the IdP grant and
 refresh access tokens near expiry.
 
 ## Tenant Session Configuration

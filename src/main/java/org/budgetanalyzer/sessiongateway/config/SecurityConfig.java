@@ -90,7 +90,7 @@ public class SecurityConfig {
                         "/login/**",
                         "/oauth2/**",
                         "/auth/token/exchange",
-                        "/auth/session",
+                        "/auth/v1/session",
                         "/logout",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
@@ -131,7 +131,7 @@ public class SecurityConfig {
     var delegatingEntryPoint =
         new DelegatingServerAuthenticationEntryPoint(
             new DelegatingServerAuthenticationEntryPoint.DelegateEntry(
-                ServerWebExchangeMatchers.pathMatchers("/api/**", "/user"),
+                ServerWebExchangeMatchers.pathMatchers("/api/**", "/auth/v1/user"),
                 (exchange, exception) -> unauthorized(exchange)));
 
     delegatingEntryPoint.setDefaultEntryPoint(

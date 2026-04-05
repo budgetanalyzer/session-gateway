@@ -145,7 +145,7 @@ class BrowserErrorRedirectIntegrationTest extends AbstractIntegrationTest {
   void apiSessionEndpointStaysJsonOnFailure() {
     webTestClient
         .get()
-        .uri("/auth/session")
+        .uri("/auth/v1/session")
         .exchange()
         .expectStatus()
         .isUnauthorized()

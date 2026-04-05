@@ -57,7 +57,7 @@ The current runtime defaults across the active browser-session path are:
 - frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes in `budget-analyzer-web`)
 
 That heartbeat cadence is frontend-owned, not Session Gateway-owned. Session Gateway extends the
-session on every `GET /auth/session` call; the frontend decides when to call based on user
+session on every `GET /auth/v1/session` call; the frontend decides when to call based on user
 activity.
 
 The operational Auth0 dashboard values that pair with these defaults are documented in
@@ -129,7 +129,7 @@ Heartbeat and logout clearing behavior follows the same public-cookie rule:
 - no override configured: clear a host-only cookie
 - override configured: clear a cookie with that explicit `Domain` attribute
 
-If the browser presents a cookie for a missing or expired Redis session, `GET /auth/session`
+If the browser presents a cookie for a missing or expired Redis session, `GET /auth/v1/session`
 returns `401` and clears the stale cookie.
 
 ## Internal Revocation Endpoint
