@@ -1,14 +1,15 @@
 package org.budgetanalyzer.sessiongateway.session;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
@@ -26,18 +27,15 @@ public class SessionWriter {
 
   /** Updates hash fields and TTL only if the key already exists. Returns 1 if updated, 0 if not. */
   private static final RedisScript<Long> CONDITIONAL_UPDATE_SCRIPT =
-      RedisScript.of(
-          """
-          if redis.call('exists', KEYS[1]) == 1 then
-            for i = 1, #ARGV - 1, 2 do
-              redis.call('hset', KEYS[1], ARGV[i], ARGV[i + 1])
-            end
-            redis.call('expire', KEYS[1], tonumber(ARGV[#ARGV]))
-            return 1
-          end
-          return 0
-          """,
-          Long.class);
+      RedisScript.of(new ClassPathResource("redis/conditional-update.lua"), Long.class);
+
+  /** Creates a session hash and its user session index entry atomically. */
+  private static final RedisScript<Long> CREATE_SESSION_SCRIPT =
+      RedisScript.of(new ClassPathResource("redis/create-session.lua"), Long.class);
+
+  /** Deletes every indexed session for a user atomically. */
+  private static final RedisScript<Long> DELETE_USER_SESSIONS_SCRIPT =
+      RedisScript.of(new ClassPathResource("redis/delete-user-sessions.lua"), Long.class);
 
   private final ReactiveStringRedisTemplate redisTemplate;
   private final Clock clock;
@@ -55,7 +53,8 @@ public class SessionWriter {
   /**
    * Creates a new session hash in Redis.
    *
-   * <p>Generates a UUID session ID, writes all fields via HMSET, and sets the key TTL.
+   * <p>Generates a UUID session ID, writes all fields, and indexes the session for targeted
+   * revocation in one Redis script execution.
    *
    * @param userId internal user ID from the permission service
    * @param idpSub IDP subject identifier
@@ -79,7 +78,8 @@ public class SessionWriter {
       String refreshToken,
       Instant tokenExpiresAt) {
     var sessionId = UUID.randomUUID().toString();
-    var key = keyPrefix + sessionId;
+    var sessionKey = sessionKey(sessionId);
+    var userSessionsKey = userSessionsKey(userId);
     var now = clock.instant();
     var expiresAt = now.plusSeconds(ttlSeconds);
 
@@ -102,9 +102,11 @@ public class SessionWriter {
     log.debug("Creating session {} for userId={}", SafeLogger.truncateId(sessionId), userId);
 
     return redisTemplate
-        .<String, String>opsForHash()
-        .putAll(key, fields)
-        .then(redisTemplate.expire(key, Duration.ofSeconds(ttlSeconds)))
+        .execute(
+            CREATE_SESSION_SCRIPT,
+            List.of(sessionKey, userSessionsKey),
+            createSessionArguments(sessionId, fields))
+        .single()
         .thenReturn(sessionId);
   }
 
@@ -115,18 +117,21 @@ public class SessionWriter {
    * was deleted or expired between the caller's read and this write.
    *
    * @param sessionId the session ID
+   * @param userId the internal user ID for refreshing the session index TTL
    * @param ttlSeconds the new TTL in seconds
    * @return true if updated, false if the session no longer exists
    */
-  public Mono<Boolean> updateSessionExpiry(String sessionId, long ttlSeconds) {
-    var key = keyPrefix + sessionId;
+  public Mono<Boolean> updateSessionExpiry(String sessionId, String userId, long ttlSeconds) {
+    var sessionKey = sessionKey(sessionId);
+    var userSessionsKey = userSessionsKey(userId);
     var expiresAt = String.valueOf(clock.instant().plusSeconds(ttlSeconds).getEpochSecond());
 
     return redisTemplate
         .execute(
             CONDITIONAL_UPDATE_SCRIPT,
-            List.of(key),
-            List.of(SessionHashFields.EXPIRES_AT, expiresAt, String.valueOf(ttlSeconds)))
+            List.of(sessionKey, userSessionsKey),
+            conditionalUpdateArguments(
+                sessionId, ttlSeconds, SessionHashFields.EXPIRES_AT, expiresAt))
         .single()
         .map(result -> result == 1L);
   }
@@ -139,28 +144,35 @@ public class SessionWriter {
    * session hashes that lack identity fields.
    *
    * @param sessionId the session ID
+   * @param userId the internal user ID for refreshing the session index TTL
    * @param refreshToken the new IDP refresh token
    * @param tokenExpiresAt when the new IDP access token expires
    * @param ttlSeconds the new session TTL in seconds
    * @return true if updated, false if the session no longer exists
    */
   public Mono<Boolean> updateTokenAndExpiry(
-      String sessionId, String refreshToken, Instant tokenExpiresAt, long ttlSeconds) {
-    var key = keyPrefix + sessionId;
+      String sessionId,
+      String userId,
+      String refreshToken,
+      Instant tokenExpiresAt,
+      long ttlSeconds) {
+    var sessionKey = sessionKey(sessionId);
+    var userSessionsKey = userSessionsKey(userId);
     var expiresAt = String.valueOf(clock.instant().plusSeconds(ttlSeconds).getEpochSecond());
 
     return redisTemplate
         .execute(
             CONDITIONAL_UPDATE_SCRIPT,
-            List.of(key),
-            List.of(
+            List.of(sessionKey, userSessionsKey),
+            conditionalUpdateArguments(
+                sessionId,
+                ttlSeconds,
                 SessionHashFields.REFRESH_TOKEN,
                 refreshToken,
                 SessionHashFields.TOKEN_EXPIRES_AT,
                 String.valueOf(tokenExpiresAt.getEpochSecond()),
                 SessionHashFields.EXPIRES_AT,
-                expiresAt,
-                String.valueOf(ttlSeconds)))
+                expiresAt))
         .single()
         .map(result -> result == 1L);
   }
@@ -172,9 +184,65 @@ public class SessionWriter {
    * @return true if the key was deleted
    */
   public Mono<Boolean> deleteSession(String sessionId) {
-    var key = keyPrefix + sessionId;
+    var sessionKey = sessionKey(sessionId);
     log.debug("Deleting session {}", SafeLogger.truncateId(sessionId));
 
-    return redisTemplate.delete(key).map(count -> count > 0);
+    return redisTemplate
+        .<String, String>opsForHash()
+        .get(sessionKey, SessionHashFields.USER_ID)
+        .flatMap(
+            userId ->
+                redisTemplate
+                    .unlink(sessionKey)
+                    .flatMap(
+                        deletedKeyCount ->
+                            redisTemplate
+                                .opsForSet()
+                                .remove(userSessionsKey(userId), sessionId)
+                                .thenReturn(deletedKeyCount > 0)))
+        .defaultIfEmpty(false);
+  }
+
+  /**
+   * Deletes every session currently indexed for the given user.
+   *
+   * @param userId the internal user ID whose sessions should be removed
+   * @return the number of Redis keys deleted
+   */
+  public Mono<Long> deleteAllSessionsForUser(String userId) {
+    var userSessionsKey = userSessionsKey(userId);
+
+    return redisTemplate
+        .execute(DELETE_USER_SESSIONS_SCRIPT, List.of(userSessionsKey), List.of(keyPrefix))
+        .single();
+  }
+
+  private String sessionKey(String sessionId) {
+    return keyPrefix + sessionId;
+  }
+
+  private List<String> createSessionArguments(String sessionId, Map<String, String> fields) {
+    var scriptArguments = new ArrayList<String>();
+    scriptArguments.add(sessionId);
+    scriptArguments.add(String.valueOf(ttlSeconds));
+    fields.forEach(
+        (field, value) -> {
+          scriptArguments.add(field);
+          scriptArguments.add(value);
+        });
+    return List.copyOf(scriptArguments);
+  }
+
+  private List<String> conditionalUpdateArguments(
+      String sessionId, long ttlSeconds, String... fieldValuePairs) {
+    var scriptArguments = new ArrayList<String>();
+    scriptArguments.add(sessionId);
+    scriptArguments.addAll(List.of(fieldValuePairs));
+    scriptArguments.add(String.valueOf(ttlSeconds));
+    return List.copyOf(scriptArguments);
+  }
+
+  private String userSessionsKey(String userId) {
+    return SessionHashFields.USER_SESSIONS_KEY_PREFIX + userId;
   }
 }

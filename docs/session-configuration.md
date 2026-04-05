@@ -11,6 +11,10 @@ Session Gateway and ext_authz must stay aligned on three things:
 Changing either shared value is a cross-repo contract change. Existing live sessions are keyed by
 the current prefix and browsers hold the current cookie name.
 
+Session Gateway also maintains a per-user Redis set under `user_sessions:{userId}`. That index is
+an internal revocation contract with permission-service, used to locate all active sessions for a
+user without scanning `session:*`.
+
 ## Session Gateway Source Of Truth
 
 Session settings are bound through `SessionProperties` and defaulted in
@@ -127,6 +131,26 @@ Heartbeat and logout clearing behavior follows the same public-cookie rule:
 
 If the browser presents a cookie for a missing or expired Redis session, `GET /auth/session`
 returns `401` and clears the stale cookie.
+
+## Internal Revocation Endpoint
+
+Permission-service can revoke all active sessions for a user through:
+
+- `DELETE /internal/v1/sessions/users/{userId}`
+
+Behavior:
+
+- returns `204 No Content` whether sessions were deleted or none existed
+- uses one Redis script execution to delete all indexed `session:{id}` hashes for the user and to
+  remove the `user_sessions:{userId}` index key atomically
+- relies on login, heartbeat, and token refresh to keep the `user_sessions:{userId}` index both
+  TTL-aligned and self-healing
+- when heartbeat or token refresh touches a live session, Session Gateway re-adds that session ID
+  to `user_sessions:{userId}` before refreshing both TTLs, so a missing index entry does not leave
+  the session invisible to targeted revocation
+
+Application security permits only that exact internal path without browser authentication. The
+endpoint still depends on network-level controls to limit which services can call it.
 
 ## OAuth2 State TTL
 
