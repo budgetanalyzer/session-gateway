@@ -93,6 +93,7 @@ public class SecurityConfig {
                         "/auth/v1/session",
                         "/logout",
                         "/v3/api-docs/**",
+                        "/v3/api-docs.yaml",
                         "/swagger-ui/**",
                         "/swagger-ui.html")
                     .permitAll()
