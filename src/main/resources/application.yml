@@ -93,6 +93,15 @@ idp:
     return-to: ${IDP_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}  # Where to redirect after logout (Session Gateway)
     url-template: ${IDP_LOGOUT_URL_TEMPLATE:${spring.security.oauth2.client.provider.idp.issuer-uri}/v2/logout?returnTo={returnTo}&client_id={clientId}}
 
+# Springdoc / Swagger UI
+# Disable in production profiles to avoid exposing the API schema publicly.
+# Override with springdoc.api-docs.enabled=true in dev/staging profiles.
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:false}
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:false}
+
 # Budget Analyzer Common Configuration
 budgetanalyzer:
   service:

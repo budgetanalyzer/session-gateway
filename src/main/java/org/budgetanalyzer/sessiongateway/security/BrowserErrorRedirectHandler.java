@@ -25,7 +25,6 @@ public class BrowserErrorRedirectHandler implements WebExceptionHandler, Ordered
   private static final Logger log = LoggerFactory.getLogger(BrowserErrorRedirectHandler.class);
   private static final Set<String> API_PATH_PREFIXES =
       Set.of("/auth/", "/api/", "/v3/api-docs", "/swagger-ui", "/actuator/");
-  private static final Set<String> API_EXACT_PATHS = Set.of("/user");
 
   private static final String OOPS_PATH = "/oops";
 
@@ -59,9 +58,6 @@ public class BrowserErrorRedirectHandler implements WebExceptionHandler, Ordered
   }
 
   static boolean isApiPath(String path) {
-    if (API_EXACT_PATHS.contains(path)) {
-      return true;
-    }
     for (var apiPathPrefix : API_PATH_PREFIXES) {
       if (path.startsWith(apiPathPrefix)) {
         return true;

@@ -29,7 +29,7 @@ class BrowserErrorRedirectHandlerTest {
   void apiPathPassesThroughToSharedJsonHandler() {
     var exchange =
         MockServerWebExchange.from(
-            MockServerHttpRequest.get("/auth/session")
+            MockServerHttpRequest.get("/auth/v1/session")
                 .header("Accept", "text/html,application/xhtml+xml")
                 .header("Sec-Fetch-Mode", "navigate")
                 .build());
@@ -44,8 +44,8 @@ class BrowserErrorRedirectHandlerTest {
   }
 
   @Test
-  void exactApiPathPassesThroughToSharedJsonHandler() {
-    var exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/user").build());
+  void versionedUserPathPassesThroughToSharedJsonHandler() {
+    var exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/auth/v1/user").build());
     var runtimeException = new RuntimeException("boom");
 
     StepVerifier.create(browserErrorRedirectHandler.handle(exchange, runtimeException))

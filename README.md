@@ -18,8 +18,8 @@ Session Gateway provides secure authentication and session management for the Bu
 - Maintains per-user session indexes in Redis (`user_sessions:{userId}`) for targeted revocation
 - The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema
 - Issues HttpOnly session cookies to frontend
-- Provides session heartbeat (`GET /auth/session`) — extends session TTL, refreshes IDP tokens near expiry, detects IDP grant revocation
-- Owns the OAuth2 and session lifecycle endpoints: `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`, `/user`
+- Provides session heartbeat (`GET /auth/v1/session`) — extends session TTL, refreshes IDP tokens near expiry, detects IDP grant revocation
+- Owns the OAuth2 and session lifecycle endpoints: `/oauth2/**`, `/auth/**`, `/login/oauth2/**`, `/logout`
 - Exposes internal session revocation for permission-service: `DELETE /internal/v1/sessions/users/{userId}`
 - Provides token exchange endpoint for native PKCE/M2M clients (`POST /auth/token/exchange`)
 
@@ -33,7 +33,7 @@ Recommended Auth0 dashboard values are documented in [docs/auth0-settings.md](do
 
 ```text
 Browser → Istio Ingress (:443)
-  ├─ /oauth2/*, /auth/*, /login/oauth2/*, /logout, /user
+  ├─ /oauth2/*, /auth/*, /login/oauth2/*, /logout
   │      → Session Gateway (:8081) ← OAuth2 → Auth0
   │           ├─ Permission Service (:8086) [email/displayName]
   │           └─ Redis (:6379) [session:*]
@@ -148,7 +148,7 @@ curl http://localhost:8081/actuator/health
 - Session hash deleted on logout, cookie cleared
 
 ### Session Heartbeat and IDP Grant Validation
-- **Sliding window**: Frontend calls `GET /auth/session` periodically (~2 min) to extend session TTL
+- **Sliding window**: Frontend calls `GET /auth/v1/session` periodically (~2 min) to extend session TTL
 - **Activity-gated**: Session Gateway extends unconditionally on every heartbeat call. The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
 - **Token refresh**: When IDP token is within 5 min of expiry, heartbeat refreshes it via Auth0's token endpoint
 - **Revocation detection**: If Auth0 rejects the refresh (user disabled, consent withdrawn), session is terminated and cookie cleared

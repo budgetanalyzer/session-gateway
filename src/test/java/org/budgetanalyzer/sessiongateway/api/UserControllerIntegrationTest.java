@@ -32,7 +32,7 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         webTestClient
             .get()
-            .uri("/user")
+            .uri("/auth/v1/user")
             .cookie("SESSION", sessionId)
             .exchange()
             .expectStatus()

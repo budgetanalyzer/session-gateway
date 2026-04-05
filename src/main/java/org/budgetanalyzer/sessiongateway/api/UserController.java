@@ -63,11 +63,11 @@ public class UserController {
                     schema = @Schema(implementation = UserInfoResponse.class))),
         @ApiResponse(responseCode = "401", description = "Not authenticated", content = @Content)
       })
-  @GetMapping("/user")
+  @GetMapping("/auth/v1/user")
   public Mono<UserInfoResponse> getCurrentUser(ServerWebExchange exchange) {
     var sessionId = sessionCookieHelper.readSessionId(exchange);
     if (sessionId == null || sessionId.isBlank()) {
-      log.debug("No session cookie found for /user request");
+      log.debug("No session cookie found for /auth/v1/user request");
       return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
 
