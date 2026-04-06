@@ -83,7 +83,6 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var userSessionsTtl = reactiveStringRedisTemplate.getExpire(TEST_USER_SESSIONS_KEY).block();
 
     assertThat(response).isNotNull();
-    assertThat(response.active()).isTrue();
     assertThat(response.userId()).isEqualTo(TEST_USER_ID);
     assertThat(response.roles()).containsExactly("ROLE_USER");
     assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(900).getEpochSecond());
@@ -160,7 +159,6 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var response = exchangeResult.getResponseBody();
 
     assertThat(response).isNotNull();
-    assertThat(response.active()).isTrue();
     assertThat(response.userId()).isEqualTo(TEST_USER_ID);
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
         .containsEntry(SessionHashFields.USER_ID, TEST_USER_ID);

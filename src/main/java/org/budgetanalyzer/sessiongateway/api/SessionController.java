@@ -124,7 +124,7 @@ public class SessionController {
 
     return Mono.just(
         new SessionStatusResponse(
-            true, sessionData.userId(), sessionData.roles(), expiresAt.getEpochSecond()));
+            sessionData.userId(), sessionData.roles(), expiresAt.getEpochSecond()));
   }
 
   private <T> Mono<T> unauthorizedAndClearCookie(ServerWebExchange exchange) {

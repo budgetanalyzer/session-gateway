@@ -259,7 +259,7 @@ losing the original deep link.
   - Reads session from Redis via cookie
   - If the cookie points at a missing or expired Redis session: clears the stale cookie and returns 401
   - If session is healthy: resets `expires_at` + Redis key TTL (sliding window)
-  - Response: `{ "active": true, "userId": "...", "roles": [...], "expiresAt": <epoch> }`
+  - Response: `{ "userId": "...", "roles": [...], "expiresAt": <epoch> }`
   - Auth0 is **not** contacted during heartbeat — validity depends entirely on local Redis state
   - 401 if no valid session
 
