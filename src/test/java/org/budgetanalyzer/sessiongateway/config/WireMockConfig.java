@@ -48,10 +48,10 @@ public class WireMockConfig {
                         "userinfo_endpoint": "%s/idp/userinfo",
                         "jwks_uri": "%s/idp/.well-known/jwks.json",
                         "response_types_supported": ["code"],
-                        "grant_types_supported": ["authorization_code", "refresh_token"],
+                        "grant_types_supported": ["authorization_code"],
                         "subject_types_supported": ["public"],
                         "id_token_signing_alg_values_supported": ["RS256"],
-                        "scopes_supported": ["openid", "profile", "email", "offline_access"]
+                        "scopes_supported": ["openid", "profile", "email"]
                     }
                     """
                             .formatted(baseUrl, baseUrl, baseUrl, baseUrl, baseUrl))));

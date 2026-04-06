@@ -2,7 +2,6 @@ package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -62,9 +61,7 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
             "Logout User",
             "https://example.com/avatar.png",
             List.of("ROLE_USER"),
-            List.of("transactions:read"),
-            "refresh-token-logout",
-            Instant.parse("2026-03-31T01:00:00Z"))
+            List.of("transactions:read"))
         .block();
   }
 

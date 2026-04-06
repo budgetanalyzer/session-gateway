@@ -77,8 +77,6 @@ class UserControllerTest {
                     "https://example.com/photo.jpg",
                     List.of("USER"),
                     List.of("transactions:read"),
-                    "refresh-token",
-                    Instant.parse("2026-03-30T00:10:00Z"),
                     Instant.parse("2026-03-30T00:00:00Z"),
                     Instant.parse("2026-03-30T00:15:00Z"))));
 

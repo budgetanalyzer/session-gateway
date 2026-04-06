@@ -1,7 +1,6 @@
 package org.budgetanalyzer.sessiongateway.session;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -63,8 +62,6 @@ public class SessionWriter {
    * @param picture user's profile picture URL (nullable)
    * @param roles user roles
    * @param permissions user permissions
-   * @param refreshToken IDP refresh token (nullable for token exchange sessions)
-   * @param tokenExpiresAt when the IDP access token expires
    * @return the generated session ID
    */
   public Mono<String> createSession(
@@ -74,9 +71,7 @@ public class SessionWriter {
       String displayName,
       String picture,
       List<String> roles,
-      List<String> permissions,
-      String refreshToken,
-      Instant tokenExpiresAt) {
+      List<String> permissions) {
     var sessionId = UUID.randomUUID().toString();
     var sessionKey = sessionKey(sessionId);
     var userSessionsKey = userSessionsKey(userId);
@@ -92,10 +87,6 @@ public class SessionWriter {
             Map.entry(SessionHashFields.PICTURE, picture != null ? picture : ""),
             Map.entry(SessionHashFields.ROLES, String.join(",", roles)),
             Map.entry(SessionHashFields.PERMISSIONS, String.join(",", permissions)),
-            Map.entry(SessionHashFields.REFRESH_TOKEN, refreshToken != null ? refreshToken : ""),
-            Map.entry(
-                SessionHashFields.TOKEN_EXPIRES_AT,
-                String.valueOf(tokenExpiresAt.getEpochSecond())),
             Map.entry(SessionHashFields.CREATED_AT, String.valueOf(now.getEpochSecond())),
             Map.entry(SessionHashFields.EXPIRES_AT, String.valueOf(expiresAt.getEpochSecond())));
 
@@ -132,47 +123,6 @@ public class SessionWriter {
             List.of(sessionKey, userSessionsKey),
             conditionalUpdateArguments(
                 sessionId, ttlSeconds, SessionHashFields.EXPIRES_AT, expiresAt))
-        .single()
-        .map(result -> result == 1L);
-  }
-
-  /**
-   * Updates the refresh token, token expiry, and session expiry after a successful IDP refresh.
-   *
-   * <p>Atomically checks that the session hash exists before writing. Returns false if the session
-   * was deleted or expired between the caller's read and this write, preventing creation of partial
-   * session hashes that lack identity fields.
-   *
-   * @param sessionId the session ID
-   * @param userId the internal user ID for refreshing the session index TTL
-   * @param refreshToken the new IDP refresh token
-   * @param tokenExpiresAt when the new IDP access token expires
-   * @param ttlSeconds the new session TTL in seconds
-   * @return true if updated, false if the session no longer exists
-   */
-  public Mono<Boolean> updateTokenAndExpiry(
-      String sessionId,
-      String userId,
-      String refreshToken,
-      Instant tokenExpiresAt,
-      long ttlSeconds) {
-    var sessionKey = sessionKey(sessionId);
-    var userSessionsKey = userSessionsKey(userId);
-    var expiresAt = String.valueOf(clock.instant().plusSeconds(ttlSeconds).getEpochSecond());
-
-    return redisTemplate
-        .execute(
-            CONDITIONAL_UPDATE_SCRIPT,
-            List.of(sessionKey, userSessionsKey),
-            conditionalUpdateArguments(
-                sessionId,
-                ttlSeconds,
-                SessionHashFields.REFRESH_TOKEN,
-                refreshToken,
-                SessionHashFields.TOKEN_EXPIRES_AT,
-                String.valueOf(tokenExpiresAt.getEpochSecond()),
-                SessionHashFields.EXPIRES_AT,
-                expiresAt))
         .single()
         .map(result -> result == 1L);
   }

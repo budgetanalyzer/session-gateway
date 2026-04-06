@@ -13,11 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "session")
 public record SessionProperties(
-    String keyPrefix,
-    long ttlSeconds,
-    long refreshThresholdSeconds,
-    long oauth2StateTtlSeconds,
-    CookieProperties cookie) {
+    String keyPrefix, long ttlSeconds, long oauth2StateTtlSeconds, CookieProperties cookie) {
 
   /** Creates validated session properties. */
   public SessionProperties {
@@ -25,15 +21,6 @@ public record SessionProperties(
     ttlSeconds = requirePositive(ttlSeconds, "session.ttl-seconds");
     oauth2StateTtlSeconds =
         requirePositive(oauth2StateTtlSeconds, "session.oauth2-state-ttl-seconds");
-
-    if (refreshThresholdSeconds < 0) {
-      throw new IllegalArgumentException(
-          "session.refresh-threshold-seconds must be zero or greater.");
-    }
-    if (refreshThresholdSeconds >= ttlSeconds) {
-      throw new IllegalArgumentException(
-          "session.refresh-threshold-seconds must be less than session.ttl-seconds.");
-    }
 
     cookie = Objects.requireNonNull(cookie, "session.cookie must not be null.");
   }

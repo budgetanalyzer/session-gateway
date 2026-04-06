@@ -1,8 +1,6 @@
 package org.budgetanalyzer.sessiongateway.config;
 
 import java.net.URI;
-import java.time.Clock;
-import java.time.Instant;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,7 +10,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.client.web.server.ServerAuthorizationRequestRepository;
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizationRequestResolver;
@@ -51,8 +48,6 @@ public class SecurityConfig {
   private final SessionWriter sessionWriter;
   private final SessionCookieHelper sessionCookieHelper;
   private final OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver;
-  private final Clock clock;
-  private final SessionProperties sessionProperties;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
@@ -62,9 +57,7 @@ public class SecurityConfig {
       PermissionServiceClient permissionServiceClient,
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
-      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
-      Clock clock,
-      SessionProperties sessionProperties) {
+      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver) {
     this.authorizationRequestResolver = authorizationRequestResolver;
     this.authorizationRequestRepository = authorizationRequestRepository;
     this.authorizedClientRepository = authorizedClientRepository;
@@ -73,8 +66,6 @@ public class SecurityConfig {
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
     this.oauth2CallbackRedirectResolver = oauth2CallbackRedirectResolver;
-    this.clock = clock;
-    this.sessionProperties = sessionProperties;
   }
 
   @Bean
@@ -89,7 +80,6 @@ public class SecurityConfig {
                     .pathMatchers(
                         "/login/**",
                         "/oauth2/**",
-                        "/auth/token/exchange",
                         "/auth/v1/session",
                         "/logout",
                         "/v3/api-docs/**",
@@ -97,10 +87,10 @@ public class SecurityConfig {
                         "/swagger-ui/**",
                         "/swagger-ui.html")
                     .permitAll()
-                    .pathMatchers("/api/**")
+                    .pathMatchers("/auth/v1/user")
                     .authenticated()
                     .anyExchange()
-                    .authenticated())
+                    .permitAll())
         .oauth2Login(
             oauth2 ->
                 oauth2
@@ -132,7 +122,7 @@ public class SecurityConfig {
     var delegatingEntryPoint =
         new DelegatingServerAuthenticationEntryPoint(
             new DelegatingServerAuthenticationEntryPoint.DelegateEntry(
-                ServerWebExchangeMatchers.pathMatchers("/api/**", "/auth/v1/user"),
+                ServerWebExchangeMatchers.pathMatchers("/auth/v1/user"),
                 (exchange, exception) -> unauthorized(exchange)));
 
     delegatingEntryPoint.setDefaultEntryPoint(
@@ -155,34 +145,27 @@ public class SecurityConfig {
     var displayName = attribute(oauth2AuthenticationToken, "name", "");
     var picture = attribute(oauth2AuthenticationToken, "picture", "");
 
-    return loadAuthorizedClient(exchange, oauth2AuthenticationToken)
-        .switchIfEmpty(
-            Mono.error(new IllegalStateException("OAuth2 authorized client missing after login")))
+    return permissionServiceClient
+        .fetchPermissions(idpSub, email, displayName)
         .flatMap(
-            authorizedClient ->
-                permissionServiceClient
-                    .fetchPermissions(idpSub, email, displayName)
+            permissionResponse ->
+                sessionWriter
+                    .createSession(
+                        permissionResponse.userId(),
+                        idpSub,
+                        email,
+                        displayName,
+                        picture,
+                        permissionResponse.roles(),
+                        permissionResponse.permissions())
                     .flatMap(
-                        permissionResponse ->
-                            sessionWriter
-                                .createSession(
-                                    permissionResponse.userId(),
-                                    idpSub,
-                                    email,
-                                    displayName,
-                                    picture,
-                                    permissionResponse.roles(),
-                                    permissionResponse.permissions(),
-                                    refreshTokenValue(authorizedClient),
-                                    tokenExpiresAt(authorizedClient))
-                                .flatMap(
-                                    sessionId -> {
-                                      sessionCookieHelper.setSessionCookie(exchange, sessionId);
-                                      return redirect(
-                                          exchange,
-                                          oauth2CallbackRedirectResolver
-                                              .resolveAuthenticationSuccessRedirectUrl(exchange));
-                                    })))
+                        sessionId -> {
+                          sessionCookieHelper.setSessionCookie(exchange, sessionId);
+                          return redirect(
+                              exchange,
+                              oauth2CallbackRedirectResolver
+                                  .resolveAuthenticationSuccessRedirectUrl(exchange));
+                        }))
         .onErrorResume(
             Exception.class,
             exception -> {
@@ -195,36 +178,10 @@ public class SecurityConfig {
             });
   }
 
-  private Mono<OAuth2AuthorizedClient> loadAuthorizedClient(
-      ServerWebExchange exchange, OAuth2AuthenticationToken oauth2AuthenticationToken) {
-    return authorizedClientRepository.loadAuthorizedClient(
-        oauth2AuthenticationToken.getAuthorizedClientRegistrationId(),
-        oauth2AuthenticationToken,
-        exchange);
-  }
-
   private String attribute(
       OAuth2AuthenticationToken oauth2AuthenticationToken, String name, String defaultValue) {
     var value = oauth2AuthenticationToken.getPrincipal().getAttribute(name);
     return value != null ? value.toString() : defaultValue;
-  }
-
-  private String refreshTokenValue(OAuth2AuthorizedClient authorizedClient) {
-    if (authorizedClient.getRefreshToken() == null) {
-      log.warn("OAuth2 login completed without a refresh token");
-      return null;
-    }
-
-    return authorizedClient.getRefreshToken().getTokenValue();
-  }
-
-  private Instant tokenExpiresAt(OAuth2AuthorizedClient authorizedClient) {
-    var expiresAt = authorizedClient.getAccessToken().getExpiresAt();
-    if (expiresAt != null) {
-      return expiresAt;
-    }
-
-    return clock.instant().plusSeconds(sessionProperties.ttlSeconds());
   }
 
   private Mono<Void> redirect(ServerWebExchange exchange, String location) {

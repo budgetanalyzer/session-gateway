@@ -1,7 +1,5 @@
 package org.budgetanalyzer.sessiongateway;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import org.junit.jupiter.api.Test;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
@@ -19,28 +17,20 @@ class SessionGatewayApplicationIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void unauthenticatedApiRequest_returns401() {
-    webTestClient.get().uri("/api/anything").exchange().expectStatus().isUnauthorized();
-  }
-
-  @Test
   void unauthenticatedUserRequest_returns401() {
     webTestClient.get().uri("/auth/v1/user").exchange().expectStatus().isUnauthorized();
   }
 
   @Test
-  void tokenExchangeEndpointIsReachable() {
-    var status =
-        webTestClient
-            .post()
-            .uri("/auth/token/exchange")
-            .header("Content-Type", "application/json")
-            .bodyValue("{\"accessToken\": \"\"}")
-            .exchange()
-            .returnResult(Void.class)
-            .getStatus();
-
-    assertThat(status.value()).isNotEqualTo(404);
+  void retiredTokenExchangeEndpointReturns404() {
+    webTestClient
+        .post()
+        .uri("/auth/token/exchange")
+        .header("Content-Type", "application/json")
+        .bodyValue("{\"accessToken\": \"\"}")
+        .exchange()
+        .expectStatus()
+        .isNotFound();
   }
 
   @Test

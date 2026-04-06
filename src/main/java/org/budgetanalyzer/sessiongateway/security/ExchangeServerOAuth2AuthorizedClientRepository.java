@@ -11,9 +11,10 @@ import reactor.core.publisher.Mono;
 /**
  * Request-scoped authorized client repository for the OAuth2 callback flow.
  *
- * <p>Spring Security saves the authorized client before invoking the OAuth2 login success handler.
- * We only need that client during the callback request to extract the refresh token and token
- * expiry before writing our Redis session hash.
+ * <p>Spring Security requires a {@link ServerOAuth2AuthorizedClientRepository} bean to drive the
+ * OAuth2 login flow. We hold the authorized client only for the duration of the callback request:
+ * Session Gateway no longer reads it after the success handler runs, since browser sessions are
+ * created from the ID-token claims and the permission service alone.
  */
 @Component
 public class ExchangeServerOAuth2AuthorizedClientRepository

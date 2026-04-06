@@ -2,7 +2,6 @@ package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -141,9 +140,7 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
             "Internal Revocation User",
             "https://example.com/avatar.png",
             List.of("ROLE_USER"),
-            List.of("transactions:read"),
-            "refresh-token-123",
-            Instant.parse("2026-04-04T18:00:00Z"))
+            List.of("transactions:read"))
         .block();
   }
 

@@ -40,7 +40,6 @@ class SessionPropertiesTest {
 
           assertThat(sessionProperties.keyPrefix()).isEqualTo("session:");
           assertThat(sessionProperties.ttlSeconds()).isEqualTo(900);
-          assertThat(sessionProperties.refreshThresholdSeconds()).isEqualTo(300);
           assertThat(sessionProperties.oauth2StateTtlSeconds()).isEqualTo(900);
           assertThat(sessionProperties.cookie().name()).isEqualTo(PUBLIC_SESSION_COOKIE_NAME);
           assertThat(sessionProperties.cookie().domainOverride()).isNull();
@@ -68,18 +67,6 @@ class SessionPropertiesTest {
             applicationContext -> {
               assertThat(applicationContext).hasFailed();
               assertThat(rootCauseMessage(applicationContext)).contains("session.key-prefix");
-            });
-  }
-
-  @Test
-  void rejectsRefreshThresholdThatIsNotLessThanTtl() {
-    applicationContextRunner
-        .withPropertyValues("session.ttl-seconds=600", "session.refresh-threshold-seconds=600")
-        .run(
-            applicationContext -> {
-              assertThat(applicationContext).hasFailed();
-              assertThat(rootCauseMessage(applicationContext))
-                  .contains("session.refresh-threshold-seconds");
             });
   }
 

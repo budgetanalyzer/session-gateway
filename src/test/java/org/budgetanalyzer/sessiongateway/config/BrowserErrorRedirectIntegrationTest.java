@@ -2,7 +2,6 @@ package org.budgetanalyzer.sessiongateway.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -157,23 +156,6 @@ class BrowserErrorRedirectIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void apiTokenExchangeEndpointStaysJsonOnFailure() {
-    webTestClient
-        .post()
-        .uri("/auth/token/exchange")
-        .contentType(MediaType.APPLICATION_JSON)
-        .bodyValue("{}")
-        .exchange()
-        .expectStatus()
-        .isBadRequest()
-        .expectHeader()
-        .contentType(MediaType.APPLICATION_JSON)
-        .expectBody()
-        .jsonPath("$.type")
-        .isEqualTo("INVALID_REQUEST");
-  }
-
-  @Test
   void globalHandlerLogsDoNotContainSensitiveValues() {
     webTestClient
         .get()
@@ -223,9 +205,7 @@ class BrowserErrorRedirectIntegrationTest extends AbstractIntegrationTest {
             "Browser Error Test User",
             "https://example.com/avatar.png",
             List.of("ROLE_USER"),
-            List.of("transactions:read"),
-            "refresh-token-123",
-            Instant.now().plusSeconds(3600))
+            List.of("transactions:read"))
         .block();
   }
 }

@@ -116,7 +116,6 @@ class SessionCookieHelperTest {
     return new SessionProperties(
         "session:",
         900,
-        600,
         900,
         new SessionProperties.CookieProperties(
             PUBLIC_SESSION_COOKIE_NAME, domainOverride, true, sameSite));
