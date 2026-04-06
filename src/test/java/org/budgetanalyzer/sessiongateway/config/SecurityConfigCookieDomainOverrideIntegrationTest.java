@@ -66,8 +66,7 @@ class SecurityConfigCookieDomainOverrideIntegrationTest extends AbstractIntegrat
             .getFirst("nonce");
     assertThat(nonce).isNotBlank();
 
-    stubOidcTokenEndpoint(
-        "access-token-value", createIdToken(rsaKey, nonce), "refresh-token-value");
+    stubOidcTokenEndpoint("access-token-value", createIdToken(rsaKey, nonce));
     stubOidcUserInfo(
         "auth0|user-123", "user@example.com", "Test User", "https://cdn.example.com/avatar.png");
     stubPermissionService(

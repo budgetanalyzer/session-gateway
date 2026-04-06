@@ -76,10 +76,10 @@ public abstract class AbstractIntegrationTest {
                         "userinfo_endpoint": "%s/idp/userinfo",
                         "jwks_uri": "%s/idp/.well-known/jwks.json",
                         "response_types_supported": ["code"],
-                        "grant_types_supported": ["authorization_code", "refresh_token"],
+                        "grant_types_supported": ["authorization_code"],
                         "subject_types_supported": ["public"],
                         "id_token_signing_alg_values_supported": ["RS256"],
-                        "scopes_supported": ["openid", "profile", "email", "offline_access"]
+                        "scopes_supported": ["openid", "profile", "email"]
                     }
                     """
                             .formatted(baseUrl, baseUrl, baseUrl, baseUrl, baseUrl))));
@@ -100,31 +100,16 @@ public abstract class AbstractIntegrationTest {
   }
 
   protected void stubOidcTokenEndpoint(String accessToken, String idToken) {
-    stubOidcTokenEndpoint(accessToken, idToken, null);
-  }
-
-  protected void stubOidcTokenEndpoint(String accessToken, String idToken, String refreshToken) {
     var responseBody =
-        refreshToken == null
-            ? """
-                    {
-                        "access_token": "%s",
-                        "id_token": "%s",
-                        "token_type": "Bearer",
-                        "expires_in": 3600
-                    }
-                    """
-                .formatted(accessToken, idToken)
-            : """
-                    {
-                        "access_token": "%s",
-                        "refresh_token": "%s",
-                        "id_token": "%s",
-                        "token_type": "Bearer",
-                        "expires_in": 3600
-                    }
-                    """
-                .formatted(accessToken, refreshToken, idToken);
+        """
+            {
+                "access_token": "%s",
+                "id_token": "%s",
+                "token_type": "Bearer",
+                "expires_in": 3600
+            }
+            """
+            .formatted(accessToken, idToken);
 
     wireMockServer.stubFor(
         post(urlEqualTo("/idp/oauth/token"))

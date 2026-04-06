@@ -27,12 +27,6 @@ public final class SessionHashFields {
   /** Comma-separated list of user permissions. */
   public static final String PERMISSIONS = "permissions";
 
-  /** IDP refresh token for grant validation. */
-  public static final String REFRESH_TOKEN = "refresh_token";
-
-  /** Unix epoch seconds when the IDP access token expires. */
-  public static final String TOKEN_EXPIRES_AT = "token_expires_at";
-
   /** Unix epoch seconds when the session was created. */
   public static final String CREATED_AT = "created_at";
 

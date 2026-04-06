@@ -216,7 +216,6 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
   private void assertSanitizedLogs(String state, String code) {
     assertThat(logMessages()).allMatch(message -> !message.contains(state));
     assertThat(logMessages()).allMatch(message -> !message.contains(code));
-    assertThat(logMessages()).allMatch(message -> !message.contains("refresh-token-value"));
   }
 
   private List<String> logMessages() {
@@ -238,7 +237,6 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
                         """
                         {
                           "access_token": "access-token-value",
-                          "refresh_token": "refresh-token-value",
                           "id_token": "%s",
                           "token_type": "Bearer",
                           "expires_in": 3600

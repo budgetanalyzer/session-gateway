@@ -60,7 +60,6 @@ public class SessionReader {
 
               var roles = fields.getOrDefault(SessionHashFields.ROLES, "");
               var permissions = fields.getOrDefault(SessionHashFields.PERMISSIONS, "");
-              var refreshToken = fields.getOrDefault(SessionHashFields.REFRESH_TOKEN, "");
 
               return Mono.just(
                   new SessionData(
@@ -71,9 +70,6 @@ public class SessionReader {
                       fields.getOrDefault(SessionHashFields.PICTURE, ""),
                       roles.isEmpty() ? List.of() : List.of(roles.split(",")),
                       permissions.isEmpty() ? List.of() : List.of(permissions.split(",")),
-                      refreshToken.isEmpty() ? null : refreshToken,
-                      Instant.ofEpochSecond(
-                          Long.parseLong(fields.get(SessionHashFields.TOKEN_EXPIRES_AT))),
                       Instant.ofEpochSecond(
                           Long.parseLong(fields.get(SessionHashFields.CREATED_AT))),
                       expiresAt));

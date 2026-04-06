@@ -13,8 +13,6 @@ import java.util.List;
  * @param picture user's profile picture URL (may be empty)
  * @param roles user roles
  * @param permissions user permissions
- * @param refreshToken IDP refresh token (null for token exchange sessions)
- * @param tokenExpiresAt when the IDP access token expires
  * @param createdAt when the session was created
  * @param expiresAt when the session expires
  */
@@ -26,7 +24,5 @@ public record SessionData(
     String picture,
     List<String> roles,
     List<String> permissions,
-    String refreshToken,
-    Instant tokenExpiresAt,
     Instant createdAt,
     Instant expiresAt) {}

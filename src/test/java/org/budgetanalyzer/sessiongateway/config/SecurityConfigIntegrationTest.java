@@ -106,8 +106,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(authorizationRequestFields.get("nonce")).isNotBlank();
     assertThat(authorizationRequestFields.get("code_verifier")).isNotBlank();
 
-    stubOidcTokenEndpoint(
-        "access-token-value", createIdToken(rsaKey, nonce), "refresh-token-value");
+    stubOidcTokenEndpoint("access-token-value", createIdToken(rsaKey, nonce));
     stubOidcUserInfo(
         "auth0|user-123", "user@example.com", "Test User", "https://cdn.example.com/avatar.png");
     stubPermissionService(
@@ -158,7 +157,8 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
         .containsEntry("picture", "https://cdn.example.com/avatar.png")
         .containsEntry("roles", "ROLE_USER")
         .containsEntry("permissions", "transactions:read")
-        .containsEntry("refresh_token", "refresh-token-value");
+        .doesNotContainKey("refresh_token")
+        .doesNotContainKey("token_expires_at");
 
     assertThat(readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + state)).isEmpty();
 
@@ -351,8 +351,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(nonce).isNotBlank();
 
     var rsaKey = TEST_RSA_KEY;
-    stubOidcTokenEndpoint(
-        "access-token-value", createIdToken(rsaKey, nonce), "refresh-token-value");
+    stubOidcTokenEndpoint("access-token-value", createIdToken(rsaKey, nonce));
     stubJwksTransportFailure();
 
     var callbackResult =
@@ -410,8 +409,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
             .getFirst("nonce");
     assertThat(nonce).isNotBlank();
 
-    stubOidcTokenEndpoint(
-        "access-token-value", createIdToken(rsaKey, nonce), "refresh-token-value");
+    stubOidcTokenEndpoint("access-token-value", createIdToken(rsaKey, nonce));
     stubOidcUserInfo(
         "auth0|user-123", "user@example.com", "Test User", "https://cdn.example.com/avatar.png");
     stubPermissionServiceTransportFailure("auth0|user-123");

@@ -56,10 +56,6 @@ class SessionReaderIntegrationTest extends AbstractIntegrationTest {
             Map.entry(SessionHashFields.PICTURE, ""),
             Map.entry(SessionHashFields.ROLES, "ROLE_USER,ROLE_ADMIN"),
             Map.entry(SessionHashFields.PERMISSIONS, "transactions:read,transactions:write"),
-            Map.entry(SessionHashFields.REFRESH_TOKEN, ""),
-            Map.entry(
-                SessionHashFields.TOKEN_EXPIRES_AT,
-                String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond())),
             Map.entry(SessionHashFields.CREATED_AT, String.valueOf(BASE_INSTANT.getEpochSecond())),
             Map.entry(
                 SessionHashFields.EXPIRES_AT,
@@ -77,8 +73,6 @@ class SessionReaderIntegrationTest extends AbstractIntegrationTest {
     assertThat(sessionData.roles()).containsExactly("ROLE_USER", "ROLE_ADMIN");
     assertThat(sessionData.permissions())
         .containsExactly("transactions:read", "transactions:write");
-    assertThat(sessionData.refreshToken()).isNull();
-    assertThat(sessionData.tokenExpiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
     assertThat(sessionData.createdAt()).isEqualTo(BASE_INSTANT);
     assertThat(sessionData.expiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
   }
@@ -100,10 +94,6 @@ class SessionReaderIntegrationTest extends AbstractIntegrationTest {
             Map.entry(SessionHashFields.PICTURE, ""),
             Map.entry(SessionHashFields.ROLES, "ROLE_USER"),
             Map.entry(SessionHashFields.PERMISSIONS, "transactions:read"),
-            Map.entry(SessionHashFields.REFRESH_TOKEN, "refresh-token"),
-            Map.entry(
-                SessionHashFields.TOKEN_EXPIRES_AT,
-                String.valueOf(BASE_INSTANT.plusSeconds(300).getEpochSecond())),
             Map.entry(
                 SessionHashFields.CREATED_AT,
                 String.valueOf(BASE_INSTANT.minusSeconds(900).getEpochSecond())),

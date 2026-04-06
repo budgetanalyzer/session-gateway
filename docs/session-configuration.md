@@ -24,7 +24,6 @@ Defaults:
 
 - `SESSION_KEY_PREFIX=session:`
 - `SESSION_TTL_SECONDS=900`
-- `SESSION_REFRESH_THRESHOLD_SECONDS=300`
 - `SESSION_OAUTH2_STATE_TTL_SECONDS=900`
 - `SESSION_COOKIE_NAME=BA_SESSION`
 - `SESSION_COOKIE_DOMAIN_OVERRIDE` unset
@@ -38,7 +37,7 @@ Startup validation rejects:
 
 - blank `session.key-prefix`
 - blank `session.cookie.name`
-- `session.refresh-threshold-seconds >= session.ttl-seconds`
+- non-positive `session.ttl-seconds` or `session.oauth2-state-ttl-seconds`
 - unsupported `session.cookie.same-site` values
 
 Startup does not enforce an allowlist of cookie names beyond the non-blank requirement. Changing
@@ -53,12 +52,11 @@ domain override is enabled.
 The current runtime defaults across the active browser-session path are:
 
 - `SESSION_TTL_SECONDS=900` (15 minutes)
-- `SESSION_REFRESH_THRESHOLD_SECONDS=300` (5 minutes before IDP token expiry)
 - frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes in `budget-analyzer-web`)
 
 That heartbeat cadence is frontend-owned, not Session Gateway-owned. Session Gateway extends the
-session on every `GET /auth/v1/session` call; the frontend decides when to call based on user
-activity.
+session on every `GET /auth/v1/session` call against local Redis state; Auth0 is not contacted.
+The frontend decides when to call based on user activity.
 
 The operational Auth0 dashboard values that pair with these defaults are documented in
 [auth0-settings.md](auth0-settings.md).
@@ -143,11 +141,11 @@ Behavior:
 - returns `204 No Content` whether sessions were deleted or none existed
 - uses one Redis script execution to delete all indexed `session:{id}` hashes for the user and to
   remove the `user_sessions:{userId}` index key atomically
-- relies on login, heartbeat, and token refresh to keep the `user_sessions:{userId}` index both
-  TTL-aligned and self-healing
-- when heartbeat or token refresh touches a live session, Session Gateway re-adds that session ID
-  to `user_sessions:{userId}` before refreshing both TTLs, so a missing index entry does not leave
-  the session invisible to targeted revocation
+- relies on login and heartbeat to keep the `user_sessions:{userId}` index both TTL-aligned and
+  self-healing
+- when heartbeat touches a live session, Session Gateway re-adds that session ID to
+  `user_sessions:{userId}` before refreshing both TTLs, so a missing index entry does not leave the
+  session invisible to targeted revocation
 
 Application security permits only that exact internal path without browser authentication. The
 endpoint still depends on network-level controls to limit which services can call it.

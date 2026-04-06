@@ -16,7 +16,6 @@ spring:
               - openid
               - profile
               - email
-              - offline_access
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
         provider:
           idp:
@@ -26,7 +25,6 @@ spring:
 session:
   key-prefix: "session:test:"
   ttl-seconds: 900
-  refresh-threshold-seconds: 300
   oauth2-state-ttl-seconds: 900
   cookie:
     domain-override:

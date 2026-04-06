@@ -2,7 +2,6 @@ package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -51,9 +50,7 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
             "User Info",
             "https://example.com/avatar.png",
             List.of("ROLE_USER"),
-            List.of("transactions:read"),
-            "refresh-token-userinfo",
-            Instant.parse("2026-03-31T01:00:00Z"))
+            List.of("transactions:read"))
         .block();
   }
 

@@ -3,9 +3,12 @@
 These settings align Auth0 with Session Gateway's current runtime defaults:
 
 - `SESSION_TTL_SECONDS=900`
-- `SESSION_REFRESH_THRESHOLD_SECONDS=300`
 - frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes)
 - OAuth2 authorization code flow with PKCE
+
+Session Gateway contacts Auth0 only at login (authorization-code exchange) and at logout. There
+are no refresh-token grants, no userinfo polling, and no token exchange surface. Heartbeat
+validates the local Redis session only.
 
 ## API Configuration
 
@@ -24,15 +27,11 @@ implicit or hybrid login.
 
 In Auth0, open `Applications > [browser app] > Settings`.
 
-- **Refresh Token Rotation**: enabled
-- **Refresh Token Reuse Interval / Overlap**: `0`
-- **Idle Refresh Token Lifetime**: `3600` seconds
-- **Maximum Refresh Token Lifetime**: `28800` seconds
+- **Refresh Token Rotation**: not required (Session Gateway does not request refresh tokens)
 - **ID Token Expiration**: `3600` seconds
 
-The refresh-token settings matter more than the ID-token setting. Session Gateway stores the
-refresh token server-side and uses it during `GET /auth/v1/session` to validate the IdP grant and
-refresh access tokens near expiry.
+Session Gateway does not request the `offline_access` scope and does not store any IDP token after
+login. Auth0 refresh-token settings have no effect on Session Gateway behavior.
 
 ## Tenant Session Configuration
 
@@ -66,22 +65,10 @@ this gap. The `/v2/logout` call in Session Gateway's `LogoutController` already 
 session on explicit logout — these settings are the safety net for when logout doesn't happen
 cleanly (browser crash, tab close, session timeout).
 
-## Why These Values
-
-- With a `900` second Auth0 access token and a `300` second refresh threshold, Session Gateway
-  refreshes on the first heartbeat at or below the 5-minute remaining window.
-- With the current 2-minute heartbeat cadence, active browser sessions typically refresh around 10
-  minutes after login or the previous refresh.
-- That makes IdP-grant revocation checks meaningful during active use without forcing a refresh on
-  every heartbeat.
-- If the Auth0 API access token remains at `86400` seconds, the refresh path rarely runs before the
-  15-minute Redis session expires, so revocation detection through refresh is effectively delayed.
-
 ## Scope Notes
 
-- These recommendations apply to the browser OAuth2 flow and to native clients that request Auth0
-  access tokens for the same API audience.
-- Session Gateway sessions created through `POST /auth/token/exchange` still use the local
-  `SESSION_TTL_SECONDS` value for the opaque session lifetime.
-- Token-exchange sessions do not store an Auth0 refresh token, so they do not participate in the
-  browser heartbeat refresh path.
+- These recommendations apply to the browser OAuth2 authorization-code flow.
+- Session Gateway requests only `openid`, `profile`, and `email` scopes. There is no
+  `offline_access` request and no refresh-token storage.
+- The Redis session lifetime is governed entirely by `SESSION_TTL_SECONDS` and the frontend
+  heartbeat cadence.

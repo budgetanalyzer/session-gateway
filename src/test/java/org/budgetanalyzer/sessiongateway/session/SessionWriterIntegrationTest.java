@@ -76,14 +76,13 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
         .containsEntry(SessionHashFields.PICTURE, "https://example.com/avatar.png")
         .containsEntry(SessionHashFields.ROLES, "ROLE_USER")
         .containsEntry(SessionHashFields.PERMISSIONS, "transactions:read")
-        .containsEntry(SessionHashFields.REFRESH_TOKEN, "refresh-token-123")
-        .containsEntry(
-            SessionHashFields.TOKEN_EXPIRES_AT,
-            String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond()))
         .containsEntry(SessionHashFields.CREATED_AT, String.valueOf(BASE_INSTANT.getEpochSecond()))
         .containsEntry(
             SessionHashFields.EXPIRES_AT,
             String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond()));
+    assertThat(sessionFields)
+        .doesNotContainKey("refresh_token")
+        .doesNotContainKey("token_expires_at");
 
     assertThat(sessionTtl).isNotNull();
     assertThat(sessionTtl).isPositive();
@@ -100,8 +99,6 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     assertThat(sessionData.picture()).isEqualTo("https://example.com/avatar.png");
     assertThat(sessionData.roles()).containsExactly("ROLE_USER");
     assertThat(sessionData.permissions()).containsExactly("transactions:read");
-    assertThat(sessionData.refreshToken()).isEqualTo("refresh-token-123");
-    assertThat(sessionData.tokenExpiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
     assertThat(sessionData.createdAt()).isEqualTo(BASE_INSTANT);
     assertThat(sessionData.expiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
     assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).containsExactly(sessionId);
@@ -211,96 +208,6 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
   void updateSessionExpiryReturnsFalseWhenSessionDoesNotExist() {
     var updated =
         sessionWriter.updateSessionExpiry("nonexistent-session", PRIMARY_USER_ID, 600).block();
-
-    assertThat(updated).isFalse();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + "nonexistent-session")).isEmpty();
-  }
-
-  @Test
-  void updateTokenAndExpiryUpdatesTokenFieldsAndBothRedisTtls() {
-    var sessionId = createSession(PRIMARY_USER_ID);
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
-
-    reactiveStringRedisTemplate.expire(PRIMARY_USER_SESSIONS_KEY, Duration.ofSeconds(30)).block();
-
-    var updated =
-        sessionWriter
-            .updateTokenAndExpiry(
-                sessionId,
-                PRIMARY_USER_ID,
-                "rotated-refresh-token",
-                BASE_INSTANT.plusSeconds(1200),
-                900)
-            .block();
-    var sessionFields = readHashEntries(sessionKey);
-    var sessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
-    var userSessionsTtl = reactiveStringRedisTemplate.getExpire(PRIMARY_USER_SESSIONS_KEY).block();
-
-    assertThat(updated).isTrue();
-    assertThat(sessionFields)
-        .containsEntry(SessionHashFields.REFRESH_TOKEN, "rotated-refresh-token")
-        .containsEntry(
-            SessionHashFields.TOKEN_EXPIRES_AT,
-            String.valueOf(BASE_INSTANT.plusSeconds(1200).getEpochSecond()))
-        .containsEntry(
-            SessionHashFields.EXPIRES_AT,
-            String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond()));
-    assertThat(sessionTtl).isNotNull();
-    assertThat(sessionTtl).isPositive();
-    assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
-    assertThat(userSessionsTtl).isNotNull();
-    assertThat(userSessionsTtl).isGreaterThan(Duration.ofSeconds(30));
-    assertThat(userSessionsTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
-  }
-
-  @Test
-  void updateTokenAndExpiryReindexesSessionWhenUserIndexEntryIsMissing() {
-    var sessionId = createSession(PRIMARY_USER_ID);
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
-
-    reactiveStringRedisTemplate.expire(sessionKey, Duration.ofSeconds(30)).block();
-    reactiveStringRedisTemplate.expire(PRIMARY_USER_SESSIONS_KEY, Duration.ofSeconds(30)).block();
-
-    reactiveStringRedisTemplate.opsForSet().remove(PRIMARY_USER_SESSIONS_KEY, sessionId).block();
-
-    var updated =
-        sessionWriter
-            .updateTokenAndExpiry(
-                sessionId,
-                PRIMARY_USER_ID,
-                "rotated-refresh-token",
-                BASE_INSTANT.plusSeconds(1200),
-                900)
-            .block();
-    var sessionFields = readHashEntries(sessionKey);
-    var sessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
-    var userSessionsTtl = reactiveStringRedisTemplate.getExpire(PRIMARY_USER_SESSIONS_KEY).block();
-
-    assertThat(updated).isTrue();
-    assertThat(sessionFields)
-        .containsEntry(SessionHashFields.REFRESH_TOKEN, "rotated-refresh-token")
-        .containsEntry(
-            SessionHashFields.TOKEN_EXPIRES_AT,
-            String.valueOf(BASE_INSTANT.plusSeconds(1200).getEpochSecond()))
-        .containsEntry(
-            SessionHashFields.EXPIRES_AT,
-            String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond()));
-    assertThat(sessionTtl).isNotNull();
-    assertThat(sessionTtl).isGreaterThan(Duration.ofSeconds(30));
-    assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
-    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).containsExactly(sessionId);
-    assertThat(userSessionsTtl).isNotNull();
-    assertThat(userSessionsTtl).isGreaterThan(Duration.ofSeconds(30));
-    assertThat(userSessionsTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
-  }
-
-  @Test
-  void updateTokenAndExpiryReturnsFalseWhenSessionDoesNotExist() {
-    var updated =
-        sessionWriter
-            .updateTokenAndExpiry(
-                "nonexistent-session", PRIMARY_USER_ID, "refresh-token", BASE_INSTANT, 600)
-            .block();
 
     assertThat(updated).isFalse();
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + "nonexistent-session")).isEmpty();
@@ -421,9 +328,7 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
             "Writer Test",
             "https://example.com/avatar.png",
             List.of("ROLE_USER"),
-            List.of("transactions:read"),
-            "refresh-token-123",
-            BASE_INSTANT.plusSeconds(900))
+            List.of("transactions:read"))
         .block();
   }
 
