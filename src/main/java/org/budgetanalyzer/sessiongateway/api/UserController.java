@@ -25,7 +25,8 @@ import org.budgetanalyzer.sessiongateway.session.SessionReader;
  * User information controller.
  *
  * <p>Provides endpoints for the frontend to check authentication status and retrieve user
- * information including roles for UI visibility decisions.
+ * information including roles for UI visibility decisions and resolved permissions for action-level
+ * UI gating.
  */
 @Tag(name = "User", description = "Authentication status and user information")
 @RestController
@@ -45,12 +46,12 @@ public class UserController {
    * Returns the current authenticated user's information.
    *
    * @param exchange the current server exchange
-   * @return user information including roles
+   * @return user information including roles and resolved permissions
    */
   @Operation(
       summary = "Get current user info",
       description =
-          "Returns the authenticated user's profile and roles. "
+          "Returns the authenticated user's profile, roles, and permissions. "
               + "Returns 200 with user info if authenticated, or empty 401 if not.")
   @ApiResponses(
       value = {
@@ -84,6 +85,7 @@ public class UserController {
                     sessionData.email(),
                     sessionData.picture(),
                     true,
-                    sessionData.roles()));
+                    sessionData.roles(),
+                    sessionData.permissions()));
   }
 }

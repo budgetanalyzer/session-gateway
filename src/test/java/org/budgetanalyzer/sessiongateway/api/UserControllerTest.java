@@ -89,5 +89,63 @@ class UserControllerTest {
     assertThat(result.picture()).isEqualTo("https://example.com/photo.jpg");
     assertThat(result.authenticated()).isTrue();
     assertThat(result.roles()).containsExactly("USER");
+    assertThat(result.permissions()).containsExactly("transactions:read");
+  }
+
+  @Test
+  void getCurrentUser_returnsEmptyPermissionsWhenSessionHasNone() {
+    Mockito.when(sessionCookieHelper.readSessionId(exchange)).thenReturn("session-empty");
+    Mockito.when(sessionReader.readSession("session-empty"))
+        .thenReturn(
+            Mono.just(
+                new SessionData(
+                    "user-2",
+                    "auth0|empty",
+                    "empty@example.com",
+                    "Empty User",
+                    "",
+                    List.of("USER"),
+                    List.of(),
+                    Instant.parse("2026-03-30T00:00:00Z"),
+                    Instant.parse("2026-03-30T00:15:00Z"))));
+
+    var result = userController.getCurrentUser(exchange).block();
+
+    assertThat(result).isNotNull();
+    assertThat(result.permissions()).isNotNull();
+    assertThat(result.permissions()).isEmpty();
+  }
+
+  @Test
+  void getCurrentUser_returnsAllAdminPermissions() {
+    Mockito.when(sessionCookieHelper.readSessionId(exchange)).thenReturn("session-admin");
+    Mockito.when(sessionReader.readSession("session-admin"))
+        .thenReturn(
+            Mono.just(
+                new SessionData(
+                    "user-admin",
+                    "auth0|admin",
+                    "admin@example.com",
+                    "Admin User",
+                    "https://example.com/admin.jpg",
+                    List.of("ADMIN"),
+                    List.of(
+                        "transactions:read",
+                        "transactions:read:any",
+                        "transactions:write:any",
+                        "transactions:delete:any"),
+                    Instant.parse("2026-03-30T00:00:00Z"),
+                    Instant.parse("2026-03-30T00:15:00Z"))));
+
+    var result = userController.getCurrentUser(exchange).block();
+
+    assertThat(result).isNotNull();
+    assertThat(result.roles()).containsExactly("ADMIN");
+    assertThat(result.permissions())
+        .containsExactly(
+            "transactions:read",
+            "transactions:read:any",
+            "transactions:write:any",
+            "transactions:delete:any");
   }
 }

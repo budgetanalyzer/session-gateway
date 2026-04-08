@@ -271,7 +271,7 @@ Session Gateway extends the session unconditionally on every `GET /auth/v1/sessi
 - **No server-side idle tracking**: Session Gateway has no concept of "idle." An open browser tab that keeps calling the heartbeat on a fixed timer without checking activity would keep the session alive indefinitely — this is a frontend bug, not a feature
 
 **User Endpoints**:
-- `GET /auth/v1/user` - Returns current authenticated user information
+- `GET /auth/v1/user` - Returns current authenticated user information including roles and the resolved permission list. This endpoint is the frontend's source of truth for action-level permission gating — roles are for layout (`AdminRoute`), permissions are for actions. Response shape: `UserInfoResponse` carries `permissions: string[]` alongside `roles: string[]`.
 - `DELETE /internal/v1/sessions/users/{userId}` - Internal service-to-service revocation of all indexed sessions for a user
   - Returns 204 whether sessions existed or not
   - Intended for permission-service during user deactivation
