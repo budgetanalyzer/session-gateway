@@ -123,12 +123,8 @@ budgetanalyzer:
 permission-service:
   base-url: ${PERMISSION_SERVICE_URL:http://permission-service:8086}
 
-# Actuator configuration
+# Actuator configuration- health and prometheus come from service-common
 management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
   endpoint:
     health:
       show-details: always
