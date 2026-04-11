@@ -115,7 +115,7 @@ export PERMISSION_SERVICE_URL=http://localhost:8086
 `SPRING_DATA_REDIS_USERNAME` defaults to `session-gateway`. If you are reusing
 values from `../orchestration/.env`, map `REDIS_SESSION_GATEWAY_PASSWORD` to
 `SPRING_DATA_REDIS_PASSWORD`. The CA path must point at the host-side file
-created by `../orchestration/scripts/dev/setup-infra-tls.sh`. Full browser behavior still runs through
+created by `../orchestration/scripts/bootstrap/setup-infra-tls.sh`. Full browser behavior still runs through
 `https://app.budgetanalyzer.localhost` in the shared dev environment.
 
 ### Health Check
@@ -217,5 +217,13 @@ Recommended Auth0 dashboard values are documented in [docs/auth0-settings.md](do
 ## References
 
 - [Recommended Auth0 Settings](docs/auth0-settings.md)
-- [Authentication Implementation Plan](../orchestration/docs/architecture/authentication-implementation-plan.md)
-- [Security Architecture](../orchestration/docs/architecture/security-architecture.md)
+- [Security Architecture](https://github.com/budgetanalyzer/orchestration/blob/main/docs/architecture/security-architecture.md)
+
+## Related Repositories
+
+- **Orchestration**: https://github.com/budgetanalyzer/orchestration
+- **Service Common**: https://github.com/budgetanalyzer/service-common
+- **Permission Service**: https://github.com/budgetanalyzer/permission-service
+- **Transaction Service**: https://github.com/budgetanalyzer/transaction-service
+- **Currency Service**: https://github.com/budgetanalyzer/currency-service
+- **Web Frontend**: https://github.com/budgetanalyzer/budget-analyzer-web
