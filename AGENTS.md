@@ -392,6 +392,12 @@ For release-version or isolated Docker builds that intentionally use the remote
 published `service-common` artifacts, see
 [orchestration/docs/development/service-common-artifact-resolution.md](../orchestration/docs/development/service-common-artifact-resolution.md).
 
+Tagged GHCR releases use `.github/workflows/publish-release.yml`. That workflow
+passes `SERVICE_COMMON_PACKAGES_USERNAME` and
+`SERVICE_COMMON_PACKAGES_READ_TOKEN` into BuildKit for remote
+`service-common` resolution, but it does not change the local
+`publishToMavenLocal` plus `tilt up` contributor path.
+
 **Run locally:**
 ```bash
 ./gradlew bootRun

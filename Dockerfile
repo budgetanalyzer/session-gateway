@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # Build stage
 FROM eclipse-temurin:24-jdk-alpine@sha256:8fdbcb6bc6b846640cea7058e6eeb56c311fae4efaa506a213789134065c6b90 AS build
 WORKDIR /app
@@ -8,14 +10,25 @@ COPY gradle gradle
 COPY build.gradle.kts .
 COPY settings.gradle.kts .
 
-# Download dependencies (cached layer)
-RUN ./gradlew dependencies --no-daemon
+# Release and isolated CI builds pass GitHub Packages credentials as BuildKit
+# secrets so the builder can resolve service-common without host Maven Local.
+RUN --mount=type=cache,target=/root/.gradle \
+    --mount=type=secret,id=github_actor,required=false \
+    --mount=type=secret,id=github_token,required=false \
+    export GITHUB_ACTOR="$(cat /run/secrets/github_actor 2>/dev/null || true)" && \
+    export GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" && \
+    ./gradlew dependencies --no-daemon
 
 # Copy source code
 COPY src src
 
 # Build the application
-RUN ./gradlew bootJar --no-daemon
+RUN --mount=type=cache,target=/root/.gradle \
+    --mount=type=secret,id=github_actor,required=false \
+    --mount=type=secret,id=github_token,required=false \
+    export GITHUB_ACTOR="$(cat /run/secrets/github_actor 2>/dev/null || true)" && \
+    export GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" && \
+    ./gradlew bootJar --no-daemon
 
 # Runtime stage
 FROM eclipse-temurin:24-jre-alpine@sha256:4044b6c87cb088885bcd0220f7dc7a8a4aab76577605fa471945d2e98270741f

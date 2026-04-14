@@ -9,7 +9,7 @@ junitPlatform = "1.12.2"
 springdoc = "2.8.13"
 wiremock = "3.10.0"
 awaitility = "4.2.2"
-serviceCommon = "0.0.8"
+serviceCommon = "0.0.9-SNAPSHOT"
 testcontainers = "1.21.4"
 
 [plugins]
