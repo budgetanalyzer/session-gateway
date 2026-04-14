@@ -161,7 +161,7 @@ grep "implementation" build.gradle.kts
 - **Identity Provider**: Auth0 (OAuth2/OIDC)
 
 **Service-Common Integration**:
-- Auto-configured reactive utilities from `org.budgetanalyzer:service-web:0.0.1-SNAPSHOT`
+- Auto-configured reactive utilities from `org.budgetanalyzer:service-web:<service-common-version>`
 - Provides: HTTP request/response logging, distributed tracing correlation IDs, safe logging with sensitive data masking, global exception handling
 - OAuth2ResourceServerSecurityConfig explicitly excluded (Session Gateway is OAuth2 Client, not Resource Server)
 - DataSource/JPA auto-configuration excluded (no database required)
@@ -379,7 +379,7 @@ The build includes:
 
 **Troubleshooting:**
 
-If the build cannot resolve `org.budgetanalyzer:service-web:0.0.1-SNAPSHOT` or other
+If the build cannot resolve `org.budgetanalyzer:service-web:<service-common-version>` or other
 service-common artifacts:
 ```bash
 cd ../service-common
@@ -387,6 +387,10 @@ cd ../service-common
 cd ../session-gateway
 ./gradlew clean build
 ```
+
+For release-version or isolated Docker builds that intentionally use the remote
+published `service-common` artifacts, see
+[orchestration/docs/development/service-common-artifact-resolution.md](../orchestration/docs/development/service-common-artifact-resolution.md).
 
 **Run locally:**
 ```bash
