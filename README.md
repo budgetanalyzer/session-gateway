@@ -92,6 +92,15 @@ Browser → Istio Ingress (:443)
 - Redis available to the service with the `session-gateway` ACL user
 - Permission-service reachable at the configured `PERMISSION_SERVICE_URL` (required for login)
 
+**Shared platform setup**: See [getting-started.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/getting-started.md)
+
+**Service-common artifact resolution**: The supported contributor path is the
+side-by-side orchestration/Tilt flow. `mavenLocal()` stays first for local
+development, so this should not require `GITHUB_ACTOR` or `GITHUB_TOKEN`. For
+GitHub Actions/release or other intentional isolated builds that resolve the
+published `service-common` artifacts remotely, see
+[service-common-artifact-resolution.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/service-common-artifact-resolution.md).
+
 ### Start the Service
 
 ```bash

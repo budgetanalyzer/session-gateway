@@ -23,6 +23,17 @@ java {
 
 repositories {
     mavenLocal()
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/budgetanalyzer/service-common")
+        credentials {
+            username = githubPackagesActor.orNull ?: ""
+            password = githubPackagesToken.orNull ?: ""
+        }
+        content {
+            includeGroup("org.budgetanalyzer")
+        }
+    }
     mavenCentral()
 }
 
