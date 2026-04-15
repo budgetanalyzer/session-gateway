@@ -95,8 +95,9 @@ Browser → Istio Ingress (:443)
 **Shared platform setup**: See [getting-started.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/getting-started.md)
 
 **Service-common artifact resolution**: Local builds resolve `service-common`
-from `mavenLocal()` — no GitHub credentials required. CI/release resolution
-is documented in orchestration:
+from `mavenLocal()` — no GitHub credentials required. Default GitHub Actions
+`build.yml` runs and release builds resolve the pinned `serviceCommon` version
+from GitHub Packages. The full contract is documented in orchestration:
 [service-common artifact resolution](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/service-common-artifact-resolution.md).
 
 ### Start the Service

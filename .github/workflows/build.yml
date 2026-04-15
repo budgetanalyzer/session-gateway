@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -27,13 +30,52 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Build service-common dependency
+      - name: Resolve service-common version and validate package credentials
+        id: service_common
+        shell: bash
+        env:
+          SERVICE_COMMON_PACKAGES_USERNAME: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
+          SERVICE_COMMON_PACKAGES_READ_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
         run: |
-          git clone https://github.com/budgetanalyzer/service-common.git /tmp/service-common
-          cd /tmp/service-common
-          ./gradlew publishToMavenLocal
+          set -euo pipefail
+
+          service_common_version="$(sed -nE 's/^serviceCommon = "([^"]+)"$/\1/p' gradle/libs.versions.toml | head -n1)"
+          if [[ -z "${service_common_version}" ]]; then
+            echo "Could not read serviceCommon from gradle/libs.versions.toml." >&2
+            exit 1
+          fi
+
+          if [[ -z "${SERVICE_COMMON_PACKAGES_USERNAME}" || -z "${SERVICE_COMMON_PACKAGES_READ_TOKEN}" ]]; then
+            echo "Missing SERVICE_COMMON_PACKAGES_USERNAME or SERVICE_COMMON_PACKAGES_READ_TOKEN." >&2
+            exit 1
+          fi
+
+          echo "service_common_version=${service_common_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Preflight GitHub Packages access
+        shell: bash
+        env:
+          GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
+          GITHUB_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.service_common.outputs.service_common_version }}"
+
+          for artifact in service-core service-web; do
+            url="https://maven.pkg.github.com/budgetanalyzer/service-common/org/budgetanalyzer/${artifact}/${version}/${artifact}-${version}.pom"
+            echo "Preflighting ${artifact} ${version} via GitHub Packages"
+            curl -fsSL \
+              -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
+              -o /dev/null \
+              -w "final_http=%{http_code}\n" \
+              "${url}"
+          done
 
       - name: Build with Gradle
+        env:
+          GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
+          GITHUB_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
         run: ./gradlew build
 
       - name: Upload test results

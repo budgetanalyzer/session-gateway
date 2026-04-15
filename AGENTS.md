@@ -388,14 +388,9 @@ cd ../session-gateway
 ./gradlew clean build
 ```
 
-For release-version or isolated Docker builds that intentionally use the remote
-published `service-common` artifacts, see
+For CI/release `service-common` artifact resolution, use the single source of
+truth in
 [orchestration/docs/development/service-common-artifact-resolution.md](../orchestration/docs/development/service-common-artifact-resolution.md).
-
-Tagged GHCR releases pass `SERVICE_COMMON_PACKAGES_USERNAME` and
-`SERVICE_COMMON_PACKAGES_READ_TOKEN` into BuildKit for remote
-`service-common` resolution, but that does not change the local
-`publishToMavenLocal` plus `tilt up` contributor path.
 
 **Run locally:**
 ```bash
