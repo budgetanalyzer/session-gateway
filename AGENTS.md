@@ -35,7 +35,6 @@ Do not leave documentation updates as follow-up work.
 - **Consumes**: service-common (patterns)
 - **Coordinated by**: orchestration
 - **Peers with**: Discover via `ls /workspace/*-service`
-- **Observed by**: architecture-conversations
 
 ### Permissions
 - **Read**: `../service-common/`, `../orchestration/docs/`
