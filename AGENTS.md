@@ -414,10 +414,10 @@ REDIS_OPS_USERNAME=$(kubectl get secret redis-bootstrap-credentials -n infrastru
 REDIS_OPS_PASSWORD=$(kubectl get secret redis-bootstrap-credentials -n infrastructure -o jsonpath='{.data.ops-password}' | base64 -d)
 
 # Check if Redis is accessible
-kubectl exec -n infrastructure deployment/redis -- redis-cli --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning PING
+kubectl exec -n infrastructure pod/redis-0 -- redis-cli --tls --cacert /tls-ca/ca.crt --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning PING
 
 # View session data in Redis
-kubectl exec -n infrastructure deployment/redis -- redis-cli --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning KEYS "session:*"
+kubectl exec -n infrastructure pod/redis-0 -- redis-cli --tls --cacert /tls-ca/ca.crt --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning KEYS "session:*"
 
 # Check application health
 curl http://localhost:8081/actuator/health
@@ -438,7 +438,7 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 
 **Session Not Persisting**:
 - Verify Redis connection in application.yml
-- Check Redis deployment is running: `kubectl get pods -n infrastructure | grep redis`
+- Check Redis StatefulSet pod is running: `kubectl get pod -n infrastructure redis-0`
 - Inspect Redis session keys with the `redis-ops` credentials shown above
 
 **Session Not Created After Login**:

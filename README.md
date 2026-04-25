@@ -107,7 +107,7 @@ cd ../orchestration
 tilt up
 
 # In separate terminals, expose the dependencies used by direct bootRun
-kubectl port-forward -n infrastructure deployment/redis 6379:6379
+kubectl port-forward -n infrastructure pod/redis-0 6379:6379
 kubectl port-forward deployment/permission-service 8086:8086
 
 cd ../session-gateway
