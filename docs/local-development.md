@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Java 24
+- Java 25
 - Shared local platform running from `../orchestration` (`tilt up`)
 - Redis available to the service with the `session-gateway` ACL user
 - Permission-service reachable at the configured `PERMISSION_SERVICE_URL` (required for login)

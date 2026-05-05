@@ -353,7 +353,7 @@ budgetanalyzer:
 ## Development Workflow
 
 ### Prerequisites
-- JDK 24
+- JDK 25
 - Shared local platform from `../orchestration` (`tilt up`)
 - Auth0 account with configured application
 - Redis and permission-service reachable from the active environment
