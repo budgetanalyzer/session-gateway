@@ -14,6 +14,9 @@ from `mavenLocal()` — no GitHub credentials required. Default GitHub Actions
 `build.yml` runs and release builds resolve the pinned `serviceCommon` version
 from GitHub Packages. The full contract is documented in orchestration:
 [service-common artifact resolution](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/service-common-artifact-resolution.md).
+This service imports `org.budgetanalyzer:spring-platform` for shared Spring
+dependency management and keeps `org.budgetanalyzer:service-web` explicit for
+reactive runtime utilities.
 
 ## Start the Service
 
