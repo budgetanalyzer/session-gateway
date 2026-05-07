@@ -1,24 +1,19 @@
 [versions]
-java = "24"
+java = "25"
 springBoot = "3.5.7"
-dependencyManagement = "1.1.7"
 spotless = "8.0.0"
 checkstyle = "12.0.1"
 googleJavaFormat = "1.32.0"
 junitPlatform = "1.12.2"
-springdoc = "2.8.13"
-wiremock = "3.10.0"
-awaitility = "4.2.2"
-serviceCommon = "0.0.12"
-testcontainers = "1.21.4"
+serviceCommon = "0.0.13-SNAPSHOT"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
-spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "dependencyManagement" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 
 [libraries]
 # Budget Analyzer Common Libraries
+budgetanalyzer-spring-platform = { module = "org.budgetanalyzer:spring-platform", version.ref = "serviceCommon" }
 service-web = { module = "org.budgetanalyzer:service-web", version.ref = "serviceCommon" }
 
 # Spring Boot starters (versions managed by Spring Boot BOM)
@@ -29,13 +24,13 @@ spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 
 # SpringDoc OpenAPI
-springdoc-openapi = { module = "org.springdoc:springdoc-openapi-starter-webflux-ui", version.ref = "springdoc" }
+springdoc-openapi = { module = "org.springdoc:springdoc-openapi-starter-webflux-ui" }
 
 # Test dependencies
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 testcontainers = { module = "org.testcontainers:testcontainers" }
 testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter" }
-wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
-awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
+wiremock-standalone = { module = "org.wiremock:wiremock-standalone" }
+awaitility = { module = "org.awaitility:awaitility" }
 reactor-test = { module = "io.projectreactor:reactor-test" }

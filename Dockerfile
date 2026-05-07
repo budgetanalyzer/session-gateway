@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # Build stage
-FROM eclipse-temurin:24-jdk-alpine@sha256:8fdbcb6bc6b846640cea7058e6eeb56c311fae4efaa506a213789134065c6b90 AS build
+FROM eclipse-temurin:25-jdk-alpine@sha256:30d9f87d702c2c1c601ed0d31e0c88ea1ea474ee7676cda7b7a59e759181c4dd AS build
 WORKDIR /app
 
 # Copy gradle wrapper and configuration
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew bootJar --no-daemon
 
 # Runtime stage
-FROM eclipse-temurin:24-jre-alpine@sha256:4044b6c87cb088885bcd0220f7dc7a8a4aab76577605fa471945d2e98270741f
+FROM eclipse-temurin:25-jre-alpine@sha256:c707c0d18cb9e8556380719f80d96a7529d0746fbb42143893949b98ed2f8943
 WORKDIR /app
 
 # Create non-root user

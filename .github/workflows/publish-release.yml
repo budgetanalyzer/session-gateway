@@ -75,19 +75,12 @@ jobs:
             exit 1
           fi
 
-          service_common_version="$(sed -nE 's/^serviceCommon = "([^"]+)"$/\1/p' gradle/libs.versions.toml | head -n1)"
-          if [[ -z "${service_common_version}" ]]; then
-            echo "Could not read serviceCommon from gradle/libs.versions.toml." >&2
-            exit 1
-          fi
-
           if [[ -z "${SERVICE_COMMON_PACKAGES_USERNAME}" || -z "${SERVICE_COMMON_PACKAGES_READ_TOKEN}" ]]; then
             echo "Missing SERVICE_COMMON_PACKAGES_USERNAME or SERVICE_COMMON_PACKAGES_READ_TOKEN." >&2
             exit 1
           fi
 
           echo "image_tag=${image_tag}" >> "${GITHUB_OUTPUT}"
-          echo "service_common_version=${service_common_version}" >> "${GITHUB_OUTPUT}"
 
       - name: Resolve checked-out revision
         id: source
@@ -112,26 +105,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Preflight GitHub Packages access
-        shell: bash
-        env:
-          GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
-          GITHUB_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          version="${{ steps.release.outputs.service_common_version }}"
-
-          for artifact in service-core service-web; do
-            url="https://maven.pkg.github.com/budgetanalyzer/service-common/org/budgetanalyzer/${artifact}/${version}/${artifact}-${version}.pom"
-            echo "Preflighting ${artifact} ${version} via GitHub Packages"
-            curl -fsSL \
-              -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
-              -o /dev/null \
-              -w "final_http=%{http_code}\n" \
-              "${url}"
-          done
 
       - name: Build and push release image
         id: build

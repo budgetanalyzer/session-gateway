@@ -1,9 +1,5 @@
 import org.springframework.boot.gradle.tasks.run.BootRun
 
-// TC 1.21.4 fixes Docker 29.x compatibility (1.21.3 breaks with "client version 1.32 is too old").
-// Spring Boot 3.5.7 manages TC to 1.21.3, so we override it here.
-extra["testcontainers.version"] = libs.versions.testcontainers.get()
-
 val githubPackagesActor = providers.environmentVariable("GITHUB_ACTOR")
 val githubPackagesToken = providers.environmentVariable("GITHUB_TOKEN")
 
@@ -11,7 +7,6 @@ plugins {
     java
     checkstyle
     alias(libs.plugins.spring.boot)
-    alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.spotless)
 }
 
@@ -41,6 +36,8 @@ repositories {
 }
 
 dependencies {
+    implementation(platform(libs.budgetanalyzer.spring.platform))
+
     // Budget Analyzer Common Libraries
     // Provides: exception handling, HTTP logging, correlation IDs, safe logging utilities
     implementation(libs.service.web)

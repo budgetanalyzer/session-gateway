@@ -33,7 +33,10 @@ Bare `/login` is a frontend route served through NGINX. The real OAuth2 flow sta
 
 ## Tech Stack
 
-Spring WebFlux, Spring Security OAuth2 Client, custom Redis sessions via `SessionWriter`/`SessionReader`, [service-common](https://github.com/budgetanalyzer/service-common) (reactive HTTP logging, correlation IDs, exception handling).
+Spring WebFlux, Spring Security OAuth2 Client, custom Redis sessions via
+`SessionWriter`/`SessionReader`, [service-common](https://github.com/budgetanalyzer/service-common)
+(`spring-platform` dependency management plus reactive HTTP logging, correlation IDs, exception
+handling from `service-web`).
 
 ## Quick Start
 
