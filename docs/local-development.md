@@ -60,7 +60,12 @@ curl http://localhost:8081/actuator/health
 
 ```bash
 ./gradlew test
+./gradlew test jacocoTestReport
 ```
+
+JaCoCo writes the HTML report to `build/reports/jacoco/test/html/index.html`
+and the XML report to `build/reports/jacoco/test/jacocoTestReport.xml`.
+Coverage thresholds are not enforced during the report-only baseline rollout.
 
 ## Code Formatting
 
