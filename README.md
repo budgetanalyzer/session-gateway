@@ -43,8 +43,14 @@ handling from `service-web`).
 ```bash
 ./gradlew build          # build
 ./gradlew test           # test
+./gradlew test jacocoTestReport  # coverage reports
 ./gradlew bootRun        # run (requires Redis + permission-service)
 ```
+
+JaCoCo coverage reports are written to
+`build/reports/jacoco/test/html/index.html` and
+`build/reports/jacoco/test/jacocoTestReport.xml`. `check` enforces the
+configured coverage gates.
 
 Full local setup: [docs/local-development.md](docs/local-development.md)
 
