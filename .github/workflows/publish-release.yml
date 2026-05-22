@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       release_ref:
-        description: "Existing release tag to build"
+        description: "Existing Git ref to build; SemVer tags publish X.Y.Z by default"
         required: true
         type: string
-      image_tag:
-        description: "Published image tag override"
+      docker_label:
+        description: "Optional Docker tag label for an ad hoc manual image; never use latest"
         required: false
         type: string
 
@@ -48,30 +48,38 @@ jobs:
 
           event_name="${GITHUB_EVENT_NAME}"
           release_ref="${{ inputs.release_ref || github.ref_name }}"
-          requested_image_tag="${{ inputs.image_tag || '' }}"
+          requested_docker_label="${{ inputs.docker_label || '' }}"
 
           if [[ -z "${release_ref}" ]]; then
             echo "release_ref is required." >&2
             exit 1
           fi
 
-          if [[ "${event_name}" == "workflow_dispatch" ]]; then
-            if ! git show-ref --verify --quiet "refs/tags/${release_ref}"; then
-              echo "workflow_dispatch release_ref must be an existing Git tag, got ${release_ref}." >&2
+          if [[ "${release_ref}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            default_docker_label="${release_ref#v}"
+          else
+            default_docker_label=""
+          fi
+
+          if [[ "${event_name}" == "push" ]]; then
+            if [[ -z "${default_docker_label}" ]]; then
+              echo "Release tag pushes must use SemVer tags like v1.2.3, got ${release_ref}." >&2
+              exit 1
+            fi
+            if [[ -n "${requested_docker_label}" ]]; then
+              echo "docker_label is only supported for workflow_dispatch." >&2
               exit 1
             fi
           fi
 
-          if [[ -n "${requested_image_tag}" ]]; then
-            image_tag="${requested_image_tag}"
-          elif [[ "${release_ref}" == v* ]]; then
-            image_tag="${release_ref#v}"
-          else
-            image_tag="${release_ref}"
+          if [[ "${event_name}" == "workflow_dispatch" && -z "${default_docker_label}" && -z "${requested_docker_label}" ]]; then
+            echo "workflow_dispatch release_ref is not a SemVer release tag, so docker_label is required." >&2
+            exit 1
           fi
 
-          if [[ -z "${image_tag}" ]]; then
-            echo "Resolved image_tag is empty." >&2
+          docker_label="${requested_docker_label:-${default_docker_label}}"
+          if [[ ! "${docker_label}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ || "${docker_label}" == "latest" ]]; then
+            echo "Resolved docker_label is not Docker-safe or is disallowed: ${docker_label}." >&2
             exit 1
           fi
 
@@ -80,7 +88,7 @@ jobs:
             exit 1
           fi
 
-          echo "image_tag=${image_tag}" >> "${GITHUB_OUTPUT}"
+          echo "docker_label=${docker_label}" >> "${GITHUB_OUTPUT}"
 
       - name: Resolve checked-out revision
         id: source
@@ -115,11 +123,11 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ steps.release.outputs.image_tag }}
+            ${{ env.IMAGE_NAME }}:${{ steps.release.outputs.docker_label }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.source.outputs.commit_sha }}
-            org.opencontainers.image.version=${{ steps.release.outputs.image_tag }}
+            org.opencontainers.image.version=${{ steps.release.outputs.docker_label }}
           secrets: |
             github_actor=${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
             github_token=${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
@@ -127,4 +135,4 @@ jobs:
       - name: Print digest-pinned reference
         shell: bash
         run: |
-          echo "${IMAGE_NAME}:${{ steps.release.outputs.image_tag }}@${{ steps.build.outputs.digest }}"
+          echo "${IMAGE_NAME}:${{ steps.release.outputs.docker_label }}@${{ steps.build.outputs.digest }}"
