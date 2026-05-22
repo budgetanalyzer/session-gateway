@@ -34,21 +34,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.release_ref || github.ref_name }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Resolve release inputs
         id: release
         shell: bash
         env:
+          REQUESTED_RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_ref || github.ref_name }}
+          REQUESTED_DOCKER_LABEL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.docker_label || '' }}
           SERVICE_COMMON_PACKAGES_USERNAME: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
           SERVICE_COMMON_PACKAGES_READ_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
         run: |
           set -euo pipefail
 
           event_name="${GITHUB_EVENT_NAME}"
-          release_ref="${{ inputs.release_ref || github.ref_name }}"
-          requested_docker_label="${{ inputs.docker_label || '' }}"
+          release_ref="${REQUESTED_RELEASE_REF}"
+          requested_docker_label="${REQUESTED_DOCKER_LABEL}"
 
           if [[ -z "${release_ref}" ]]; then
             echo "release_ref is required." >&2
