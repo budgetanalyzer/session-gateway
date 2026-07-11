@@ -23,6 +23,11 @@ Update the nearest affected documentation in the same work:
 - `README.md` when setup, usage, or repository purpose changes
 - `docs/` when architecture, configuration, APIs, behaviors, or operating procedures change
 
+When creating an implementation or execution plan intended for AI Session
+Handler, follow the [AI Session Handler plan format](../ai-session-handler/docs/plan-format.md),
+use its canonical template, replace every placeholder, and retain the numbered
+`## Phase N: Title` headings.
+
 Do not leave documentation updates as follow-up work.
 
 ## Tree Position
