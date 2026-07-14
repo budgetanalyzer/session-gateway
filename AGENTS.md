@@ -28,6 +28,19 @@ Handler, follow the [AI Session Handler plan format](../ai-session-handler/docs/
 use its canonical template, replace every placeholder, and retain the numbered
 `## Phase N: Title` headings.
 
+Run a specific plan through the workspace wrapper with:
+
+```bash
+ai-session-handler run \
+  --plan /workspace/REPOSITORY/docs/plans/PLAN.md \
+  --max-phases 999 \
+  --quiet \
+  --agent-cmd "/workspace/ai-session-handler/.venv/bin/ai-session-handler-codex-high --model MODEL"
+```
+
+Omit `--model MODEL` from the quoted agent command to use the wrapper's
+configured or default model.
+
 Do not leave documentation updates as follow-up work.
 
 ## Tree Position
