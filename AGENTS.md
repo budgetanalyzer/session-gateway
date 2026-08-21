@@ -20,6 +20,8 @@ Always keep documentation up to date after any configuration or code change.
 
 Update the nearest affected documentation in the same work:
 - `AGENTS.md` when instructions, guardrails, or discovery commands change
+- Before creating, reviewing, or substantially revising it, read and apply the
+  [AGENTS.md checkstyle](../orchestration/docs/agents-md-checkstyle.md).
 - `README.md` when setup, usage, or repository purpose changes
 - `docs/` when architecture, configuration, APIs, behaviors, or operating procedures change
 
