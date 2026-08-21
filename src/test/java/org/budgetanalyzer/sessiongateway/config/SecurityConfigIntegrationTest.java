@@ -33,6 +33,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
+import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
 
 class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
 
@@ -40,6 +41,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
   private static final String AUTHORIZATION_REQUEST_KEY_PREFIX = "oauth2:state:";
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
+  private static final String SESSION_WRITE_FAILURE_USER_ID = "security-config-write-failure";
   private static final RSAKey TEST_RSA_KEY = createTestRsaKey();
 
   @Autowired private ReactiveStringRedisTemplate reactiveStringRedisTemplate;
@@ -435,6 +437,81 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
         .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
   }
 
+  @Test
+  void oauth2CallbackRedirectsToOopsWhenSessionCreationFails() throws Exception {
+    var rsaKey = TEST_RSA_KEY;
+    stubJwks(rsaKey);
+
+    var authorizationResult =
+        webTestClient
+            .get()
+            .uri("/oauth2/authorization/idp?returnUrl=/dashboard")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var authorizationLocation = authorizationResult.getResponseHeaders().getLocation();
+    assertThat(authorizationLocation).isNotNull();
+
+    var state =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("state");
+    assertThat(state).isNotBlank();
+    state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+
+    var nonce =
+        UriComponentsBuilder.fromUri(authorizationLocation)
+            .build()
+            .getQueryParams()
+            .getFirst("nonce");
+    assertThat(nonce).isNotBlank();
+
+    stubOidcTokenEndpoint("access-token-value", createIdToken(rsaKey, nonce));
+    stubOidcUserInfo(
+        "auth0|user-123", "user@example.com", "Test User", "https://cdn.example.com/avatar.png");
+    stubPermissionService(
+        "auth0|user-123",
+        "user@example.com",
+        "Test User",
+        SESSION_WRITE_FAILURE_USER_ID,
+        java.util.List.of("ROLE_USER"),
+        java.util.List.of("transactions:read"));
+
+    var userSessionsKey =
+        SessionHashFields.USER_SESSIONS_KEY_PREFIX + SESSION_WRITE_FAILURE_USER_ID;
+    reactiveStringRedisTemplate
+        .opsForValue()
+        .set(userSessionsKey, "deliberately-not-a-set")
+        .block();
+
+    try {
+      var callbackResult =
+          webTestClient
+              .get()
+              .uri(
+                  UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                      .queryParam("code", "test-code")
+                      .queryParam("state", state)
+                      .build()
+                      .toUriString())
+              .exchange()
+              .expectStatus()
+              .is3xxRedirection()
+              .returnResult(Void.class);
+
+      var redirectLocation = callbackResult.getResponseHeaders().getLocation();
+      assertThat(redirectLocation).isNotNull();
+      assertThat(redirectLocation.getPath()).isEqualTo("/oops");
+      assertThat(callbackResult.getResponseCookies().keySet())
+          .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
+    } finally {
+      deleteFailedSessionCreationData(userSessionsKey);
+    }
+  }
+
   private void stubTokenEndpointError() {
     wireMockServer.stubFor(
         post(urlEqualTo("/idp/oauth/token")).willReturn(aResponse().withStatus(500)));
@@ -458,6 +535,22 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     wireMockServer.stubFor(
         get(urlPathEqualTo("/internal/v1/users/" + encodedIdpSub + "/permissions"))
             .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+  }
+
+  private void deleteFailedSessionCreationData(String userSessionsKey) {
+    reactiveStringRedisTemplate
+        .keys(TEST_SESSION_KEY_PREFIX + "*")
+        .filterWhen(
+            key ->
+                reactiveStringRedisTemplate
+                    .<String, String>opsForHash()
+                    .get(key, SessionHashFields.USER_ID)
+                    .map(SESSION_WRITE_FAILURE_USER_ID::equals)
+                    .defaultIfEmpty(false))
+        .flatMap(reactiveStringRedisTemplate::unlink)
+        .then(reactiveStringRedisTemplate.unlink(userSessionsKey))
+        .then()
+        .block();
   }
 
   private static RSAKey createTestRsaKey() {

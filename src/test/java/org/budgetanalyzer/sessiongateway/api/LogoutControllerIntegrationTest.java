@@ -31,6 +31,11 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
   @Test
   void logoutClearsPublicSessionCookieDeletesRedisSessionHashAndIgnoresFrameworkSessionCookie() {
     var sessionId = createSession();
+    var expectedLogoutLocation =
+        "http://localhost:"
+            + wireMockServer.port()
+            + "/idp/v2/logout?returnTo=http%3A%2F%2Flocalhost%3A8080"
+            + "&client_id=test-client-id";
 
     var exchangeResult =
         webTestClient
@@ -42,7 +47,7 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
             .expectStatus()
             .is3xxRedirection()
             .expectHeader()
-            .valueMatches(HttpHeaders.LOCATION, ".*/v2/logout.*")
+            .valueEquals(HttpHeaders.LOCATION, expectedLogoutLocation)
             .returnResult(Void.class);
 
     assertThat(exchangeResult.getResponseCookies().keySet())
@@ -50,6 +55,35 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
     assertThat(exchangeResult.getResponseCookies().getFirst("SESSION")).isNotNull();
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
+  }
+
+  @Test
+  void logoutClearsPublicSessionCookieAndRedirectsWhenSessionCookieIsMissing() {
+    var exchangeResult =
+        webTestClient
+            .get()
+            .uri("/logout")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+  }
+
+  @Test
+  void logoutClearsPublicSessionCookieAndRedirectsWhenSessionCookieIsBlank() {
+    var exchangeResult =
+        webTestClient
+            .get()
+            .uri("/logout")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, "")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
   }
 
   private String createSession() {

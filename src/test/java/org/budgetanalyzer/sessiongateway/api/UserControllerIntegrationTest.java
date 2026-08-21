@@ -46,6 +46,28 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void getCurrentUser_returns401WhenPublicSessionCookieIsBlank() {
+    webTestClient
+        .get()
+        .uri("/auth/v1/user")
+        .cookie(sessionProperties.cookie().name(), "")
+        .exchange()
+        .expectStatus()
+        .isUnauthorized();
+  }
+
+  @Test
+  void getCurrentUser_returns401WhenSessionIsMissingFromRedis() {
+    webTestClient
+        .get()
+        .uri("/auth/v1/user")
+        .cookie(sessionProperties.cookie().name(), "missing-session")
+        .exchange()
+        .expectStatus()
+        .isUnauthorized();
+  }
+
+  @Test
   void getCurrentUser_returnsUserInfoWithPermissionsForRegularUser() {
     var sessionId =
         sessionWriter
@@ -122,6 +144,36 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
             "transactions:write:any",
             "transactions:delete:any",
             "currencies:read");
+  }
+
+  @Test
+  void getCurrentUser_returnsEmptyPermissionsWhenSessionHasNone() {
+    var sessionId =
+        sessionWriter
+            .createSession(
+                "user-empty-permissions",
+                "auth0|empty-permissions",
+                "empty@example.com",
+                "Empty Permissions User",
+                "",
+                List.of("USER"),
+                List.of())
+            .block();
+
+    var response =
+        webTestClient
+            .get()
+            .uri("/auth/v1/user")
+            .cookie(sessionProperties.cookie().name(), sessionId)
+            .exchange()
+            .expectStatus()
+            .isOk()
+            .expectBody(UserInfoResponse.class)
+            .returnResult()
+            .getResponseBody();
+
+    assertThat(response).isNotNull();
+    assertThat(response.permissions()).isNotNull().isEmpty();
   }
 
   private String createSession() {
