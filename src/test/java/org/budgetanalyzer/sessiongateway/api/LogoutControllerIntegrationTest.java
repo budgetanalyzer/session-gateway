@@ -5,26 +5,48 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
+import org.budgetanalyzer.sessiongateway.config.WireMockConfig;
+import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
 
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
+  private static final String TEST_USER_ID = "user-logout";
+  private static final String TEST_USER_SESSIONS_KEY =
+      SessionHashFields.USER_SESSIONS_KEY_PREFIX + TEST_USER_ID;
 
   @Autowired private SessionWriter sessionWriter;
   @Autowired private ReactiveStringRedisTemplate reactiveStringRedisTemplate;
 
+  @DynamicPropertySource
+  static void configureLogoutProperties(DynamicPropertyRegistry registry) {
+    var trailingSlashIssuer =
+        "http://localhost:" + WireMockConfig.getWireMockServer().port() + "/idp/";
+    registry.add(
+        "idp.logout.url-template",
+        () -> trailingSlashIssuer + "/v2/logout?returnTo={returnTo}&client_id={clientId}");
+  }
+
   @BeforeEach
   void setUp() {
+    deleteTestKeys();
+  }
+
+  @AfterEach
+  void tearDown() {
     deleteTestKeys();
   }
 
@@ -86,10 +108,54 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
   }
 
+  @Test
+  void logoutNormalizesUrlTemplateBuiltFromTrailingSlashIssuer() {
+    var expectedLogoutLocation =
+        "http://localhost:"
+            + wireMockServer.port()
+            + "/idp/v2/logout?returnTo=http%3A%2F%2Flocalhost%3A8080"
+            + "&client_id=test-client-id";
+
+    webTestClient
+        .get()
+        .uri("/logout")
+        .exchange()
+        .expectStatus()
+        .is3xxRedirection()
+        .expectHeader()
+        .valueEquals(HttpHeaders.LOCATION, expectedLogoutLocation);
+  }
+
+  @Test
+  void logoutDoesNotClearCookieOrRedirectWhenRedisDeletionFails() {
+    var sessionId = createSession();
+    reactiveStringRedisTemplate
+        .unlink(TEST_USER_SESSIONS_KEY)
+        .then(
+            reactiveStringRedisTemplate
+                .opsForValue()
+                .set(TEST_USER_SESSIONS_KEY, "deliberately-not-a-set"))
+        .block();
+
+    var exchangeResult =
+        webTestClient
+            .get()
+            .uri("/logout")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
+            .exchange()
+            .expectStatus()
+            .is5xxServerError()
+            .expectHeader()
+            .doesNotExist(HttpHeaders.LOCATION)
+            .returnResult(Void.class);
+
+    assertThat(exchangeResult.getResponseCookies()).doesNotContainKey(PUBLIC_SESSION_COOKIE_NAME);
+  }
+
   private String createSession() {
     return sessionWriter
         .createSession(
-            "user-logout",
+            TEST_USER_ID,
             "auth0|logout",
             "logout@example.com",
             "Logout User",
@@ -102,14 +168,9 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
   private void deleteTestKeys() {
     reactiveStringRedisTemplate
         .keys(TEST_SESSION_KEY_PREFIX + "*")
-        .collectList()
-        .flatMap(
-            keys ->
-                keys.isEmpty()
-                    ? reactor.core.publisher.Mono.empty()
-                    : reactiveStringRedisTemplate
-                        .delete(reactor.core.publisher.Flux.fromIterable(keys))
-                        .then())
+        .concatWithValues(TEST_USER_SESSIONS_KEY)
+        .flatMap(reactiveStringRedisTemplate::unlink)
+        .then()
         .block();
   }
 

@@ -1,7 +1,9 @@
 package org.budgetanalyzer.sessiongateway.config;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
@@ -507,6 +509,32 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
       assertThat(redirectLocation.getPath()).isEqualTo("/oops");
       assertThat(callbackResult.getResponseCookies().keySet())
           .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
+
+      var encodedIdpSub = URLEncoder.encode("auth0|user-123", StandardCharsets.UTF_8);
+      wireMockServer.verify(
+          1,
+          getRequestedFor(urlPathEqualTo("/internal/v1/users/" + encodedIdpSub + "/permissions"))
+              .withQueryParam("email", equalTo("user@example.com"))
+              .withQueryParam("displayName", equalTo("Test User")));
+
+      var failedSessionKeys =
+          reactiveStringRedisTemplate
+              .keys(TEST_SESSION_KEY_PREFIX + "*")
+              .filterWhen(
+                  key ->
+                      reactiveStringRedisTemplate
+                          .<String, String>opsForHash()
+                          .get(key, SessionHashFields.USER_ID)
+                          .map(SESSION_WRITE_FAILURE_USER_ID::equals)
+                          .defaultIfEmpty(false))
+              .collectList()
+              .block();
+      assertThat(failedSessionKeys)
+          .singleElement()
+          .satisfies(
+              sessionKey ->
+                  assertThat(readHashEntries(sessionKey))
+                      .containsEntry(SessionHashFields.USER_ID, SESSION_WRITE_FAILURE_USER_ID));
     } finally {
       deleteFailedSessionCreationData(userSessionsKey);
     }

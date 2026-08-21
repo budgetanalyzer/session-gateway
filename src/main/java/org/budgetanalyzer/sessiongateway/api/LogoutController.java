@@ -66,7 +66,7 @@ public class LogoutController {
 
     return deleteSession(sessionId)
         .then(Mono.fromRunnable(() -> sessionCookieHelper.clearSessionCookie(exchange)))
-        .then(redirectToIdpLogout(exchange))
+        .then(Mono.defer(() -> redirectToIdpLogout(exchange)))
         .doOnSuccess(
             v -> log.info("Successfully logged out sessionId={}", SafeLogger.truncateId(sessionId)))
         .doOnError(error -> log.error("Error during logout", error));
