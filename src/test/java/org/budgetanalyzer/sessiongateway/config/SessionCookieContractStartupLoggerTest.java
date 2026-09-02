@@ -36,7 +36,7 @@ class SessionCookieContractStartupLoggerTest {
   }
 
   @Test
-  void logPublicSessionCookieContract_logsCookieNameAndDisabledDomainOverride() {
+  void shouldLogCookieNameAndDisabledDomainOverride() {
     var sessionProperties =
         new SessionProperties(
             "session:",
@@ -52,7 +52,7 @@ class SessionCookieContractStartupLoggerTest {
   }
 
   @Test
-  void logPublicSessionCookieContract_logsCookieNameAndEnabledDomainOverride() {
+  void shouldLogCookieNameAndEnabledDomainOverride() {
     var sessionProperties =
         new SessionProperties(
             "session:",
