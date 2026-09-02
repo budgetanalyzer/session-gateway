@@ -16,7 +16,7 @@ import io.netty.handler.timeout.ReadTimeoutException;
 class OAuth2CallbackFailureClassifierTest {
 
   @Test
-  void classifyTransportFailure_returnsConnectFailureForConnectException() {
+  void shouldReturnConnectFailureForConnectException() {
     var callbackFailureClassification =
         OAuth2CallbackFailureClassifier.classifyTransportFailure(
             new WebClientRequestException(
@@ -30,7 +30,7 @@ class OAuth2CallbackFailureClassifierTest {
   }
 
   @Test
-  void classifyTransportFailure_returnsResponseTimeoutForReadTimeout() {
+  void shouldReturnResponseTimeoutForReadTimeout() {
     var callbackFailureClassification =
         OAuth2CallbackFailureClassifier.classifyTransportFailure(ReadTimeoutException.INSTANCE);
 
@@ -39,7 +39,7 @@ class OAuth2CallbackFailureClassifierTest {
   }
 
   @Test
-  void classifyTransportFailure_returnsPoolAcquireTimeoutForPoolAcquireTimeoutExceptionName() {
+  void shouldReturnPoolAcquireTimeoutForPoolAcquireTimeoutExceptionName() {
     var callbackFailureClassification =
         OAuth2CallbackFailureClassifier.classifyTransportFailure(
             new PoolAcquireTimeoutException("pending acquire timed out"));
@@ -49,7 +49,7 @@ class OAuth2CallbackFailureClassifierTest {
   }
 
   @Test
-  void classifyTransportFailure_returnsEmptyForNonTransportFailure() {
+  void shouldReturnEmptyForNonTransportFailure() {
     var callbackFailureClassification =
         OAuth2CallbackFailureClassifier.classifyTransportFailure(
             new IllegalStateException("not a transport failure"));
@@ -58,7 +58,7 @@ class OAuth2CallbackFailureClassifierTest {
   }
 
   @Test
-  void classifyResponseStatus_returnsUpstream5xxForServerError() {
+  void shouldReturnUpstream5xxForServerError() {
     var callbackFailureClassification =
         OAuth2CallbackFailureClassifier.classifyResponseStatus(
             org.springframework.http.HttpStatus.BAD_GATEWAY);
@@ -68,7 +68,7 @@ class OAuth2CallbackFailureClassifierTest {
   }
 
   @Test
-  void classifyTransportFailure_prefersPoolAcquireClassificationOverGenericTimeout() {
+  void shouldPreferPoolAcquireClassificationOverGenericTimeout() {
     var callbackFailureClassification =
         OAuth2CallbackFailureClassifier.classifyTransportFailure(
             new PoolAcquireTimeoutException("pool timeout", new TimeoutException("generic")));

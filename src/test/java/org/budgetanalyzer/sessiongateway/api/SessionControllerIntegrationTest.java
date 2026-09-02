@@ -58,7 +58,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getSessionStatus_returnsSessionMetadataAndExtendsExpiryForValidSession() {
+  void shouldReturnSessionMetadataAndExtendExpiryForValidSession() {
     var sessionId = createSession();
     var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
     mutableClock.setInstant(heartbeatInstant);
@@ -102,7 +102,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getSessionStatus_returns401ForExpiredSession() {
+  void shouldReturn401ForExpiredSession() {
     var sessionId = createSession();
     mutableClock.setInstant(BASE_INSTANT.plusSeconds(1000));
 
@@ -120,7 +120,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getSessionStatus_doesNotCallIdpTokenEndpoint() {
+  void shouldNotCallIdpTokenEndpoint() {
     var sessionId = createSession();
     mutableClock.setInstant(BASE_INSTANT.plusSeconds(300));
 
@@ -139,7 +139,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getSessionStatus_ignoresFrameworkSessionCookieWhenPublicCookiePresent() {
+  void shouldIgnoreFrameworkSessionCookieWhenPublicCookiePresent() {
     var sessionId = createSession();
     var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
     mutableClock.setInstant(heartbeatInstant);
@@ -165,7 +165,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getSessionStatus_clearsPublicCookieAndDoesNotFallbackToFrameworkSessionCookie() {
+  void shouldClearPublicCookieAndNotFallbackToFrameworkSessionCookie() {
     var sessionId = createSession();
     mutableClock.setInstant(BASE_INSTANT.plusSeconds(300));
 
@@ -215,7 +215,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getSessionStatus_clearsCookieWhenSessionHashMissing() {
+  void shouldClearCookieWhenSessionHashMissing() {
     var exchangeResult =
         webTestClient
             .get()

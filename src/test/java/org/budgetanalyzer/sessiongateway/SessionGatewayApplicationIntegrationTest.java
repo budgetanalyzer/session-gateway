@@ -17,7 +17,7 @@ class SessionGatewayApplicationIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void unauthenticatedUserRequest_returns401() {
+  void shouldReturn401ForUnauthenticatedUserRequest() {
     webTestClient.get().uri("/auth/v1/user").exchange().expectStatus().isUnauthorized();
   }
 

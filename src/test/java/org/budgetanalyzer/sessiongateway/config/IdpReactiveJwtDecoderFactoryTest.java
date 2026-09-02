@@ -62,8 +62,11 @@ class IdpReactiveJwtDecoderFactoryTest {
             .build();
 
     assertThatThrownBy(() -> factory.createDecoder(registration))
-        .isInstanceOf(OAuth2AuthenticationException.class)
-        .hasMessageContaining("no-jwks");
+        .isInstanceOfSatisfying(
+            OAuth2AuthenticationException.class,
+            exception ->
+                assertThat(exception.getError().getErrorCode())
+                    .isEqualTo("missing_signature_verifier"));
   }
 
   @SuppressWarnings("unchecked")

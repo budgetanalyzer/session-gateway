@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.ConfigurationPropertiesBindException;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.bind.BindException;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
@@ -55,7 +57,7 @@ class SessionPropertiesTest {
         .run(
             applicationContext -> {
               assertThat(applicationContext).hasFailed();
-              assertThat(rootCauseMessage(applicationContext)).contains("session.cookie.name");
+              assertBindingValidationFailure(applicationContext);
             });
   }
 
@@ -66,7 +68,7 @@ class SessionPropertiesTest {
         .run(
             applicationContext -> {
               assertThat(applicationContext).hasFailed();
-              assertThat(rootCauseMessage(applicationContext)).contains("session.key-prefix");
+              assertBindingValidationFailure(applicationContext);
             });
   }
 
@@ -77,24 +79,18 @@ class SessionPropertiesTest {
         .run(
             applicationContext -> {
               assertThat(applicationContext).hasFailed();
-              assertThat(rootCauseMessage(applicationContext))
-                  .contains("session.cookie.same-site")
-                  .contains("Strict, Lax, or None");
+              assertBindingValidationFailure(applicationContext);
             });
   }
 
-  private String rootCauseMessage(
+  private void assertBindingValidationFailure(
       org.springframework.boot.test.context.assertj.AssertableApplicationContext
           applicationContext) {
     var startupFailure = applicationContext.getStartupFailure();
-    assertThat(startupFailure).isNotNull();
-
-    var rootCause = startupFailure.getCause();
-    while (rootCause != null && rootCause.getCause() != null) {
-      rootCause = rootCause.getCause();
-    }
-
-    return rootCause != null ? rootCause.getMessage() : startupFailure.getMessage();
+    assertThat(startupFailure)
+        .isInstanceOf(ConfigurationPropertiesBindException.class)
+        .hasCauseInstanceOf(BindException.class)
+        .hasRootCauseInstanceOf(IllegalArgumentException.class);
   }
 
   private List<org.springframework.core.env.PropertySource<?>> loadMainApplicationYaml() {

@@ -12,7 +12,7 @@ import reactor.test.StepVerifier;
 class OAuth2CallbackUnexpectedFailureWebExceptionHandlerTest {
 
   @Test
-  void handle_redirectsCallbackExceptionsToOops() {
+  void shouldRedirectCallbackExceptionsToOops() {
     var oauth2CallbackUnexpectedFailureWebExceptionHandler =
         new OAuth2CallbackUnexpectedFailureWebExceptionHandler(
             new OAuth2CallbackRedirectResolver());
@@ -31,7 +31,7 @@ class OAuth2CallbackUnexpectedFailureWebExceptionHandlerTest {
   }
 
   @Test
-  void handle_leavesNonCallbackExceptionsUnchanged() {
+  void shouldLeaveNonCallbackExceptionsUnchanged() {
     var oauth2CallbackUnexpectedFailureWebExceptionHandler =
         new OAuth2CallbackUnexpectedFailureWebExceptionHandler(
             new OAuth2CallbackRedirectResolver());

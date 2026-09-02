@@ -1,7 +1,6 @@
 package org.budgetanalyzer.sessiongateway.security;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -16,63 +15,64 @@ import org.junit.jupiter.params.provider.ValueSource;
 class RedirectUrlValidatorTest {
 
   @Test
-  void testValidateUrl_allowsSimpleRelativePath() {
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl("/dashboard"));
+  void shouldAllowSimpleRelativePath() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("/dashboard")).isTrue();
   }
 
   @Test
-  void testValidateUrl_allowsRootPath() {
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl("/"));
+  void shouldAllowRootPath() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("/")).isTrue();
   }
 
   @Test
-  void testValidateUrl_allowsPathWithQueryParameters() {
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl("/settings?tab=profile&section=security"));
+  void shouldAllowPathWithQueryParameters() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("/settings?tab=profile&section=security"))
+        .isTrue();
   }
 
   @Test
-  void testValidateUrl_allowsPathWithFragment() {
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl("/docs#section-2"));
+  void shouldAllowPathWithFragment() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("/docs#section-2")).isTrue();
   }
 
   @Test
-  void testValidateUrl_allowsDeepPath() {
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl("/api/v1/users/123/settings"));
+  void shouldAllowDeepPath() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("/api/v1/users/123/settings")).isTrue();
   }
 
   @Test
-  void testValidateUrl_allowsPathWithEncodedCharacters() {
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl("/search?q=test%20query"));
+  void shouldAllowPathWithEncodedCharacters() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("/search?q=test%20query")).isTrue();
   }
 
   @Test
-  void testValidateUrl_rejectsNull() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl(null));
+  void shouldRejectNull() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl(null)).isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsEmptyString() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl(""));
+  void shouldRejectEmptyString() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("")).isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsAbsoluteHttpUrl() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("http://evil.com/phishing"));
+  void shouldRejectAbsoluteHttpUrl() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("http://evil.com/phishing")).isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsAbsoluteHttpsUrl() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("https://evil.com/phishing"));
+  void shouldRejectAbsoluteHttpsUrl() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("https://evil.com/phishing")).isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsProtocolRelativeUrl() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("//evil.com/phishing"));
+  void shouldRejectProtocolRelativeUrl() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("//evil.com/phishing")).isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsProtocolRelativeUrlWithPath() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("//evil.com/path/to/page"));
+  void shouldRejectProtocolRelativeUrlWithPath() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("//evil.com/path/to/page")).isFalse();
   }
 
   @ParameterizedTest
@@ -83,8 +83,8 @@ class RedirectUrlValidatorTest {
         "JavaScript:alert(document.cookie)",
         "JAVASCRIPT:void(0)"
       })
-  void testValidateUrl_rejectsJavascriptUrls(String url) {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl(url));
+  void shouldRejectJavascriptUrls(String url) {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl(url)).isFalse();
   }
 
   @ParameterizedTest
@@ -94,51 +94,53 @@ class RedirectUrlValidatorTest {
         "data:text/html;base64,PHNjcmlwdD5hbGVydCgnWFNTJyk8L3NjcmlwdD4=",
         "Data:text/plain,malicious"
       })
-  void testValidateUrl_rejectsDataUrls(String url) {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl(url));
+  void shouldRejectDataUrls(String url) {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl(url)).isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsFtpProtocol() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("ftp://files.example.com/file.txt"));
+  void shouldRejectFtpProtocol() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("ftp://files.example.com/file.txt"))
+        .isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsFileProtocol() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("file:///etc/passwd"));
+  void shouldRejectFileProtocol() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("file:///etc/passwd")).isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsPathNotStartingWithSlash() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("dashboard"));
+  void shouldRejectPathNotStartingWithSlash() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("dashboard")).isFalse();
   }
 
   @Test
-  void testValidateUrl_rejectsRelativePathWithDots() {
+  void shouldRejectRelativePathWithDots() {
     // This should still be rejected as it doesn't start with /
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("../../../etc/passwd"));
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("../../../etc/passwd")).isFalse();
   }
 
   @Test
-  void testValidateUrl_allowsPathWithDotsAfterLeadingSlash() {
+  void shouldAllowPathWithDotsAfterLeadingSlash() {
     // Path traversal is allowed as long as it starts with /
     // The web server/framework should handle path normalization
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl("/../api/users"));
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("/../api/users")).isTrue();
   }
 
   @Test
-  void testValidateUrl_allowsPathWithSpecialCharacters() {
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl("/path/with-dashes_and_underscores"));
+  void shouldAllowPathWithSpecialCharacters() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("/path/with-dashes_and_underscores"))
+        .isTrue();
   }
 
   @Test
-  void testValidateUrl_rejectsUrlWithCustomProtocol() {
-    assertFalse(RedirectUrlValidator.isValidRedirectUrl("custom://protocol/path"));
+  void shouldRejectUrlWithCustomProtocol() {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl("custom://protocol/path")).isFalse();
   }
 
   @Test
-  void testValidateUrl_allowsVeryLongValidPath() {
+  void shouldAllowVeryLongValidPath() {
     String longPath = "/path" + "/segment".repeat(100) + "?query=value";
-    assertTrue(RedirectUrlValidator.isValidRedirectUrl(longPath));
+    assertThat(RedirectUrlValidator.isValidRedirectUrl(longPath)).isTrue();
   }
 }

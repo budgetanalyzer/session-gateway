@@ -15,7 +15,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 
-class PermissionServiceClientTest {
+class PermissionServiceClientIntegrationTest {
 
   private WireMockServer wireMock;
   private PermissionServiceClient permissionServiceClient;
@@ -35,7 +35,7 @@ class PermissionServiceClientTest {
   }
 
   @Test
-  void fetchPermissions_returnsParsedResponse() {
+  void shouldReturnParsedResponseWhenFetchingPermissions() {
     wireMock.stubFor(
         get(urlPathEqualTo("/internal/v1/users/auth0%7Cabc123/permissions"))
             .withQueryParam("email", equalTo("user@example.com"))
@@ -65,7 +65,7 @@ class PermissionServiceClientTest {
   }
 
   @Test
-  void fetchPermissions_throwsOnClientError() {
+  void shouldThrowOnClientErrorWhenFetchingPermissions() {
     wireMock.stubFor(
         get(urlPathEqualTo("/internal/v1/users/auth0%7Cnotfound/permissions"))
             .willReturn(aResponse().withStatus(404)));
@@ -79,7 +79,7 @@ class PermissionServiceClientTest {
   }
 
   @Test
-  void fetchPermissions_throwsOnServerError() {
+  void shouldThrowOnServerErrorWhenFetchingPermissions() {
     wireMock.stubFor(
         get(urlPathEqualTo("/internal/v1/users/auth0%7Cerror/permissions"))
             .willReturn(aResponse().withStatus(500)));

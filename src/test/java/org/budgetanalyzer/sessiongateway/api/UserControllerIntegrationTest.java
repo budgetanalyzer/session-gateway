@@ -28,7 +28,7 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getCurrentUser_returns401WhenOnlyFrameworkSessionCookieIsPresent() {
+  void shouldReturn401WhenOnlyFrameworkSessionCookieIsPresent() {
     var sessionId = createSession();
 
     var exchangeResult =
@@ -46,7 +46,7 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getCurrentUser_returns401WhenPublicSessionCookieIsBlank() {
+  void shouldReturn401WhenPublicSessionCookieIsBlank() {
     webTestClient
         .get()
         .uri("/auth/v1/user")
@@ -57,7 +57,7 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getCurrentUser_returns401WhenSessionIsMissingFromRedis() {
+  void shouldReturn401WhenSessionIsMissingFromRedis() {
     webTestClient
         .get()
         .uri("/auth/v1/user")
@@ -68,7 +68,7 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getCurrentUser_returnsUserInfoWithPermissionsForRegularUser() {
+  void shouldReturnUserInfoWithPermissionsForRegularUser() {
     var sessionId =
         sessionWriter
             .createSession(
@@ -104,7 +104,7 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getCurrentUser_returnsUserInfoWithAdminPermissions() {
+  void shouldReturnUserInfoWithAdminPermissions() {
     var sessionId =
         sessionWriter
             .createSession(
@@ -147,7 +147,7 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void getCurrentUser_returnsEmptyPermissionsWhenSessionHasNone() {
+  void shouldReturnEmptyPermissionsWhenSessionHasNone() {
     var sessionId =
         sessionWriter
             .createSession(
