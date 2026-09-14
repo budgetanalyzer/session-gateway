@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, dependency-automation-trial]
   pull_request:
-    branches: [main]
+    branches: [main, dependency-automation-trial]
   workflow_dispatch:
 
 permissions:
@@ -15,6 +15,13 @@ env:
 
 jobs:
   build:
+    if: >-
+      ${{
+        ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dependency-automation-trial')) ||
+        (github.event_name == 'pull_request' &&
+          (github.base_ref == 'main' || github.base_ref == 'dependency-automation-trial'))
+      }}
     runs-on: ubuntu-latest
 
     steps:
@@ -29,15 +36,26 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-disabled: >-
+            ${{
+              (github.ref == 'refs/heads/dependency-automation-trial' ||
+                github.base_ref == 'dependency-automation-trial') &&
+              vars.DEPENDENCY_AUTOMATION_TRIAL_CACHES_ENABLED != 'true'
+            }}
 
       - name: Build with Gradle
+        shell: bash
         env:
           GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
           GITHUB_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
-        run: ./gradlew build
+        run: |
+          set -o pipefail
+          mkdir -p dependency-automation-evidence
+          ./gradlew build 2>&1 | tee dependency-automation-evidence/build.log
 
       - name: Upload test results
-        if: always()
+        if: ${{ always() && (github.ref == 'refs/heads/main' || github.base_ref == 'main') }}
         uses: actions/upload-artifact@v7
         with:
           name: test-results
@@ -45,8 +63,49 @@ jobs:
           retention-days: 7
 
       - name: Upload build artifacts
+        if: ${{ github.ref == 'refs/heads/main' || github.base_ref == 'main' }}
         uses: actions/upload-artifact@v7
         with:
           name: app-jar
           path: 'build/libs/*.jar'
           retention-days: 7
+
+      - name: Measure complete trial build evidence
+        id: trial-evidence
+        if: >-
+          ${{
+            always() &&
+            (github.ref == 'refs/heads/dependency-automation-trial' ||
+              (github.event_name == 'pull_request' && github.base_ref == 'dependency-automation-trial'))
+          }}
+        run: >-
+          bash .github/scripts/prepare-trial-evidence.sh
+          dependency-automation-evidence/build-evidence.tar.gz
+          'Trial build'
+          dependency-automation-evidence/build.log
+          build/libs
+          build/test-results/test
+
+      - name: Upload capped trial build evidence
+        if: >-
+          ${{
+            always() && vars.DEPENDENCY_AUTOMATION_TRIAL_UPLOADS_ENABLED == 'true' &&
+            steps.trial-evidence.outputs.upload_allowed == 'true'
+          }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: trial-build-evidence-${{ github.run_id }}
+          path: dependency-automation-evidence/build-evidence.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+      - name: Enforce complete trial build evidence delivery
+        if: >-
+          ${{
+            always() && vars.DEPENDENCY_AUTOMATION_TRIAL_UPLOADS_ENABLED == 'true' &&
+            steps.trial-evidence.outputs.upload_allowed != 'true'
+          }}
+        run: |
+          echo 'The complete trial build evidence exceeds the capped upload allowance.' >&2
+          exit 1

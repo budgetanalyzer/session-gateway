@@ -383,6 +383,11 @@ budgetanalyzer:
 
 ## Development Workflow
 
+Before changing Renovate configuration, dependency graph submission, build
+workflow triggers, trial evidence measurement, caches, or artifact uploads,
+read [docs/dependency-automation.md](docs/dependency-automation.md) and the
+cross-repository policy it links.
+
 ### Prerequisites
 - JDK 25
 - Shared local platform from `../orchestration` (`tilt up`)

@@ -35,10 +35,12 @@ proposal is not proof that every inherited vulnerability is fixed.
 
 ## Resolved reactive dependency graph
 
-`.github/workflows/dependency-submission.yml` runs on trusted pushes to `main`,
-weekly, and by manual dispatch. The job runs only for the `main` ref and uses
-the official `gradle/actions/dependency-submission` action with the open-source
-`basic` cache provider. It resolves all projects and all resolvable
+`.github/workflows/dependency-submission.yml` preserves graph submission on
+trusted `main` pushes, weekly runs, and `main` dispatches. It also accepts the
+exact `dependency-automation-trial` ref. Trial runs preserve the complete
+authenticated build and use the official Gradle generation-only graph path
+until both the protected trial ref is the current default and the trial graph
+submission variable is enabled. It resolves all projects and all resolvable
 configurations so application, runtime, build, and test dependency trees are
 included. Do not add configuration filters without proving equivalent coverage.
 
@@ -77,6 +79,19 @@ dependency failed, and
 `service-web` 0.0.16. No Netty coverage is available from that partial snapshot.
 This is authentication-dependent local evidence, not a submitted graph or a
 claim that those dependencies are absent.
+
+## Phase 12 branch measurement controls
+
+`build.yml` accepts trial-branch pushes and pull requests based on either `main`
+or the exact trial branch. Trial builds measure the application JAR, test
+results, and build failure log with optional caches and uploads initially off.
+The graph workflow measures its complete generated report and resolution log.
+Trial schedule, cache, upload, and submission expansion follows the variables in
+the
+[orchestration trial workflow policy](../../orchestration/docs/dependency-automation.md#trial-workflow-controls).
+Any enabled trial upload is one sealed archive retained for one day and must fit
+beneath the 25 MiB cap. Production `main` uploads and graph submission are
+unchanged.
 
 ## Bot pull request checks
 
