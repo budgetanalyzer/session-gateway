@@ -62,6 +62,7 @@ Full local setup: [docs/local-development.md](docs/local-development.md)
 | [Security](docs/security.md) | Session cookies, token protection, heartbeat, ext_authz, revocation, return URLs, browser error strategy |
 | [Session Configuration](docs/session-configuration.md) | Shared session contract, cookie behavior, internal revocation, OAuth2 state TTL |
 | [Auth0 Settings](docs/auth0-settings.md) | Recommended Auth0 dashboard values |
+| [Dependency Automation](docs/dependency-automation.md) | Renovate discovery, reactive dependency graph submission, bot PR checks |
 | [Security Architecture](https://github.com/budgetanalyzer/orchestration/blob/main/docs/architecture/security-architecture.md) | Platform-wide security design |
 
 ## Related Repositories
