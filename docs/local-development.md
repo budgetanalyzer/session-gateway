@@ -16,7 +16,10 @@ from GitHub Packages. The full contract is documented in orchestration:
 [service-common artifact resolution](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/service-common-artifact-resolution.md).
 This service imports `org.budgetanalyzer:spring-platform` for shared Spring
 dependency management and keeps `org.budgetanalyzer:service-web` explicit for
-reactive runtime utilities.
+reactive runtime utilities. Maven Central is used only for external dependencies
+and explicitly excludes `org.budgetanalyzer`; internal artifacts resolve only
+from Maven Local or the authenticated `service-common` GitHub Packages
+repository.
 
 ## Start the Service
 
