@@ -33,7 +33,11 @@ repositories {
             includeGroup("org.budgetanalyzer")
         }
     }
-    mavenCentral()
+    mavenCentral {
+        content {
+            excludeGroup("org.budgetanalyzer")
+        }
+    }
 }
 
 dependencies {
