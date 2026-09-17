@@ -90,8 +90,9 @@ Trial schedule, cache, upload, and submission expansion follows the variables in
 the
 [orchestration trial workflow policy](../../orchestration/docs/dependency-automation.md#trial-workflow-controls).
 Any enabled trial upload is one sealed archive retained for one day and must fit
-beneath the 25 MiB cap. Production `main` uploads and graph submission are
-unchanged.
+beneath the 25 MiB cap. Regular CI does not retain an application JAR; it
+retains only JUnit XML after a failed main-path build, for one day. This does
+not change the gated trial archive or dependency-graph submission behavior.
 
 ## Bot pull request checks
 

@@ -45,6 +45,7 @@ jobs:
             }}
 
       - name: Build with Gradle
+        id: gradle_build
         shell: bash
         env:
           GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
@@ -54,21 +55,17 @@ jobs:
           mkdir -p dependency-automation-evidence
           ./gradlew build 2>&1 | tee dependency-automation-evidence/build.log
 
-      - name: Upload test results
-        if: ${{ always() && (github.ref == 'refs/heads/main' || github.base_ref == 'main') }}
+      - name: Upload failed test results
+        if: >-
+          ${{
+            always() && steps.gradle_build.outcome == 'failure' &&
+            (github.ref == 'refs/heads/main' || github.base_ref == 'main')
+          }}
         uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: '**/build/test-results/test/*.xml'
-          retention-days: 7
-
-      - name: Upload build artifacts
-        if: ${{ github.ref == 'refs/heads/main' || github.base_ref == 'main' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: app-jar
-          path: 'build/libs/*.jar'
-          retention-days: 7
+          retention-days: 1
 
       - name: Measure complete trial build evidence
         id: trial-evidence
