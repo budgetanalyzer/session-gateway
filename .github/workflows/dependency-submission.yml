@@ -2,7 +2,7 @@ name: Dependency Submission
 
 on:
   push:
-    branches: [main, dependency-automation-trial]
+    branches: [main]
   schedule:
     - cron: '43 5 * * 1'
   workflow_dispatch:
@@ -14,14 +14,7 @@ env:
 
 jobs:
   submit-gradle-dependencies:
-    if: >-
-      ${{
-        (github.ref == 'refs/heads/main' &&
-          (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')) ||
-        (github.ref == 'refs/heads/dependency-automation-trial' &&
-          (github.event_name == 'push' || github.event_name == 'workflow_dispatch' ||
-            (github.event_name == 'schedule' && vars.DEPENDENCY_AUTOMATION_TRIAL_SCHEDULES_ENABLED == 'true')))
-      }}
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -66,65 +59,18 @@ jobs:
           done
 
       - name: Verify application and test dependency resolution
-        shell: bash
         env:
           GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
           GITHUB_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
-        run: |
-          set -o pipefail
-          mkdir -p dependency-automation-evidence
-          ./gradlew --no-daemon --no-configuration-cache build 2>&1 \
-            | tee dependency-automation-evidence/dependency-resolution.log
+        run: ./gradlew --no-daemon --no-configuration-cache build
 
       - name: Generate and submit dependency graph
-        id: dependency-graph
         uses: gradle/actions/dependency-submission@v6
         env:
           GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
           GITHUB_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
         with:
           cache-provider: basic
-          cache-disabled: ${{ github.ref == 'refs/heads/dependency-automation-trial' && vars.DEPENDENCY_AUTOMATION_TRIAL_CACHES_ENABLED != 'true' }}
-          dependency-graph: >-
-            ${{
-              github.ref == 'refs/heads/main' && 'generate-and-submit' ||
-              (vars.DEPENDENCY_AUTOMATION_TRIAL_GRAPH_SUBMISSION_ENABLED == 'true' &&
-                github.ref_name == github.event.repository.default_branch && 'generate-and-submit' || 'generate')
-            }}
-          dependency-graph-report-dir: dependency-automation-evidence/dependency-graph
+          dependency-graph: generate-and-submit
           additional-arguments: --no-configuration-cache
           github-token: ${{ github.token }}
-
-      - name: Measure complete trial dependency-graph evidence
-        id: trial-evidence
-        if: ${{ always() && github.ref == 'refs/heads/dependency-automation-trial' }}
-        run: >-
-          bash .github/scripts/prepare-trial-evidence.sh
-          dependency-automation-evidence/dependency-graph-evidence.tar.gz
-          'Trial dependency graph'
-          dependency-automation-evidence/dependency-resolution.log
-          dependency-automation-evidence/dependency-graph
-
-      - name: Upload capped trial dependency-graph evidence
-        if: >-
-          ${{
-            always() && vars.DEPENDENCY_AUTOMATION_TRIAL_UPLOADS_ENABLED == 'true' &&
-            steps.trial-evidence.outputs.upload_allowed == 'true'
-          }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: trial-dependency-graph-evidence-${{ github.run_id }}
-          path: dependency-automation-evidence/dependency-graph-evidence.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
-
-      - name: Enforce complete trial dependency-graph evidence delivery
-        if: >-
-          ${{
-            always() && vars.DEPENDENCY_AUTOMATION_TRIAL_UPLOADS_ENABLED == 'true' &&
-            steps.trial-evidence.outputs.upload_allowed != 'true'
-          }}
-        run: |
-          echo 'The complete trial dependency-graph evidence exceeds the capped upload allowance.' >&2
-          exit 1
