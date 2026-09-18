@@ -15,6 +15,11 @@ env:
 
 jobs:
   build:
+    if: >-
+      ${{
+        (github.event_name == 'pull_request' && github.base_ref == 'main') ||
+        (github.event_name != 'pull_request' && github.ref == 'refs/heads/main')
+      }}
     runs-on: ubuntu-latest
 
     steps:
@@ -31,22 +36,16 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build with Gradle
+        id: gradle_build
         env:
           GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
           GITHUB_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
         run: ./gradlew build
 
-      - name: Upload test results
-        if: always()
+      - name: Upload failed test results
+        if: ${{ always() && steps.gradle_build.outcome == 'failure' }}
         uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: '**/build/test-results/test/*.xml'
-          retention-days: 7
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: app-jar
-          path: 'build/libs/*.jar'
-          retention-days: 7
+          retention-days: 1

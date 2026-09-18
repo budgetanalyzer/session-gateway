@@ -324,3 +324,6 @@ jacoco.xml
 TODO.local
 NOTES.local
 scratch/
+
+# AI Session Handler configuration
+.ai-session-handler/
