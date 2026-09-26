@@ -34,12 +34,13 @@ projects and all resolvable configurations are included. Application, runtime,
 build, and test dependency trees must remain covered; do not add filters without
 proving equivalent coverage.
 
-Before graph generation, the workflow checks authenticated access to both
-declared `service-common` POMs and runs a complete build with configuration
+Before graph generation, the workflow runs a complete build with configuration
 caching disabled. This prevents a graph task's successful exit from masking
-unresolved application or test configurations. The graph action uses its basic
-cache provider and submits the snapshot directly; it does not retain the graph
-as an artifact or publish a Build Scan.
+unresolved application or test configurations. Gradle resolution is
+authoritative for both release and timestamped snapshot artifacts; do not add
+manual artifact URL probes that duplicate Gradle's Maven metadata handling.
+The graph action uses its basic cache provider and submits the snapshot
+directly; it does not retain the graph as an artifact or publish a Build Scan.
 
 Remote package resolution uses `SERVICE_COMMON_PACKAGES_USERNAME` and
 `SERVICE_COMMON_PACKAGES_READ_TOKEN`, exposed to Gradle as `GITHUB_ACTOR` and
@@ -96,8 +97,8 @@ After workflow or dependency-automation changes:
 1. Validate `renovate.json` in strict mode and confirm the hosted Renovate log
    or Dependency Dashboard resolves the shared preset and both internal Maven
    coordinates without authentication or lookup failures.
-2. Confirm one `main` dependency-submission run passes both POM preflights, the
-   complete build, and direct graph submission.
+2. Confirm one `main` dependency-submission run passes the complete build and
+   direct graph submission.
 3. Inspect the accepted graph for the reactive dependency families listed
    above. Use Gradle dependency insight to explain inherited paths or a missing
    expected family; do not infer coverage from a BOM update alone.

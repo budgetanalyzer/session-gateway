@@ -31,33 +31,6 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
-      - name: Verify service-common package access
-        shell: bash
-        env:
-          PACKAGES_USERNAME: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
-          PACKAGES_READ_TOKEN: ${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${PACKAGES_USERNAME}" || -z "${PACKAGES_READ_TOKEN}" ]]; then
-            echo "Missing SERVICE_COMMON_PACKAGES_USERNAME or SERVICE_COMMON_PACKAGES_READ_TOKEN." >&2
-            exit 1
-          fi
-
-          service_common_version="$(sed -n 's/^serviceCommon = "\([^"]*\)"$/\1/p' gradle/libs.versions.toml)"
-          if [[ -z "${service_common_version}" ]]; then
-            echo "Could not read serviceCommon from gradle/libs.versions.toml." >&2
-            exit 1
-          fi
-
-          for artifact in spring-platform service-web; do
-            pom_url="https://maven.pkg.github.com/budgetanalyzer/service-common/org/budgetanalyzer/${artifact}/${service_common_version}/${artifact}-${service_common_version}.pom"
-            curl --fail --silent --show-error \
-              --user "${PACKAGES_USERNAME}:${PACKAGES_READ_TOKEN}" \
-              --output /dev/null \
-              "${pom_url}"
-          done
-
       - name: Verify application and test dependency resolution
         env:
           GITHUB_ACTOR: ${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
