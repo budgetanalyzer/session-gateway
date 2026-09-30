@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew bootJar --no-daemon
 
 # Runtime stage
-FROM eclipse-temurin:25-jre-alpine@sha256:c707c0d18cb9e8556380719f80d96a7529d0746fbb42143893949b98ed2f8943
+FROM eclipse-temurin:25-jre-alpine@sha256:3c0a9084927a221ccd1d007fcaf614465672c0af37aaa834c5184483afe56d61
 WORKDIR /app
 
 # Create non-root user
