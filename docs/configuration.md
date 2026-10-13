@@ -10,6 +10,7 @@
 | `IDP_AUDIENCE` | Auth0 API audience identifier | `https://api.budgetanalyzer.org` |
 | `IDP_LOGOUT_RETURN_TO` | URL to redirect after Auth0 logout | `https://app.budgetanalyzer.localhost/peace` |
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8086` |
+| `PERMISSION_SERVICE_AUTHORIZATION_REFRESH_TIMEOUT` | Maximum duration for the heartbeat authorization lookup | `2s` |
 | `SPRING_DATA_REDIS_HOST` | Redis host for session storage | `localhost` |
 | `SPRING_DATA_REDIS_PORT` | Redis port for session storage | `6379` |
 | `SPRING_DATA_REDIS_USERNAME` | Redis ACL username | `session-gateway` |

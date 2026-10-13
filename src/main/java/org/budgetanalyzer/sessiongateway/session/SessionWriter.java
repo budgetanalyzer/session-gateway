@@ -1,6 +1,7 @@
 package org.budgetanalyzer.sessiongateway.session;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +25,7 @@ public class SessionWriter {
 
   private static final Logger log = LoggerFactory.getLogger(SessionWriter.class);
 
-  /** Updates hash fields and TTL only if the key already exists. Returns 1 if updated, 0 if not. */
+  /** Updates authorization and TTL only if the session exists. Returns 1 if updated, 0 if not. */
   private static final RedisScript<Long> CONDITIONAL_UPDATE_SCRIPT =
       RedisScript.of(new ClassPathResource("redis/conditional-update.lua"), Long.class);
 
@@ -102,29 +103,44 @@ public class SessionWriter {
   }
 
   /**
-   * Updates the session expiry for heartbeat-driven sliding window.
+   * Refreshes authorization and expiry for the heartbeat-driven sliding window.
    *
-   * <p>Atomically checks that the session hash exists before writing. Returns false if the session
-   * was deleted or expired between the caller's read and this write.
+   * <p>Atomically checks that the session hash exists before writing. Returns an empty publisher if
+   * the session was deleted or expired between the caller's read and this write.
    *
    * @param sessionId the session ID
    * @param userId the internal user ID for refreshing the session index TTL
+   * @param roles the current roles from permission-service
+   * @param permissions the current permissions from permission-service
    * @param ttlSeconds the new TTL in seconds
-   * @return true if updated, false if the session no longer exists
+   * @return the expiry written to Redis, or empty if the session no longer exists
    */
-  public Mono<Boolean> updateSessionExpiry(String sessionId, String userId, long ttlSeconds) {
+  public Mono<Instant> refreshSessionAuthorization(
+      String sessionId,
+      String userId,
+      List<String> roles,
+      List<String> permissions,
+      long ttlSeconds) {
     var sessionKey = sessionKey(sessionId);
     var userSessionsKey = userSessionsKey(userId);
-    var expiresAt = String.valueOf(clock.instant().plusSeconds(ttlSeconds).getEpochSecond());
+    var expiresAt = clock.instant().plusSeconds(ttlSeconds);
 
     return redisTemplate
         .execute(
             CONDITIONAL_UPDATE_SCRIPT,
             List.of(sessionKey, userSessionsKey),
             conditionalUpdateArguments(
-                sessionId, ttlSeconds, SessionHashFields.EXPIRES_AT, expiresAt))
+                sessionId,
+                ttlSeconds,
+                SessionHashFields.ROLES,
+                String.join(",", roles),
+                SessionHashFields.PERMISSIONS,
+                String.join(",", permissions),
+                SessionHashFields.EXPIRES_AT,
+                String.valueOf(expiresAt.getEpochSecond())))
         .single()
-        .map(result -> result == 1L);
+        .filter(result -> result == 1L)
+        .map(result -> expiresAt);
   }
 
   /**

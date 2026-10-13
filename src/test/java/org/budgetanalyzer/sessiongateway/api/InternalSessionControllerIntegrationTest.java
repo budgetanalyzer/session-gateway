@@ -112,9 +112,13 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
         .expectStatus()
         .isNoContent();
 
-    var updated = sessionWriter.updateSessionExpiry(sessionId, PRIMARY_USER_ID, 900).block();
+    var expiresAt =
+        sessionWriter
+            .refreshSessionAuthorization(
+                sessionId, PRIMARY_USER_ID, List.of("USER"), List.of("transactions:read"), 900)
+            .blockOptional();
 
-    assertThat(updated).isFalse();
+    assertThat(expiresAt).isEmpty();
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
     assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).isEmpty();
   }

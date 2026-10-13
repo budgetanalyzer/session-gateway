@@ -54,9 +54,32 @@ The current runtime defaults across the active browser-session path are:
 - `SESSION_TTL_SECONDS=900` (15 minutes)
 - frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes in `budget-analyzer-web`)
 
-That heartbeat cadence is frontend-owned, not Session Gateway-owned. Session Gateway extends the
-session on every `GET /auth/v1/session` call against local Redis state; Auth0 is not contacted.
-The frontend decides when to call based on user activity.
+That heartbeat cadence is frontend-owned, not Session Gateway-owned. On every
+`GET /auth/v1/session` call, Session Gateway reads the local session and asks permission-service for
+the current account status, roles, and permissions by internal `userId`. It extends the session
+only after that lookup succeeds for an active account. Auth0 is not contacted. The frontend decides
+when to call based on user activity.
+
+## Heartbeat Authorization Refresh
+
+The heartbeat uses `GET /internal/v1/users/{userId}/authorization` with a bounded timeout controlled
+by `PERMISSION_SERVICE_AUTHORIZATION_REFRESH_TIMEOUT` (default `2s`). This endpoint is read-only and
+does not perform login-time profile synchronization.
+
+For an active account, one conditional Redis script replaces `roles`, `permissions`, and
+`expires_at`; refreshes the session hash TTL; restores the `user_sessions:{userId}` membership when
+needed; and refreshes the index TTL. The response uses the same expiry value written by that script.
+An active user with no grants stores empty role and permission fields.
+
+If the account is deactivated or permission-service returns 404 for a missing or deleted user,
+Session Gateway deletes only the current session, clears the cookie, and returns 401. If the lookup
+times out, fails, or returns an invalid payload, heartbeat returns 503 and leaves the hash, expiry,
+TTLs, index, and cookie unchanged. Redis mutation failures also return 503. There is no cached-grant
+fallback or separate authorization expiry clock: without a successful refresh, the existing finite
+session TTL continues to count down.
+
+The conditional script does not create keys. A session deleted or expired while permission-service
+is responding cannot be recreated or reindexed by the heartbeat.
 
 The operational Auth0 dashboard values that pair with these defaults are documented in
 [auth0-settings.md](auth0-settings.md).
@@ -141,9 +164,9 @@ Behavior:
 - returns `204 No Content` whether sessions were deleted or none existed
 - uses one Redis script execution to delete all indexed `session:{id}` hashes for the user and to
   remove the `user_sessions:{userId}` index key atomically
-- relies on login and heartbeat to keep the `user_sessions:{userId}` index both TTL-aligned and
-  self-healing
-- when heartbeat touches a live session, Session Gateway re-adds that session ID to
+- relies on login and successful heartbeat refreshes to keep the `user_sessions:{userId}` index both
+  TTL-aligned and self-healing
+- when a successful heartbeat refreshes a live session, Session Gateway re-adds that session ID to
   `user_sessions:{userId}` before refreshing both TTLs, so a missing index entry does not leave the
   session invisible to targeted revocation
 
