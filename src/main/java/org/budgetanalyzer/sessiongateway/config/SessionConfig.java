@@ -8,7 +8,11 @@ import org.springframework.context.annotation.Configuration;
 
 /** Session management configuration. */
 @Configuration
-@EnableConfigurationProperties({SessionProperties.class, IdpHttpClientProperties.class})
+@EnableConfigurationProperties({
+  SessionProperties.class,
+  IdpHttpClientProperties.class,
+  PermissionServiceProperties.class
+})
 public class SessionConfig {
 
   /**

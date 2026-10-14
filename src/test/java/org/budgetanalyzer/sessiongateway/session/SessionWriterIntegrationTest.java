@@ -1,6 +1,7 @@
 package org.budgetanalyzer.sessiongateway.session;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -145,7 +146,7 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void updateSessionExpiryRefreshesExpiresAtFieldAndBothRedisTtls() {
+  void refreshSessionAuthorizationReplacesGrantsAndRefreshesBothRedisTtls() {
     var sessionId = createSession(PRIMARY_USER_ID);
     var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
 
@@ -157,13 +158,19 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
         .block();
     reactiveStringRedisTemplate.expire(PRIMARY_USER_SESSIONS_KEY, Duration.ofSeconds(30)).block();
 
-    var updated = sessionWriter.updateSessionExpiry(sessionId, PRIMARY_USER_ID, 600).block();
+    var expiresAt =
+        sessionWriter
+            .refreshSessionAuthorization(
+                sessionId, PRIMARY_USER_ID, List.of("ADMIN"), List.of("transactions:write"), 600)
+            .block();
     var sessionFields = readHashEntries(sessionKey);
     var sessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
     var userSessionsTtl = reactiveStringRedisTemplate.getExpire(PRIMARY_USER_SESSIONS_KEY).block();
 
-    assertThat(updated).isTrue();
+    assertThat(expiresAt).isEqualTo(BASE_INSTANT.plusSeconds(600));
     assertThat(sessionFields)
+        .containsEntry(SessionHashFields.ROLES, "ADMIN")
+        .containsEntry(SessionHashFields.PERMISSIONS, "transactions:write")
         .containsEntry(
             SessionHashFields.EXPIRES_AT,
             String.valueOf(BASE_INSTANT.plusSeconds(600).getEpochSecond()));
@@ -176,7 +183,22 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void updateSessionExpiryReindexesSessionWhenUserIndexEntryIsMissing() {
+  void refreshSessionAuthorizationStoresEmptyGrants() {
+    var sessionId = createSession(PRIMARY_USER_ID);
+
+    var expiresAt =
+        sessionWriter
+            .refreshSessionAuthorization(sessionId, PRIMARY_USER_ID, List.of(), List.of(), 600)
+            .block();
+
+    assertThat(expiresAt).isEqualTo(BASE_INSTANT.plusSeconds(600));
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
+        .containsEntry(SessionHashFields.ROLES, "")
+        .containsEntry(SessionHashFields.PERMISSIONS, "");
+  }
+
+  @Test
+  void refreshSessionAuthorizationReindexesSessionWhenUserIndexEntryIsMissing() {
     var sessionId = createSession(PRIMARY_USER_ID);
     var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
 
@@ -185,12 +207,16 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
 
     reactiveStringRedisTemplate.opsForSet().remove(PRIMARY_USER_SESSIONS_KEY, sessionId).block();
 
-    var updated = sessionWriter.updateSessionExpiry(sessionId, PRIMARY_USER_ID, 600).block();
+    var expiresAt =
+        sessionWriter
+            .refreshSessionAuthorization(
+                sessionId, PRIMARY_USER_ID, List.of("USER"), List.of("transactions:read"), 600)
+            .block();
     var sessionFields = readHashEntries(sessionKey);
     var sessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
     var userSessionsTtl = reactiveStringRedisTemplate.getExpire(PRIMARY_USER_SESSIONS_KEY).block();
 
-    assertThat(updated).isTrue();
+    assertThat(expiresAt).isEqualTo(BASE_INSTANT.plusSeconds(600));
     assertThat(sessionFields)
         .containsEntry(
             SessionHashFields.EXPIRES_AT,
@@ -205,12 +231,48 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void updateSessionExpiryReturnsFalseWhenSessionDoesNotExist() {
-    var updated =
-        sessionWriter.updateSessionExpiry("nonexistent-session", PRIMARY_USER_ID, 600).block();
+  void refreshSessionAuthorizationReturnsEmptyWhenSessionDoesNotExist() {
+    var expiresAt =
+        sessionWriter
+            .refreshSessionAuthorization(
+                "nonexistent-session",
+                PRIMARY_USER_ID,
+                List.of("USER"),
+                List.of("transactions:read"),
+                600)
+            .blockOptional();
 
-    assertThat(updated).isFalse();
+    assertThat(expiresAt).isEmpty();
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + "nonexistent-session")).isEmpty();
+  }
+
+  @Test
+  void refreshSessionAuthorizationDoesNotPartiallyMutateWhenIndexHasWrongType() {
+    var sessionId = createSession(PRIMARY_USER_ID);
+    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var originalFields = readHashEntries(sessionKey);
+    var originalSessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
+
+    reactiveStringRedisTemplate.unlink(PRIMARY_USER_SESSIONS_KEY).block();
+    reactiveStringRedisTemplate
+        .<String, String>opsForHash()
+        .put(PRIMARY_USER_SESSIONS_KEY, "invalid", "index")
+        .block();
+
+    assertThatThrownBy(
+            () ->
+                sessionWriter
+                    .refreshSessionAuthorization(
+                        sessionId,
+                        PRIMARY_USER_ID,
+                        List.of("ADMIN"),
+                        List.of("transactions:write"),
+                        600)
+                    .block())
+        .isInstanceOf(RuntimeException.class);
+    assertThat(readHashEntries(sessionKey)).isEqualTo(originalFields);
+    assertThat(reactiveStringRedisTemplate.getExpire(sessionKey).block())
+        .isLessThanOrEqualTo(originalSessionTtl);
   }
 
   @Test

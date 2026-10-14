@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.core.Authentication;
@@ -24,8 +25,12 @@ import org.springframework.security.web.server.context.ServerSecurityContextRepo
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import org.springframework.web.server.ServerWebExchange;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import reactor.core.publisher.Mono;
 
+import org.budgetanalyzer.service.api.ApiErrorResponse;
+import org.budgetanalyzer.service.api.ApiErrorType;
 import org.budgetanalyzer.sessiongateway.security.OAuth2CallbackRedirectResolver;
 import org.budgetanalyzer.sessiongateway.security.RedisAuthorizationRequestRepository;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
@@ -48,6 +53,7 @@ public class SecurityConfig {
   private final SessionWriter sessionWriter;
   private final SessionCookieHelper sessionCookieHelper;
   private final OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver;
+  private final ObjectMapper objectMapper;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
@@ -57,7 +63,8 @@ public class SecurityConfig {
       PermissionServiceClient permissionServiceClient,
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
-      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver) {
+      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
+      ObjectMapper objectMapper) {
     this.authorizationRequestResolver = authorizationRequestResolver;
     this.authorizationRequestRepository = authorizationRequestRepository;
     this.authorizedClientRepository = authorizedClientRepository;
@@ -66,6 +73,7 @@ public class SecurityConfig {
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
     this.oauth2CallbackRedirectResolver = oauth2CallbackRedirectResolver;
+    this.objectMapper = objectMapper;
   }
 
   @Bean
@@ -191,7 +199,13 @@ public class SecurityConfig {
   }
 
   private Mono<Void> unauthorized(ServerWebExchange exchange) {
-    exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-    return exchange.getResponse().setComplete();
+    var response = exchange.getResponse();
+    var apiErrorResponse =
+        ApiErrorResponse.builder(ApiErrorType.UNAUTHORIZED, "Authentication required").build();
+    response.setStatusCode(HttpStatus.UNAUTHORIZED);
+    response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+    return Mono.fromCallable(() -> objectMapper.writeValueAsBytes(apiErrorResponse))
+        .flatMap(body -> response.writeWith(Mono.just(response.bufferFactory().wrap(body))));
   }
 }

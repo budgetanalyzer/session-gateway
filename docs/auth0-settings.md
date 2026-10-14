@@ -8,7 +8,8 @@ These settings align Auth0 with Session Gateway's current runtime defaults:
 
 Session Gateway contacts Auth0 only at login (authorization-code exchange) and at logout. There
 are no refresh-token grants, no userinfo polling, and no token exchange surface. Heartbeat
-validates the local Redis session only.
+validates the local Redis session and refreshes grants through permission-service, but never calls
+Auth0.
 
 ## API Configuration
 

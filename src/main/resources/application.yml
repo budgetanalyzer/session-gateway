@@ -122,6 +122,7 @@ budgetanalyzer:
 # Permission service configuration
 permission-service:
   base-url: ${PERMISSION_SERVICE_URL:http://permission-service:8086}
+  authorization-refresh-timeout: ${PERMISSION_SERVICE_AUTHORIZATION_REFRESH_TIMEOUT:2s}
 
 # Actuator configuration- health and prometheus come from service-common
 management:

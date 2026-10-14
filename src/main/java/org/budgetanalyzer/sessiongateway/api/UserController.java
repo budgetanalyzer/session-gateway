@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
+import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.sessiongateway.api.response.UserInfoResponse;
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
 import org.budgetanalyzer.sessiongateway.session.SessionReader;
@@ -52,7 +53,7 @@ public class UserController {
       summary = "Get current user info",
       description =
           "Returns the authenticated user's profile, roles, and permissions. "
-              + "Returns 200 with user info if authenticated, or empty 401 if not.")
+              + "Returns 200 with user info if authenticated, or a JSON 401 response if not.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -62,7 +63,13 @@ public class UserController {
                 @Content(
                     mediaType = "application/json",
                     schema = @Schema(implementation = UserInfoResponse.class))),
-        @ApiResponse(responseCode = "401", description = "Not authenticated", content = @Content)
+        @ApiResponse(
+            responseCode = "401",
+            description = "Not authenticated",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
       })
   @GetMapping("/auth/v1/user")
   public Mono<UserInfoResponse> getCurrentUser(ServerWebExchange exchange) {

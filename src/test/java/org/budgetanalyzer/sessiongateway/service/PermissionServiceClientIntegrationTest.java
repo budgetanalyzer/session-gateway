@@ -7,6 +7,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+
+import org.budgetanalyzer.sessiongateway.config.PermissionServiceProperties;
 
 class PermissionServiceClientIntegrationTest {
 
@@ -25,8 +29,11 @@ class PermissionServiceClientIntegrationTest {
     wireMock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
     wireMock.start();
 
-    var webClient = WebClient.builder().baseUrl("http://localhost:" + wireMock.port()).build();
-    permissionServiceClient = new PermissionServiceClient(webClient);
+    var baseUrl = "http://localhost:" + wireMock.port();
+    var webClient = WebClient.builder().baseUrl(baseUrl).build();
+    var permissionServiceProperties =
+        new PermissionServiceProperties(baseUrl, Duration.ofMillis(250));
+    permissionServiceClient = new PermissionServiceClient(webClient, permissionServiceProperties);
   }
 
   @AfterEach
@@ -90,5 +97,76 @@ class PermissionServiceClientIntegrationTest {
                     .fetchPermissions("auth0|error", "user@example.com", "Test User")
                     .block())
         .isInstanceOf(PermissionServiceClient.PermissionServiceException.class);
+  }
+
+  @Test
+  void shouldReturnCurrentAuthorizationForActiveUser() {
+    wireMock.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/user-456/authorization"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        """
+                        {
+                          "userId": "user-456",
+                          "status": "ACTIVE",
+                          "roles": ["USER"],
+                          "permissions": ["transactions:read"]
+                        }
+                        """)));
+
+    var response = permissionServiceClient.fetchAuthorization("user-456").block();
+
+    assertThat(response).isNotNull();
+    assertThat(response.status()).isEqualTo(PermissionServiceClient.AccountStatus.ACTIVE);
+    assertThat(response.roles()).containsExactly("USER");
+    assertThat(response.permissions()).containsExactly("transactions:read");
+  }
+
+  @Test
+  void shouldReturnEmptyAuthorizationWhenUserIsMissing() {
+    wireMock.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/missing-user/authorization"))
+            .willReturn(aResponse().withStatus(404)));
+
+    var authorization = permissionServiceClient.fetchAuthorization("missing-user").blockOptional();
+
+    assertThat(authorization).isEmpty();
+  }
+
+  @Test
+  void shouldRejectInvalidAuthorizationPayload() {
+    wireMock.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/user-456/authorization"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        """
+                        {
+                          "userId": "different-user",
+                          "status": "ACTIVE",
+                          "roles": ["USER"],
+                          "permissions": []
+                        }
+                        """)));
+
+    assertThatThrownBy(() -> permissionServiceClient.fetchAuthorization("user-456").block())
+        .isInstanceOf(PermissionServiceClient.PermissionServiceException.class)
+        .hasMessageContaining("invalid payload");
+  }
+
+  @Test
+  void shouldTimeoutAuthorizationLookup() {
+    wireMock.stubFor(
+        get(urlPathEqualTo("/internal/v1/users/slow-user/authorization"))
+            .willReturn(aResponse().withStatus(200).withFixedDelay(1000)));
+
+    assertThatThrownBy(() -> permissionServiceClient.fetchAuthorization("slow-user").block())
+        .isInstanceOf(PermissionServiceClient.PermissionServiceException.class)
+        .hasMessageContaining("lookup failed");
   }
 }

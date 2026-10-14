@@ -19,9 +19,12 @@
 
 ## Session Heartbeat
 
-- **Sliding window**: Frontend calls `GET /auth/v1/session` periodically (~2 min) to extend session TTL
-- **Activity-gated**: Session Gateway extends unconditionally on every heartbeat call. The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
-- **Local-only validation**: Heartbeat reads and writes Redis only — Auth0 is not contacted
+- **Sliding window**: Frontend calls `GET /auth/v1/session` periodically (~2 min); Session Gateway extends the session only after permission-service returns current authorization for an active account
+- **Activity-gated**: The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
+- **Authoritative refresh**: A successful heartbeat atomically replaces `roles`, `permissions`, and `expires_at`, refreshes the session and user-index TTLs, and returns the stored expiry. Auth0 is not contacted
+- **Account invalidation**: A deactivated, deleted, or missing account deletes this session, clears its cookie, and returns 401
+- **Failure behavior**: Timeout, malformed response, upstream error, or Redis mutation failure returns 503 without extending the session or clearing its cookie. Repeated failures therefore cannot keep stale grants alive beyond the remaining Redis TTL
+- **Race safety**: Conditional Redis mutation prevents a session deleted or expired during the permission lookup from being recreated; heartbeat returns 401 and clears the stale cookie
 - **Stale-cookie cleanup**: If the browser presents a cookie for a missing or expired Redis session, heartbeat returns 401 and clears the cookie
 - **Operational defaults**: 15-minute session TTL, 2-minute frontend heartbeat cadence
 
@@ -70,3 +73,19 @@ Session Gateway never serves Spring Boot white-label HTML for uncommitted browse
 
 Browser navigation is classified using `Sec-Fetch-Mode`, `Sec-Fetch-Dest`, and `Accept: text/html`
 signals, with explicit API path exclusion to protect JSON contracts.
+
+## Machine Error Contract
+
+The versioned `GET /auth/v1/user` and `GET /auth/v1/session` endpoints return
+`application/json` errors using the shared `ApiErrorResponse` shape. A missing, blank, unknown,
+expired, deactivated, or concurrently invalidated session returns `401` with
+`type: UNAUTHORIZED` and the generic message `Authentication required`. The response never
+identifies the rejected cookie, account state, or underlying authentication exception.
+
+`GET /auth/v1/session` continues to clear the public session cookie when the cookie points to a
+missing or expired session, the account is missing or inactive, or the session disappears
+during refresh. Authorization-refresh and Redis mutation failures return `503` with
+`type: SERVICE_UNAVAILABLE` and leave the finite session and cookie unchanged.
+
+This JSON policy does not apply to `/login`, `/oauth2/*`, `/login/oauth2/*`, or `/logout`. Those
+paths participate in browser navigation and preserve their existing redirects.

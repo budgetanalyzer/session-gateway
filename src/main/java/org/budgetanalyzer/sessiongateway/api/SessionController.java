@@ -1,7 +1,5 @@
 package org.budgetanalyzer.sessiongateway.api;
 
-import java.time.Clock;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -19,8 +17,12 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
+import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.sessiongateway.api.response.SessionStatusResponse;
 import org.budgetanalyzer.sessiongateway.config.SessionProperties;
+import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
+import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient.AccountStatus;
+import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient.AuthorizationResponse;
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
 import org.budgetanalyzer.sessiongateway.session.SessionData;
 import org.budgetanalyzer.sessiongateway.session.SessionReader;
@@ -29,8 +31,8 @@ import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 /**
  * Session heartbeat controller.
  *
- * <p>Validates the local Redis session and extends its TTL. The frontend calls this endpoint
- * periodically to keep the session alive while the user is active.
+ * <p>Validates the local Redis session, refreshes authorization from permission-service, and
+ * extends its TTL. The frontend calls this endpoint periodically while the user is active.
  */
 @Tag(name = "Session", description = "Session heartbeat and status")
 @RestController
@@ -41,7 +43,7 @@ public class SessionController {
   private final SessionReader sessionReader;
   private final SessionWriter sessionWriter;
   private final SessionCookieHelper sessionCookieHelper;
-  private final Clock clock;
+  private final PermissionServiceClient permissionServiceClient;
   private final long sessionTtlSeconds;
 
   /**
@@ -50,26 +52,27 @@ public class SessionController {
    * @param sessionReader reads session data from Redis
    * @param sessionWriter writes session data to Redis
    * @param sessionCookieHelper manages session cookies
-   * @param clock the clock for computing expiry instants
+   * @param permissionServiceClient fetches current account status and grants
    * @param sessionProperties validated session configuration
    */
   public SessionController(
       SessionReader sessionReader,
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
-      Clock clock,
+      PermissionServiceClient permissionServiceClient,
       SessionProperties sessionProperties) {
     this.sessionReader = sessionReader;
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
-    this.clock = clock;
+    this.permissionServiceClient = permissionServiceClient;
     this.sessionTtlSeconds = sessionProperties.ttlSeconds();
   }
 
   /**
    * Session heartbeat endpoint.
    *
-   * <p>Reads the session from Redis and extends its TTL. Returns 401 if no valid session exists.
+   * <p>Reads the session from Redis and extends it only after refreshing authorization. Returns 401
+   * if the session or account is invalid and 503 if the refresh cannot be completed.
    *
    * @param exchange the server web exchange
    * @return session status with expiry metadata
@@ -77,7 +80,8 @@ public class SessionController {
   @Operation(
       summary = "Session heartbeat",
       description =
-          "Validates the local session and extends its TTL. Returns 401 if no valid session.")
+          "Refreshes current authorization and extends the local session only after a successful "
+              + "permission-service lookup.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -87,7 +91,20 @@ public class SessionController {
                 @Content(
                     mediaType = "application/json",
                     schema = @Schema(implementation = SessionStatusResponse.class))),
-        @ApiResponse(responseCode = "401", description = "No valid session", content = @Content)
+        @ApiResponse(
+            responseCode = "401",
+            description = "No valid session or active account",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class))),
+        @ApiResponse(
+            responseCode = "503",
+            description = "Authorization refresh or Redis update unavailable",
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
       })
   @GetMapping("/auth/v1/session")
   public Mono<SessionStatusResponse> getSessionStatus(ServerWebExchange exchange) {
@@ -101,30 +118,64 @@ public class SessionController {
     return sessionReader
         .readSession(sessionId)
         .switchIfEmpty(unauthorizedAndClearCookie(exchange))
-        .flatMap(sessionData -> extendSession(exchange, sessionId, sessionData));
-  }
-
-  private Mono<SessionStatusResponse> extendSession(
-      ServerWebExchange exchange, String sessionId, SessionData sessionData) {
-    return sessionWriter
-        .updateSessionExpiry(sessionId, sessionData.userId(), sessionTtlSeconds)
-        .flatMap(
-            updated -> {
-              if (!updated) {
-                log.warn(
-                    "Session {} disappeared during heartbeat", SafeLogger.truncateId(sessionId));
-                return unauthorizedAndClearCookie(exchange);
-              }
-              return buildResponse(sessionData);
+        .flatMap(sessionData -> refreshSession(exchange, sessionId, sessionData))
+        .onErrorMap(
+            exception -> !(exception instanceof ResponseStatusException),
+            exception -> {
+              log.warn(
+                  "Session heartbeat failed for sessionId={} exceptionType={}",
+                  SafeLogger.truncateId(sessionId),
+                  exception.getClass().getSimpleName());
+              return new ResponseStatusException(
+                  HttpStatus.SERVICE_UNAVAILABLE, "Session refresh unavailable", exception);
             });
   }
 
-  private Mono<SessionStatusResponse> buildResponse(SessionData sessionData) {
-    var expiresAt = clock.instant().plusSeconds(sessionTtlSeconds);
+  private Mono<SessionStatusResponse> refreshSession(
+      ServerWebExchange exchange, String sessionId, SessionData sessionData) {
+    return permissionServiceClient
+        .fetchAuthorization(sessionData.userId())
+        .flatMap(
+            authorizationResponse -> {
+              if (authorizationResponse.status() == AccountStatus.DEACTIVATED) {
+                return invalidateSession(exchange, sessionId);
+              }
 
-    return Mono.just(
-        new SessionStatusResponse(
-            sessionData.userId(), sessionData.roles(), expiresAt.getEpochSecond()));
+              return updateSession(exchange, sessionId, sessionData, authorizationResponse);
+            })
+        .switchIfEmpty(invalidateSession(exchange, sessionId));
+  }
+
+  private Mono<SessionStatusResponse> updateSession(
+      ServerWebExchange exchange,
+      String sessionId,
+      SessionData sessionData,
+      AuthorizationResponse authorizationResponse) {
+    return sessionWriter
+        .refreshSessionAuthorization(
+            sessionId,
+            sessionData.userId(),
+            authorizationResponse.roles(),
+            authorizationResponse.permissions(),
+            sessionTtlSeconds)
+        .map(
+            expiresAt ->
+                new SessionStatusResponse(
+                    sessionData.userId(),
+                    authorizationResponse.roles(),
+                    expiresAt.getEpochSecond()))
+        .switchIfEmpty(
+            Mono.defer(
+                () -> {
+                  log.warn(
+                      "Session {} disappeared during heartbeat", SafeLogger.truncateId(sessionId));
+                  return unauthorizedAndClearCookie(exchange);
+                }));
+  }
+
+  private Mono<SessionStatusResponse> invalidateSession(
+      ServerWebExchange exchange, String sessionId) {
+    return sessionWriter.deleteSession(sessionId).then(unauthorizedAndClearCookie(exchange));
   }
 
   private <T> Mono<T> unauthorizedAndClearCookie(ServerWebExchange exchange) {
