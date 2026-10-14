@@ -14,6 +14,11 @@ Do not over-validate ideas. The user wants honest pushback, not agreement.
 
 NEVER use Agent/subagent tools for code exploration. Use Grep, Glob, and Read directly.
 
+## Path Portability
+
+Use repository-relative, sibling-relative, or dynamically resolved paths.
+Never hardcode machine-specific checkout locations such as `/workspace`.
+
 ## Documentation Discipline
 
 Always keep documentation up to date after any configuration or code change.
@@ -33,11 +38,13 @@ use its canonical template, replace every placeholder, and retain the numbered
 Run a specific plan through the workspace wrapper with:
 
 ```bash
+repo_root=$(git rev-parse --show-toplevel)
+workspace_parent=$(dirname "$repo_root")
 ai-session-handler run \
-  --plan /workspace/REPOSITORY/docs/plans/PLAN.md \
+  --plan "$repo_root/docs/plans/PLAN.md" \
   --max-phases 999 \
   --quiet \
-  --agent-cmd "/workspace/ai-session-handler/.venv/bin/ai-session-handler-codex-high --model MODEL"
+  --agent-cmd "$workspace_parent/ai-session-handler/.venv/bin/ai-session-handler-codex-high --model MODEL"
 ```
 
 Omit `--model MODEL` from the quoted agent command to use the wrapper's
@@ -54,7 +61,7 @@ Do not leave documentation updates as follow-up work.
 ### Relationships
 - **Consumes**: service-common (patterns)
 - **Coordinated by**: orchestration
-- **Peers with**: Discover via `ls /workspace/*-service`
+- **Peers with**: Discover with the sibling-relative command below
 
 ### Permissions
 - **Read**: `../service-common/`, `../orchestration/docs/`
@@ -63,7 +70,7 @@ Do not leave documentation updates as follow-up work.
 ### Discovery
 ```bash
 # My peers
-ls -d /workspace/*-service
+find .. -maxdepth 1 -mindepth 1 -type d -name '*-service' | sort
 # My platform
 ls ../service-common/
 ```
