@@ -152,6 +152,23 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(exchangeResult.getResponseCookies()).doesNotContainKey(PUBLIC_SESSION_COOKIE_NAME);
   }
 
+  @Test
+  void shouldDocument302LogoutRedirect() {
+    webTestClient
+        .get()
+        .uri("/v3/api-docs")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectBody()
+        .jsonPath("$.paths['/logout'].get.responses['302'].description")
+        .isEqualTo("Redirect to the identity provider logout endpoint")
+        .jsonPath("$.paths['/logout'].get.responses['302'].headers.Location.schema.format")
+        .isEqualTo("uri")
+        .jsonPath("$.paths['/logout'].get.responses['200']")
+        .doesNotExist();
+  }
+
   private String createSession() {
     return sessionWriter
         .createSession(

@@ -12,6 +12,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.headers.Header;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
@@ -24,6 +30,7 @@ import org.budgetanalyzer.sessiongateway.session.SessionWriter;
  * <p>Deletes the Redis session hash, clears the session cookie, and redirects to the IDP logout
  * endpoint.
  */
+@Tag(name = "Logout", description = "Browser logout and session invalidation")
 @RestController
 public class LogoutController {
 
@@ -58,6 +65,22 @@ public class LogoutController {
    * @param exchange the server web exchange
    * @return redirect to IDP logout
    */
+  @Operation(
+      summary = "Log out",
+      description =
+          "Invalidates the browser session and redirects to the identity provider logout "
+              + "endpoint.")
+  @ApiResponses(
+      value = {
+        @ApiResponse(
+            responseCode = "302",
+            description = "Redirect to the identity provider logout endpoint",
+            headers =
+                @Header(
+                    name = "Location",
+                    description = "Identity provider logout URL",
+                    schema = @Schema(type = "string", format = "uri")))
+      })
   @GetMapping("/logout")
   public Mono<Void> logout(ServerWebExchange exchange) {
     var sessionId = sessionCookieHelper.readSessionId(exchange);
