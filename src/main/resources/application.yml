@@ -23,6 +23,9 @@ spring:
   application:
     name: session-gateway
 
+  jackson:
+    default-property-inclusion: non_null
+
   ssl:
     bundle:
       pem:

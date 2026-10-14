@@ -26,6 +26,13 @@
 | `SESSION_COOKIE_SECURE` | Secure cookie flag | `true` |
 | `SESSION_COOKIE_SAME_SITE` | SameSite cookie policy (`Strict`, `Lax`, `None`) | `Strict` |
 
+## JSON Serialization
+
+Session Gateway configures Jackson with `spring.jackson.default-property-inclusion: non_null`.
+All JSON response types omit properties whose values are null. This keeps optional response fields
+absent unless they have values and prevents a present JSON null from violating a non-null OpenAPI
+property schema.
+
 ## Ports
 
 | Port | Service | Purpose |

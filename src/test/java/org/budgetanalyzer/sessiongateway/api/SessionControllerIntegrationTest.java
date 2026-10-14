@@ -668,6 +668,10 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo("UNAUTHORIZED")
         .jsonPath("$.message")
         .isEqualTo("Authentication required")
+        .jsonPath("$.code")
+        .doesNotExist()
+        .jsonPath("$.fieldErrors")
+        .doesNotExist()
         .returnResult();
   }
 
@@ -684,6 +688,10 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo("SERVICE_UNAVAILABLE")
         .jsonPath("$.message")
         .isEqualTo("Session refresh unavailable")
+        .jsonPath("$.code")
+        .doesNotExist()
+        .jsonPath("$.fieldErrors")
+        .doesNotExist()
         .returnResult();
   }
 
