@@ -2,21 +2,29 @@ package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.reactive.server.EntityExchangeResult;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
 import org.budgetanalyzer.sessiongateway.api.response.UserInfoResponse;
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.config.SessionProperties;
+import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 class UserControllerIntegrationTest extends AbstractIntegrationTest {
 
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
+  private static final String UNAUTHORIZED_RESPONSE_SCHEMA_PATH =
+      "$.paths['/auth/v1/user'].get.responses['401'].content"
+          + "['application/json'].schema['$ref']";
 
   @Autowired private SessionWriter sessionWriter;
   @Autowired private ReactiveStringRedisTemplate reactiveStringRedisTemplate;
@@ -28,43 +36,80 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void shouldReturnJson401WhenSessionCookieIsAbsent() {
+    var exchangeResult = assertUnauthorizedResponse(webTestClient.get().uri("/auth/v1/user"));
+
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain("Not Authenticated", "Full authentication", "anonymous");
+  }
+
+  @Test
   void shouldReturn401WhenOnlyFrameworkSessionCookieIsPresent() {
     var sessionId = createSession();
 
     var exchangeResult =
-        webTestClient
-            .get()
-            .uri("/auth/v1/user")
-            .cookie("SESSION", sessionId)
-            .exchange()
-            .expectStatus()
-            .isUnauthorized()
-            .returnResult(String.class);
+        assertUnauthorizedResponse(
+            webTestClient.get().uri("/auth/v1/user").cookie("SESSION", sessionId));
 
     assertThat(exchangeResult.getResponseCookies().keySet())
         .doesNotContain(sessionProperties.cookie().name());
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain(sessionId);
   }
 
   @Test
   void shouldReturn401WhenPublicSessionCookieIsBlank() {
-    webTestClient
-        .get()
-        .uri("/auth/v1/user")
-        .cookie(sessionProperties.cookie().name(), "")
-        .exchange()
-        .expectStatus()
-        .isUnauthorized();
+    assertUnauthorizedResponse(
+        webTestClient.get().uri("/auth/v1/user").cookie(sessionProperties.cookie().name(), ""));
   }
 
   @Test
   void shouldReturn401WhenSessionIsMissingFromRedis() {
+    var exchangeResult =
+        assertUnauthorizedResponse(
+            webTestClient
+                .get()
+                .uri("/auth/v1/user")
+                .cookie(sessionProperties.cookie().name(), "missing-session"));
+
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain("missing-session");
+  }
+
+  @Test
+  void shouldReturnJson401WhenSessionIsExpired() {
+    var sessionId = createSession();
+    reactiveStringRedisTemplate
+        .<String, String>opsForHash()
+        .put(TEST_SESSION_KEY_PREFIX + sessionId, SessionHashFields.EXPIRES_AT, "0")
+        .block();
+
+    var exchangeResult =
+        assertUnauthorizedResponse(
+            webTestClient
+                .get()
+                .uri("/auth/v1/user")
+                .cookie(sessionProperties.cookie().name(), sessionId));
+
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain(sessionId, "expired", "expires_at");
+  }
+
+  @Test
+  void shouldDocumentJson401Response() {
     webTestClient
         .get()
-        .uri("/auth/v1/user")
-        .cookie(sessionProperties.cookie().name(), "missing-session")
+        .uri("/v3/api-docs")
         .exchange()
         .expectStatus()
-        .isUnauthorized();
+        .isOk()
+        .expectBody()
+        .jsonPath(UNAUTHORIZED_RESPONSE_SCHEMA_PATH)
+        .isEqualTo("#/components/schemas/ApiErrorResponse");
   }
 
   @Test
@@ -187,6 +232,22 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
             List.of("ROLE_USER"),
             List.of("transactions:read"))
         .block();
+  }
+
+  private EntityExchangeResult<byte[]> assertUnauthorizedResponse(
+      WebTestClient.RequestHeadersSpec<?> requestHeadersSpec) {
+    return requestHeadersSpec
+        .exchange()
+        .expectStatus()
+        .isUnauthorized()
+        .expectHeader()
+        .contentType(MediaType.APPLICATION_JSON)
+        .expectBody()
+        .jsonPath("$.type")
+        .isEqualTo("UNAUTHORIZED")
+        .jsonPath("$.message")
+        .isEqualTo("Authentication required")
+        .returnResult();
   }
 
   private void deleteTestKeys() {

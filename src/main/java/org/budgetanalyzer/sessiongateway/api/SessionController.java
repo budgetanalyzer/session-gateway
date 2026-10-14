@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.core.logging.SafeLogger;
+import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.sessiongateway.api.response.SessionStatusResponse;
 import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
@@ -93,11 +94,17 @@ public class SessionController {
         @ApiResponse(
             responseCode = "401",
             description = "No valid session or active account",
-            content = @Content),
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class))),
         @ApiResponse(
             responseCode = "503",
             description = "Authorization refresh or Redis update unavailable",
-            content = @Content)
+            content =
+                @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(implementation = ApiErrorResponse.class)))
       })
   @GetMapping("/auth/v1/session")
   public Mono<SessionStatusResponse> getSessionStatus(ServerWebExchange exchange) {

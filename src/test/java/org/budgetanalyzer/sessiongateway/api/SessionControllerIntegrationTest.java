@@ -9,6 +9,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,8 +28,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.reactive.server.EntityExchangeResult;
+import org.springframework.test.web.reactive.server.WebTestClient;
 
 import reactor.core.publisher.Mono;
 
@@ -55,6 +59,12 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
       SessionHashFields.USER_SESSIONS_KEY_PREFIX + "heartbeat-user-*";
   private static final String TEST_USER_SESSIONS_KEY =
       SessionHashFields.USER_SESSIONS_KEY_PREFIX + TEST_USER_ID;
+  private static final String UNAUTHORIZED_RESPONSE_SCHEMA_PATH =
+      "$.paths['/auth/v1/session'].get.responses['401'].content"
+          + "['application/json'].schema['$ref']";
+  private static final String SERVICE_UNAVAILABLE_RESPONSE_SCHEMA_PATH =
+      "$.paths['/auth/v1/session'].get.responses['503'].content"
+          + "['application/json'].schema['$ref']";
 
   @Autowired private SessionWriter sessionWriter;
   @Autowired private ReactiveStringRedisTemplate reactiveStringRedisTemplate;
@@ -159,21 +169,50 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void shouldReturnJson401WhenSessionCookieIsAbsent() {
+    var exchangeResult =
+        assertUnauthorizedHeartbeatResponse(webTestClient.get().uri("/auth/v1/session"));
+
+    assertThat(exchangeResult.getResponseCookies()).doesNotContainKey(PUBLIC_SESSION_COOKIE_NAME);
+  }
+
+  @Test
+  void shouldReturnJson401WhenSessionCookieIsBlank() {
+    var exchangeResult =
+        assertUnauthorizedHeartbeatResponse(
+            webTestClient.get().uri("/auth/v1/session").cookie(PUBLIC_SESSION_COOKIE_NAME, ""));
+
+    assertThat(exchangeResult.getResponseCookies()).doesNotContainKey(PUBLIC_SESSION_COOKIE_NAME);
+  }
+
+  @Test
   void shouldReturn401ForExpiredSession() {
     var sessionId = createSession();
     mutableClock.setInstant(BASE_INSTANT.plusSeconds(1000));
 
     var exchangeResult =
-        webTestClient
-            .get()
-            .uri("/auth/v1/session")
-            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
-            .exchange()
-            .expectStatus()
-            .isUnauthorized()
-            .returnResult(String.class);
+        assertUnauthorizedHeartbeatResponse(
+            webTestClient
+                .get()
+                .uri("/auth/v1/session")
+                .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain(sessionId, "expired", "expires_at");
+  }
+
+  @Test
+  void shouldDocumentJson401And503Responses() {
+    var responseSpec =
+        webTestClient.get().uri("/v3/api-docs").exchange().expectStatus().isOk().expectBody();
+
+    responseSpec
+        .jsonPath(UNAUTHORIZED_RESPONSE_SCHEMA_PATH)
+        .isEqualTo("#/components/schemas/ApiErrorResponse")
+        .jsonPath(SERVICE_UNAVAILABLE_RESPONSE_SCHEMA_PATH)
+        .isEqualTo("#/components/schemas/ApiErrorResponse");
   }
 
   @Test
@@ -229,17 +268,17 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     mutableClock.setInstant(BASE_INSTANT.plusSeconds(300));
 
     var exchangeResult =
-        webTestClient
-            .get()
-            .uri("/auth/v1/session")
-            .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session")
-            .cookie("SESSION", sessionId)
-            .exchange()
-            .expectStatus()
-            .isUnauthorized()
-            .returnResult(String.class);
+        assertUnauthorizedHeartbeatResponse(
+            webTestClient
+                .get()
+                .uri("/auth/v1/session")
+                .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session")
+                .cookie("SESSION", sessionId));
 
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain("missing-session", sessionId);
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
         .containsEntry(SessionHashFields.USER_ID, TEST_USER_ID);
   }
@@ -277,19 +316,19 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   @Test
   void shouldClearCookieWhenSessionHashMissing() {
     var exchangeResult =
-        webTestClient
-            .get()
-            .uri("/auth/v1/session")
-            .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session")
-            .exchange()
-            .expectStatus()
-            .isUnauthorized()
-            .returnResult(String.class);
+        assertUnauthorizedHeartbeatResponse(
+            webTestClient
+                .get()
+                .uri("/auth/v1/session")
+                .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session"));
 
     assertThat(exchangeResult.getResponseCookies().keySet())
         .containsExactly(PUBLIC_SESSION_COOKIE_NAME)
         .doesNotContain("SESSION");
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain("missing-session", "missing", "expired");
   }
 
   @Test
@@ -355,13 +394,11 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     stubAuthorizationError(500);
 
     for (var attempt = 0; attempt < 3; attempt++) {
-      webTestClient
-          .get()
-          .uri("/auth/v1/session")
-          .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
-          .exchange()
-          .expectStatus()
-          .isEqualTo(503);
+      assertServiceUnavailableResponse(
+          webTestClient
+              .get()
+              .uri("/auth/v1/session")
+              .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
     }
 
     await()
@@ -381,13 +418,8 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     reactiveStringRedisTemplate.expire(TEST_USER_SESSIONS_KEY, Duration.ofSeconds(5)).block();
     stubAuthorizationError(500);
 
-    webTestClient
-        .get()
-        .uri("/auth/v1/session")
-        .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
-        .exchange()
-        .expectStatus()
-        .isEqualTo(503);
+    assertServiceUnavailableResponse(
+        webTestClient.get().uri("/auth/v1/session").cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
     wireMockServer.resetAll();
     stubOidcDiscovery();
@@ -450,14 +482,16 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .put(TEST_USER_SESSIONS_KEY, "invalid", "index")
         .block();
 
-    webTestClient
-        .get()
-        .uri("/auth/v1/session")
-        .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
-        .exchange()
-        .expectStatus()
-        .isEqualTo(503);
+    var exchangeResult =
+        assertServiceUnavailableResponse(
+            webTestClient
+                .get()
+                .uri("/auth/v1/session")
+                .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain(sessionId, "invalid", TEST_USER_ID);
     assertThat(readHashEntries(sessionKey)).isEqualTo(originalFields);
   }
 
@@ -510,16 +544,16 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
   private void assertHeartbeatInvalidatesSession(String sessionId) {
     var exchangeResult =
-        webTestClient
-            .get()
-            .uri("/auth/v1/session")
-            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
-            .exchange()
-            .expectStatus()
-            .isUnauthorized()
-            .returnResult(String.class);
+        assertUnauthorizedHeartbeatResponse(
+            webTestClient
+                .get()
+                .uri("/auth/v1/session")
+                .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+    assertThat(exchangeResult.getResponseBody())
+        .asString(StandardCharsets.UTF_8)
+        .doesNotContain(sessionId, "DEACTIVATED", "deleted", "missing", TEST_USER_ID);
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
     assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).isEmpty();
   }
@@ -533,14 +567,11 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var startedAtNanos = System.nanoTime();
 
     var exchangeResult =
-        webTestClient
-            .get()
-            .uri("/auth/v1/session")
-            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
-            .exchange()
-            .expectStatus()
-            .isEqualTo(503)
-            .returnResult(String.class);
+        assertServiceUnavailableResponse(
+            webTestClient
+                .get()
+                .uri("/auth/v1/session")
+                .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
     var elapsed = Duration.ofNanos(System.nanoTime() - startedAtNanos).plusSeconds(1);
     var sessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
@@ -560,14 +591,19 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
   private CompletableFuture<Void> heartbeatExpectingUnauthorized(String sessionId) {
     return CompletableFuture.runAsync(
-        () ->
-            webTestClient
-                .get()
-                .uri("/auth/v1/session")
-                .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
-                .exchange()
-                .expectStatus()
-                .isUnauthorized());
+        () -> {
+          var exchangeResult =
+              assertUnauthorizedHeartbeatResponse(
+                  webTestClient
+                      .get()
+                      .uri("/auth/v1/session")
+                      .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
+
+          assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+          assertThat(exchangeResult.getResponseBody())
+              .asString(StandardCharsets.UTF_8)
+              .doesNotContain(sessionId, TEST_USER_ID, "disappeared", "expired", "deleted");
+        });
   }
 
   private void awaitAuthorizationRequest() {
@@ -617,6 +653,38 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
                 keys.isEmpty()
                     ? Mono.empty()
                     : reactiveStringRedisTemplate.delete(keys.toArray(String[]::new)).then());
+  }
+
+  private EntityExchangeResult<byte[]> assertUnauthorizedHeartbeatResponse(
+      WebTestClient.RequestHeadersSpec<?> requestHeadersSpec) {
+    return requestHeadersSpec
+        .exchange()
+        .expectStatus()
+        .isUnauthorized()
+        .expectHeader()
+        .contentType(MediaType.APPLICATION_JSON)
+        .expectBody()
+        .jsonPath("$.type")
+        .isEqualTo("UNAUTHORIZED")
+        .jsonPath("$.message")
+        .isEqualTo("Authentication required")
+        .returnResult();
+  }
+
+  private EntityExchangeResult<byte[]> assertServiceUnavailableResponse(
+      WebTestClient.RequestHeadersSpec<?> requestHeadersSpec) {
+    return requestHeadersSpec
+        .exchange()
+        .expectStatus()
+        .isEqualTo(503)
+        .expectHeader()
+        .contentType(MediaType.APPLICATION_JSON)
+        .expectBody()
+        .jsonPath("$.type")
+        .isEqualTo("SERVICE_UNAVAILABLE")
+        .jsonPath("$.message")
+        .isEqualTo("Session refresh unavailable")
+        .returnResult();
   }
 
   private void assertCleared(ResponseCookie sessionCookie) {

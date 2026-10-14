@@ -151,7 +151,11 @@ Heartbeat and logout clearing behavior follows the same public-cookie rule:
 - override configured: clear a cookie with that explicit `Domain` attribute
 
 If the browser presents a cookie for a missing or expired Redis session, `GET /auth/v1/session`
-returns `401` and clears the stale cookie.
+returns `401 application/json` with the shared `ApiErrorResponse` contract and clears the stale
+cookie. The public response is always the generic `UNAUTHORIZED` / `Authentication required`
+error; it does not distinguish a missing session from an expired or invalidated one. A blank or
+absent cookie receives the same JSON error but requires no clearing response because there is no
+usable public cookie to remove.
 
 ## Internal Revocation Endpoint
 

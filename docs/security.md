@@ -73,3 +73,19 @@ Session Gateway never serves Spring Boot white-label HTML for uncommitted browse
 
 Browser navigation is classified using `Sec-Fetch-Mode`, `Sec-Fetch-Dest`, and `Accept: text/html`
 signals, with explicit API path exclusion to protect JSON contracts.
+
+## Machine Error Contract
+
+The versioned `GET /auth/v1/user` and `GET /auth/v1/session` endpoints return
+`application/json` errors using the shared `ApiErrorResponse` shape. A missing, blank, unknown,
+expired, deactivated, or concurrently invalidated session returns `401` with
+`type: UNAUTHORIZED` and the generic message `Authentication required`. The response never
+identifies the rejected cookie, account state, or underlying authentication exception.
+
+`GET /auth/v1/session` continues to clear the public session cookie when the cookie points to a
+missing or expired session, the account is missing or inactive, or the session disappears
+during refresh. Authorization-refresh and Redis mutation failures return `503` with
+`type: SERVICE_UNAVAILABLE` and leave the finite session and cookie unchanged.
+
+This JSON policy does not apply to `/login`, `/oauth2/*`, `/login/oauth2/*`, or `/logout`. Those
+paths participate in browser navigation and preserve their existing redirects.
