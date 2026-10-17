@@ -80,7 +80,9 @@ The versioned `GET /auth/v1/user` and `GET /auth/v1/session` endpoints return
 `application/json` errors using the shared `ApiErrorResponse` shape. A missing, blank, unknown,
 expired, deactivated, or concurrently invalidated session returns `401` with
 `type: UNAUTHORIZED` and the generic message `Authentication required`. The response never
-identifies the rejected cookie, account state, or underlying authentication exception.
+identifies the rejected cookie, account state, or underlying authentication exception. Optional
+error properties such as `code` and `fieldErrors` are omitted when they have no value; Session
+Gateway does not emit null-valued JSON properties in any response type.
 
 `GET /auth/v1/session` continues to clear the public session cookie when the cookie points to a
 missing or expired session, the account is missing or inactive, or the session disappears

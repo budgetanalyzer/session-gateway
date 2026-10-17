@@ -247,6 +247,10 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo("UNAUTHORIZED")
         .jsonPath("$.message")
         .isEqualTo("Authentication required")
+        .jsonPath("$.code")
+        .doesNotExist()
+        .jsonPath("$.fieldErrors")
+        .doesNotExist()
         .returnResult();
   }
 
