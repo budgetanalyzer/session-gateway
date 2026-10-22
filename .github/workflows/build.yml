@@ -20,7 +20,7 @@ jobs:
         (github.event_name == 'pull_request' && github.base_ref == 'main') ||
         (github.event_name != 'pull_request' && github.ref == 'refs/heads/main')
       }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
