@@ -6,7 +6,7 @@ checkstyle = "12.3.1"
 googleJavaFormat = "1.32.0"
 jacoco = "0.8.15"
 junitPlatform = "1.14.4"
-serviceCommon = "0.0.17-SNAPSHOT"
+serviceCommon = "0.0.17"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
