@@ -129,7 +129,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - **Defense-in-Depth Security**: Session-based edge authorization in the hybrid architecture (Istio ingress → Session Gateway or NGINX, with ext_authz enforcing `/api/*`)
 - **ext_authz-Based Authorization**: The Istio ingress Envoy proxy calls the ext_authz HTTP service, which reads session hashes directly from Redis and injects X-User-Id/X-Roles/X-Permissions headers into API requests
 - **Token Protection**: IDP tokens are consumed at login time only; nothing from Auth0 is persisted after the session is created. Browser only sees an opaque session cookie
-- **Browser-Only Auth**: Session Gateway exclusively serves browser clients. There is no token exchange or bearer token surface
+- **Browser-Only Auth**: Session Gateway exclusively serves browser clients. There is no application token-exchange endpoint or bearer-token API surface
 - **Behind Istio Ingress**: Browser auth and OAuth2 protocol endpoints reach Session Gateway through Istio ingress; bare `/login` is frontend-owned and served through NGINX
 - **Stateful Sessions**: Redis hashes (`session:{id}`) provide distributed session storage — identity, roles, permissions, expiry — read by both Session Gateway and the ext_authz service
 - **Targeted Session Revocation**: Redis sets (`user_sessions:{userId}`) index all active sessions for a user so permission-service can revoke them without scanning `session:*`
@@ -201,7 +201,7 @@ grep "implementation" build.gradle.kts
 - Auto-configured reactive utilities from `org.budgetanalyzer:service-web:<service-common-version>`
 - Provides: HTTP request/response logging, distributed tracing correlation IDs, safe logging with sensitive data masking, global exception handling
 - `SecurityConfig` defines its own `SecurityWebFilterChain`, so service-web's shared claims-header reactive security chain backs off (Session Gateway is an OAuth2 Client, not a claims-header resource service)
-- DataSource/JPA auto-configuration excluded (no database required)
+- Session persistence uses Redis; the runtime has no JDBC or JPA dependency
 
 ## Key Components
 
@@ -340,6 +340,8 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - Scopes: openid, profile, email
 - Redirect URI for callback
 - Authorization-code flow only — no refresh tokens are requested
+- The login callback validates the ID token and retrieves userinfo; its access token is not
+  persisted or used for downstream API validation
 - Recommended Auth0 dashboard values and rationale are documented in [docs/auth0-settings.md](docs/auth0-settings.md)
 
 **Session**:
@@ -544,7 +546,8 @@ For detailed architecture diagrams and security design:
 ## Security Considerations
 
 **Token Protection**:
-- IDP tokens are consumed at login time only and never written to Redis
+- The ID token is validated and userinfo is retrieved during login; the access token is used only
+  for that userinfo request, and no IDP token is written to Redis
 - Browser only sees an opaque session cookie; all sensitive data lives in Redis
 - Session hash deleted on logout
 
@@ -607,12 +610,14 @@ find src/test -name "*.java"
 
 Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
-**Direct Dependencies**:
-- **NGINX Gateway**: Frontend/API gateway and downstream route target when requests reach Session Gateway directly
-- **ext_authz HTTP Service**: Istio ingress authorization target — validates sessions from Redis and injects claims headers
+**Runtime Dependencies**:
 - **Permission Service**: Provides user roles and permissions (called at login, no bearer auth)
 - **Redis**: Session persistence (hashes under `session:{id}`)
-- **Auth0**: Identity provider (login-time only)
+- **Auth0**: Identity provider (login and logout)
+
+**Platform Routing Peers**:
+- **NGINX Gateway**: Serves the frontend and routes APIs after ingress authorization; Session Gateway does not proxy to it
+- **ext_authz HTTP Service**: Istio ingress authorization target — validates the same Redis sessions and injects claims headers
 
 **Indirect (via Istio ingress and NGINX)**:
 - **Transaction Service**: Business logic for transactions
@@ -680,7 +685,7 @@ When SSL issues occur, guide the user to run certificate scripts on their host m
 When working on this service:
 - This is a security-critical component - always consider threat models
 - Same-origin architecture means no CORS configuration needed (browser perspective)
-- Session Gateway exclusively serves browser clients (OAuth2 + cookies); there is no token exchange or bearer token surface
+- Session Gateway exclusively serves browser clients (OAuth2 + cookies); there is no application token-exchange endpoint or bearer-token API surface
 - Auth and OAuth2 protocol endpoints flow through Istio ingress to Session Gateway; bare `/login` is frontend-owned through NGINX
 - ext_authz reads session hashes directly from Redis — no JWT infrastructure needed, no separate ext_authz schema
 - Permission-service must be reachable for login and successful heartbeat extension
@@ -692,7 +697,7 @@ When working on this service:
 - Spring WebFlux reactive stack - avoid blocking operations
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
 - Frontend heartbeat (`GET /auth/v1/session`) is the only mechanism for sliding session TTL — API activity through ext_authz does NOT extend sessions
-- Auth0 is contacted only at login (authorization-code flow) and logout — heartbeat uses local Redis plus permission-service authorization, never Auth0
+- Session Gateway calls Auth0 only during login; logout redirects the browser to Auth0, while heartbeat uses local Redis plus permission-service authorization and never calls Auth0
 - Follow the hybrid architecture: Istio ingress (edge auth/routing) → Session Gateway for auth endpoints, and Istio ingress → ext_authz → NGINX for `/api/*`
 
 ---

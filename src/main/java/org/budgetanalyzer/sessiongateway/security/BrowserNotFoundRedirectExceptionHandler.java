@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.reactive.resource.NoResourceFoundException;
@@ -20,7 +19,6 @@ import reactor.core.publisher.Mono;
  *
  * <p>API not-found responses fall through to the shared service-common JSON error contract.
  */
-@Component
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class BrowserNotFoundRedirectExceptionHandler {

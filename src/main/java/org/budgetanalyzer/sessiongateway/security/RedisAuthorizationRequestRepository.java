@@ -27,9 +27,9 @@ import org.budgetanalyzer.sessiongateway.config.SessionProperties;
  * Redis-backed storage for OAuth2 authorization requests.
  *
  * <p>Stores only the per-request dynamic fields as a flat Redis hash at {@code
- * oauth2:state:{state}} with a 10-minute TTL. The full {@link OAuth2AuthorizationRequest} is
- * reconstructed on load using stored fields plus static properties from the OAuth2 client
- * registration.
+ * oauth2:state:{state}} with a TTL configured through {@code session.oauth2-state-ttl-seconds}. The
+ * full {@link OAuth2AuthorizationRequest} is reconstructed on load using stored fields plus static
+ * properties from the OAuth2 client registration.
  *
  * <p>This avoids serializing the {@link OAuth2AuthorizationRequest} object, which has no stable
  * serialization contract and couples to Spring Security internals across version upgrades.
@@ -41,7 +41,7 @@ import org.budgetanalyzer.sessiongateway.config.SessionProperties;
  *   <li>{@code return_url} — where to redirect after login (from authorization request
  *       additionalParameters, optional)
  *   <li>{@code nonce} — OIDC nonce for ID token validation
- *   <li>{@code code_verifier} — PKCE code verifier for token exchange
+ *   <li>{@code code_verifier} — PKCE code verifier for the authorization-code exchange
  * </ul>
  */
 @Component

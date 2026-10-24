@@ -1,10 +1,8 @@
 package org.budgetanalyzer.sessiongateway.config;
 
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
@@ -40,24 +38,13 @@ import org.budgetanalyzer.sessiongateway.security.OAuth2CallbackIdpClientLogging
 /**
  * OAuth2 Client configuration for IDP integration.
  *
- * <p>Configures Authorization Code flow with PKCE and IDP-specific parameters:
- *
- * <ul>
- *   <li>Adds 'audience' parameter to get JWT access tokens (not opaque tokens)
- *   <li>Enables PKCE for enhanced security
- * </ul>
+ * <p>Configures Authorization Code flow with PKCE and dedicated callback transport.
  */
 @Configuration
 public class OAuth2ClientConfig {
 
   private static final String RETURN_URL_QUERY_PARAMETER = "returnUrl";
   private static final String RETURN_URL_ADDITIONAL_PARAMETER = "return_url";
-
-  private final String audience;
-
-  public OAuth2ClientConfig(@Value("${idp.audience:}") String audience) {
-    this.audience = audience;
-  }
 
   /**
    * Creates the dedicated outbound IdP connection pool used by the browser OAuth2 callback path.
@@ -175,10 +162,7 @@ public class OAuth2ClientConfig {
   }
 
   /**
-   * Customizes OAuth2 authorization requests to add IDP-specific parameters.
-   *
-   * <p>The IDP requires an 'audience' parameter to return JWT access tokens. Without this, the IDP
-   * may return opaque access tokens that can't be validated by downstream services.
+   * Customizes OAuth2 authorization requests for PKCE and return URL persistence.
    *
    * @param clientRegistrationRepository the client registration repository
    * @return customized authorization request resolver
@@ -189,7 +173,7 @@ public class OAuth2ClientConfig {
     var defaultAuthorizationRequestResolver =
         new DefaultServerOAuth2AuthorizationRequestResolver(clientRegistrationRepository);
     defaultAuthorizationRequestResolver.setAuthorizationRequestCustomizer(
-        authorizationRequestCustomizer());
+        OAuth2AuthorizationRequestCustomizers.withPkce());
 
     return new ServerOAuth2AuthorizationRequestResolver() {
       @Override
@@ -209,24 +193,6 @@ public class OAuth2ClientConfig {
             .map(
                 authorizationRequest ->
                     addReturnUrlAdditionalParameter(authorizationRequest, exchange));
-      }
-    };
-  }
-
-  /**
-   * Customizer that adds the IDP audience parameter.
-   *
-   * @return authorization request customizer
-   */
-  private Consumer<OAuth2AuthorizationRequest.Builder> authorizationRequestCustomizer() {
-    var pkceCustomizer = OAuth2AuthorizationRequestCustomizers.withPkce();
-
-    return authorizationRequestBuilder -> {
-      pkceCustomizer.accept(authorizationRequestBuilder);
-
-      if (audience != null && !audience.isEmpty()) {
-        authorizationRequestBuilder.additionalParameters(
-            params -> params.put("audience", audience));
       }
     };
   }

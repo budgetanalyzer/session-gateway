@@ -89,7 +89,7 @@ The operational Auth0 dashboard values that pair with these defaults are documen
 Browser OAuth2 callback traffic now uses a dedicated outbound IdP/OIDC client instead of the
 default shared Reactor Netty client state. This dedicated path covers:
 
-- authorization-code token exchange during `oauth2Login`
+- authorization-code exchange during `oauth2Login`
 - OIDC userinfo retrieval during browser login
 - JWKS retrieval for ID token verification
 

@@ -6,7 +6,7 @@ import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Typed configuration for Redis-backed browser and token-exchange sessions.
+ * Typed configuration for Redis-backed browser sessions and OAuth2 authorization request state.
  *
  * <p>Defaults are defined in {@code application.yml}. This class centralizes access and validates
  * the session contract at startup.

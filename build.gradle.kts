@@ -67,7 +67,6 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.testcontainers)
-    testImplementation(libs.testcontainers.junit.jupiter)
     testImplementation(libs.wiremock.standalone)
     testImplementation(libs.awaitility)
     testImplementation(libs.reactor.test)

@@ -33,7 +33,6 @@ session:
     same-site: Strict
 
 idp:
-  audience: https://api.budgetanalyzer.test
   http-client:
     pool-name: idp-oidc-callback
     max-connections: 50

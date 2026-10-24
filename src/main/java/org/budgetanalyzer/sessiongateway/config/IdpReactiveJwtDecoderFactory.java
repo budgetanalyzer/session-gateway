@@ -22,7 +22,7 @@ import org.springframework.web.reactive.function.client.WebClient;
  *
  * <p>Spring Security's default reactive decoder factory does not expose a WebClient hook, so this
  * factory preserves the default RS256/Auth0 assumptions while moving JWKS fetches onto the same
- * dedicated transport path as token exchange and userinfo requests.
+ * dedicated transport path as authorization-code and userinfo requests.
  */
 public final class IdpReactiveJwtDecoderFactory
     implements ReactiveJwtDecoderFactory<ClientRegistration> {

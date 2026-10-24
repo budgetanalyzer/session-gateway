@@ -30,7 +30,6 @@ springdoc-openapi = { module = "org.springdoc:springdoc-openapi-starter-webflux-
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 testcontainers = { module = "org.testcontainers:testcontainers" }
-testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
 wiremock-standalone = { module = "org.wiremock:wiremock-standalone" }
 awaitility = { module = "org.awaitility:awaitility" }
 reactor-test = { module = "io.projectreactor:reactor-test" }
