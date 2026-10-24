@@ -103,7 +103,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 **When to consult service-common documentation:**
 - **Implementing new features** → Read [service-common/AGENTS.md](../service-common/AGENTS.md) for architecture patterns
 - **Handling errors** → Read [error-handling.md](../service-common/docs/error-handling.md) for exception hierarchy
-- **Writing tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit 5 + TestContainers conventions
+- **Writing tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit + Testcontainers conventions
 - **Code quality issues** → Read [code-quality-standards.md](../service-common/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
 
 **Quick reference:**
@@ -200,7 +200,7 @@ grep "implementation" build.gradle.kts
 **Service-Common Integration**:
 - Auto-configured reactive utilities from `org.budgetanalyzer:service-web:<service-common-version>`
 - Provides: HTTP request/response logging, distributed tracing correlation IDs, safe logging with sensitive data masking, global exception handling
-- OAuth2ResourceServerSecurityConfig explicitly excluded (Session Gateway is OAuth2 Client, not Resource Server)
+- `SecurityConfig` defines its own `SecurityWebFilterChain`, so service-web's shared claims-header reactive security chain backs off (Session Gateway is an OAuth2 Client, not a claims-header resource service)
 - DataSource/JPA auto-configuration excluded (no database required)
 
 ## Key Components

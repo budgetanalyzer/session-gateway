@@ -2,15 +2,14 @@ package org.budgetanalyzer.sessiongateway;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
-import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
 
 @SpringBootApplication(
-    exclude = {
+    excludeName = {
       // Session Gateway uses Redis only, not a database
-      // Exclude DataSource and JPA auto-configuration brought in by service-common-core
-      DataSourceAutoConfiguration.class,
-      HibernateJpaAutoConfiguration.class
+      // Exclude DataSource and JPA auto-configuration if a dependency brings them onto the
+      // classpath
+      "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
+      "org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration"
     })
 public class SessionGatewayApplication {
 

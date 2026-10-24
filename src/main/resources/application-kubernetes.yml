@@ -3,8 +3,9 @@
 
 spring:
   # WebFlux codec configuration for file uploads
-  codec:
-    max-in-memory-size: 10MB
+  http:
+    codecs:
+      max-in-memory-size: 10MB
 
   # Redis configuration for Kubernetes
   data:

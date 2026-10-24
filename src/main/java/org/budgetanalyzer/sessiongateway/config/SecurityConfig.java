@@ -25,9 +25,8 @@ import org.springframework.security.web.server.context.ServerSecurityContextRepo
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import org.springframework.web.server.ServerWebExchange;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.api.ApiErrorType;
@@ -53,7 +52,7 @@ public class SecurityConfig {
   private final SessionWriter sessionWriter;
   private final SessionCookieHelper sessionCookieHelper;
   private final OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
@@ -64,7 +63,7 @@ public class SecurityConfig {
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
       OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
-      ObjectMapper objectMapper) {
+      JsonMapper jsonMapper) {
     this.authorizationRequestResolver = authorizationRequestResolver;
     this.authorizationRequestRepository = authorizationRequestRepository;
     this.authorizedClientRepository = authorizedClientRepository;
@@ -73,7 +72,7 @@ public class SecurityConfig {
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
     this.oauth2CallbackRedirectResolver = oauth2CallbackRedirectResolver;
-    this.objectMapper = objectMapper;
+    this.jsonMapper = jsonMapper;
   }
 
   @Bean
@@ -205,7 +204,7 @@ public class SecurityConfig {
     response.setStatusCode(HttpStatus.UNAUTHORIZED);
     response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-    return Mono.fromCallable(() -> objectMapper.writeValueAsBytes(apiErrorResponse))
+    return Mono.fromCallable(() -> jsonMapper.writeValueAsBytes(apiErrorResponse))
         .flatMap(body -> response.writeWith(Mono.just(response.bufferFactory().wrap(body))));
   }
 }
