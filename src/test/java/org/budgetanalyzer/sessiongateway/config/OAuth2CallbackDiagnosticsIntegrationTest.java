@@ -2,8 +2,10 @@ package org.budgetanalyzer.sessiongateway.config;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -56,7 +58,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
 
   private static final String SECRET_AUTH_CODE = "secret-auth-code";
   private static final String SECRET_RETURN_URL = "/dashboard";
-  private static final int TOKEN_ENDPOINT_DELAY_MILLIS = 1000;
+  private static final int IDP_RESPONSE_DELAY_MILLIS = 1000;
 
   private ListAppender<ILoggingEvent> idpClientListAppender;
   private ListAppender<ILoggingEvent> transportHandlerListAppender;
@@ -90,7 +92,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
   void oauth2CallbackRedirectsThroughControlledFailurePathOnDedicatedIdpResponseTimeout()
       throws Exception {
     var authorizationRequest = beginAuthorization(SECRET_RETURN_URL);
-    var rsaKey = createRsaKey();
+    var rsaKey = createRsaKey("token-timeout-key");
     stubJwks(rsaKey);
     stubSlowSuccessfulTokenEndpoint(createIdToken(rsaKey, authorizationRequest.nonce()));
     stubOidcUserInfo(
@@ -110,6 +112,65 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
     assertThat(logMessages())
         .anyMatch(message -> message.contains("classification=response_timeout"))
         .anyMatch(message -> message.contains("path=/idp/oauth/token"));
+  }
+
+  @Test
+  void oauth2CallbackRedirectsThroughControlledFailurePathOnDedicatedIdpJwksResponseTimeout()
+      throws Exception {
+    var authorizationRequest = beginAuthorization(SECRET_RETURN_URL);
+    var rsaKey = createRsaKey("jwks-timeout-key");
+    stubOidcTokenEndpoint(
+        "access-token-value", createIdToken(rsaKey, authorizationRequest.nonce()));
+    stubSlowJwks(rsaKey);
+    stubOidcUserInfo(
+        "auth0|user-123", "user@example.com", "Test User", "https://cdn.example.com/avatar.png");
+    stubPermissionService(
+        "auth0|user-123",
+        "user@example.com",
+        "Test User",
+        "internal-user-456",
+        List.of("ROLE_USER"),
+        List.of("transactions:read"));
+
+    var redirectLocation = executeCallback(authorizationRequest.state(), SECRET_AUTH_CODE);
+
+    assertLoginFailureRedirect(redirectLocation, SECRET_RETURN_URL);
+    assertSanitizedLogs(authorizationRequest.state(), SECRET_AUTH_CODE);
+    assertThat(logMessages())
+        .anyMatch(
+            message ->
+                message.contains("classification=response_timeout")
+                    && message.contains("path=/idp/.well-known/jwks.json"));
+    wireMockServer.verify(0, getRequestedFor(urlEqualTo("/idp/userinfo")));
+  }
+
+  @Test
+  void oauth2CallbackRedirectsThroughControlledFailurePathOnDedicatedIdpUserInfoResponseTimeout()
+      throws Exception {
+    var authorizationRequest = beginAuthorization(SECRET_RETURN_URL);
+    var rsaKey = createRsaKey("userinfo-timeout-key");
+    stubOidcTokenEndpoint(
+        "access-token-value", createIdToken(rsaKey, authorizationRequest.nonce()));
+    stubJwks(rsaKey);
+    stubSlowOidcUserInfo();
+    stubPermissionService(
+        "auth0|user-123",
+        "user@example.com",
+        "Test User",
+        "internal-user-456",
+        List.of("ROLE_USER"),
+        List.of("transactions:read"));
+
+    var redirectLocation = executeCallback(authorizationRequest.state(), SECRET_AUTH_CODE);
+
+    assertLoginFailureRedirect(redirectLocation, SECRET_RETURN_URL);
+    assertSanitizedLogs(authorizationRequest.state(), SECRET_AUTH_CODE);
+    assertThat(logMessages())
+        .anyMatch(
+            message ->
+                message.contains("classification=response_timeout")
+                    && message.contains("path=/idp/userinfo"));
+    wireMockServer.verify(0, getRequestedFor(urlPathMatching("/internal/v1/users/.*/permissions")));
   }
 
   @Test
@@ -230,7 +291,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
         post(urlEqualTo("/idp/oauth/token"))
             .willReturn(
                 aResponse()
-                    .withFixedDelay(TOKEN_ENDPOINT_DELAY_MILLIS)
+                    .withFixedDelay(IDP_RESPONSE_DELAY_MILLIS)
                     .withStatus(200)
                     .withHeader("Content-Type", "application/json")
                     .withBody(
@@ -248,10 +309,41 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
   private void stubSlowTokenEndpointServerError() {
     wireMockServer.stubFor(
         post(urlEqualTo("/idp/oauth/token"))
-            .willReturn(aResponse().withFixedDelay(TOKEN_ENDPOINT_DELAY_MILLIS).withStatus(500)));
+            .willReturn(aResponse().withFixedDelay(IDP_RESPONSE_DELAY_MILLIS).withStatus(500)));
   }
 
-  private RSAKey createRsaKey() throws Exception {
+  private void stubSlowJwks(RSAKey rsaKey) {
+    wireMockServer.stubFor(
+        get(urlEqualTo("/idp/.well-known/jwks.json"))
+            .willReturn(
+                aResponse()
+                    .withFixedDelay(IDP_RESPONSE_DELAY_MILLIS)
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(new JWKSet(rsaKey.toPublicJWK()).toString())));
+  }
+
+  private void stubSlowOidcUserInfo() {
+    wireMockServer.stubFor(
+        get(urlEqualTo("/idp/userinfo"))
+            .willReturn(
+                aResponse()
+                    .withFixedDelay(IDP_RESPONSE_DELAY_MILLIS)
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        """
+                        {
+                          "sub": "auth0|user-123",
+                          "email": "user@example.com",
+                          "name": "Test User"
+                        }
+                        """)));
+  }
+
+  // The context-scoped ID token decoder caches the JWK set; a distinct key ID per test forces a
+  // fresh JWKS request through the dedicated IdP client.
+  private RSAKey createRsaKey(String keyId) throws Exception {
     var keyPairGenerator = KeyPairGenerator.getInstance("RSA");
     keyPairGenerator.initialize(2048);
 
@@ -259,7 +351,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
 
     return new RSAKey.Builder((RSAPublicKey) keyPair.getPublic())
         .privateKey((RSAPrivateKey) keyPair.getPrivate())
-        .keyID("test-key-id")
+        .keyID(keyId)
         .build();
   }
 
@@ -280,7 +372,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
 
     var signedJwt =
         new SignedJWT(
-            new JWSHeader.Builder(JWSAlgorithm.RS256).keyID("test-key-id").build(), claimsSet);
+            new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(rsaKey.getKeyID()).build(), claimsSet);
     signedJwt.sign(new RSASSASigner(rsaKey.toPrivateKey()));
 
     return signedJwt.serialize();

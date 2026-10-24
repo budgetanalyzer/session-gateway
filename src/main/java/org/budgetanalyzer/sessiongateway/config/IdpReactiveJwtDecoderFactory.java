@@ -1,5 +1,6 @@
 package org.budgetanalyzer.sessiongateway.config;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -72,7 +73,8 @@ public final class IdpReactiveJwtDecoderFactory
             .webClient(webClient)
             .build();
     nimbusReactiveJwtDecoder.setJwtValidator(
-        JwtValidators.createDefaultWithValidators(new OidcIdTokenValidator(clientRegistration)));
+        JwtValidators.createDefaultWithValidators(
+            List.of(new OidcIdTokenValidator(clientRegistration))));
     nimbusReactiveJwtDecoder.setClaimSetConverter(
         new ClaimTypeConverter(
             ReactiveOidcIdTokenDecoderFactory.createDefaultClaimTypeConverters()));

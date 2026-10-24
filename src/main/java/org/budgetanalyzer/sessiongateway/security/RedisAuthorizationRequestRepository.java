@@ -62,16 +62,16 @@ public class RedisAuthorizationRequestRepository
   private static final String FIELD_NONCE = "nonce";
   private static final String FIELD_CODE_VERIFIER = "code_verifier";
 
-  private final ReactiveStringRedisTemplate redisTemplate;
-  private final ReactiveClientRegistrationRepository clientRegistrationRepository;
+  private final ReactiveStringRedisTemplate reactiveStringRedisTemplate;
+  private final ReactiveClientRegistrationRepository reactiveClientRegistrationRepository;
   private final Duration ttl;
 
   public RedisAuthorizationRequestRepository(
-      ReactiveStringRedisTemplate redisTemplate,
-      ReactiveClientRegistrationRepository clientRegistrationRepository,
+      ReactiveStringRedisTemplate reactiveStringRedisTemplate,
+      ReactiveClientRegistrationRepository reactiveClientRegistrationRepository,
       SessionProperties sessionProperties) {
-    this.redisTemplate = redisTemplate;
-    this.clientRegistrationRepository = clientRegistrationRepository;
+    this.reactiveStringRedisTemplate = reactiveStringRedisTemplate;
+    this.reactiveClientRegistrationRepository = reactiveClientRegistrationRepository;
     this.ttl = Duration.ofSeconds(sessionProperties.oauth2StateTtlSeconds());
   }
 
@@ -138,10 +138,10 @@ public class RedisAuthorizationRequestRepository
     var key = KEY_PREFIX + state;
     log.debug("Saving authorization request for state={}", SafeLogger.truncateId(state));
 
-    return redisTemplate
+    return reactiveStringRedisTemplate
         .<String, String>opsForHash()
         .putAll(key, fields)
-        .then(redisTemplate.expire(key, ttl))
+        .then(reactiveStringRedisTemplate.expire(key, ttl))
         .then();
   }
 
@@ -173,7 +173,7 @@ public class RedisAuthorizationRequestRepository
               return loadFromRedis(state)
                   .flatMap(
                       request ->
-                          redisTemplate
+                          reactiveStringRedisTemplate
                               .delete(key)
                               .doOnSuccess(
                                   count ->
@@ -218,7 +218,7 @@ public class RedisAuthorizationRequestRepository
 
   private Mono<OAuth2AuthorizationRequest> loadFromRedis(String state) {
     var key = KEY_PREFIX + state;
-    return redisTemplate
+    return reactiveStringRedisTemplate
         .<String, String>opsForHash()
         .entries(key)
         .collectMap(Map.Entry::getKey, Map.Entry::getValue)
@@ -232,7 +232,7 @@ public class RedisAuthorizationRequestRepository
    */
   private Mono<OAuth2AuthorizationRequest> reconstructRequest(
       String state, Map<String, String> fields) {
-    return clientRegistrationRepository
+    return reactiveClientRegistrationRepository
         .findByRegistrationId(REGISTRATION_ID)
         .map(
             registration -> {

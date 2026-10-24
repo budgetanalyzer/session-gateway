@@ -205,58 +205,50 @@ grep "implementation" build.gradle.kts
 
 ## Key Components
 
+Discover current classes from source. Do not maintain a class-by-class inventory here.
+
 **Discovery**:
 ```bash
-# List all Java source files by type
+# All main-source classes, grouped by package
 find src/main/java -name "*.java" | sort
 
-# Find configuration classes
-grep -r "class.*Config" src/main/java
+# Spring configuration classes and bound configuration properties
+rg -l "@Configuration|@ConfigurationProperties" src/main/java
 
-# Find controllers
-grep -r "@RestController\|@Controller" src/main/java
+# Controllers and their endpoint mappings
+rg -n "@RestController|@Controller|@(Get|Post|Put|Patch|Delete|Request)Mapping" src/main/java
 
-# Find custom filters
-find src -name "*Filter*.java" -o -name "*FilterFactory.java"
+# Web filters, WebClient exchange filters, and exception handlers
+rg -l "WebFilter|ExchangeFilterFunction|WebExceptionHandler|@ControllerAdvice|@RestControllerAdvice" src/main/java
+
+# Downstream service clients and Redis session components
+find src/main/java \( -path "*/service/*" -o -path "*/session/*" \) -name "*.java" | sort
+
+# Reactive utilities auto-configured from service-web
+find ../service-common/service-web/src/main/java -path "*/reactive/*" -name "*.java" | sort
 ```
 
-**Component Types**:
+**Package orientation** (under `src/main/java/org/budgetanalyzer/sessiongateway/`):
+- `config/`: Security filter chain, OAuth2 client wiring, WebClient, OpenAPI, and configuration properties
+- `api/`: Auth/session lifecycle controllers, internal revocation, and `api/response/` records
+- `security/`: Redis-backed OAuth2 and security-context repositories, redirect validation, and browser error handling
+- `service/`: Permission-service client
+- `session/`: Redis session hash reads and writes, hash field names, and session cookie handling
 
-**Configuration** (src/main/java/.../config/):
-- SecurityConfig: OAuth2 login, authorization, entry points, return URL handling, permission fetching on login success, session creation
-- SessionConfig: Clock bean
-- OAuth2ClientConfig: Dedicated IdP HTTP client, authorization-code token response client, OAuth2/OIDC user services, ID token decoder factory, and authorization request resolver (PKCE + return URL)
-- WebClientConfig: WebClient bean for permission-service calls
+**Component rules**:
+- Keep one application-owned `SecurityWebFilterChain` for OAuth2 login, per-path authorization, and login-success session creation after permission-service synchronization
+- Store OAuth2 authorization requests, including `returnUrl`, in Redis keyed by `state`; hold OAuth2 authorized clients per exchange only. Neither may depend on `WebSession`, and no IdP token may be persisted
+- Resolve the authenticated `SecurityContext` from the public session cookie and the Redis `session:{id}` hash, not from Spring Session
+- Keep Redis session hash, user-index, and cookie handling in `session/`; hash field names, key prefix, and cookie name are cross-repo contracts with ext_authz
+- Keep browser error redirects path-classified; machine paths must fall through to service-common JSON errors
+- Route IdP callback traffic (token exchange, userinfo, JWKS) through the dedicated IdP HTTP client, separate from the permission-service WebClient
+- Rely on service-web auto-configuration for reactive HTTP logging, correlation IDs, and exception handling; `SafeLogger` remains opt-in (see Best Practices)
 
-**Controllers** (src/main/java/.../api/):
-- UserController: Returns current authenticated user info
-- LogoutController: Session deletion, cookie clearing, and Auth0 logout
-- SessionController: Session heartbeat — validates the local Redis session, refreshes authorization, and conditionally extends its TTL
-- InternalSessionController: Internal per-user session revocation for permission-service
-
-**Security** (src/main/java/.../security/):
-- RedirectUrlValidator: Validates redirect URLs to prevent open redirect attacks
-- RedisAuthorizationRequestRepository: Stores OAuth2 authorization requests in Redis (keyed by state parameter), carries return URL through the OAuth2 round-trip
-- RedisSessionSecurityContextRepository: Resolves session cookie → Redis hash → SecurityContext for authenticated requests
-- ExchangeServerOAuth2AuthorizedClientRepository: Stores/loads OAuth2 authorized clients per-exchange (not in WebSession)
-- SessionPrincipal: Authentication principal holding session data
-- BrowserErrorRedirectHandler, BrowserNotFoundRedirectExceptionHandler, OAuth2Callback*WebExceptionHandler: Path-classified browser error redirects; machine paths fall through to service-common JSON errors (see [docs/security.md](docs/security.md#browser-error-strategy))
-
-**Services** (src/main/java/.../service/):
-- PermissionServiceClient: Reactive WebClient for login-time user synchronization and bounded heartbeat authorization lookup (no bearer auth — platform network isolation and mesh policy enforcement)
-
-**Session** (src/main/java/.../session/):
-- SessionWriter: Creates, updates, and deletes session Redis hashes (`session:{id}`)
-- SessionReader: Reads and deserializes session hashes from Redis
-- SessionData: Record holding deserialized session fields
-- SessionHashFields: Constants for Redis hash field names (user_id, roles, permissions, expires_at, etc.)
-- SessionCookieHelper: Manages session cookies (set, clear, read)
-
-**Service-Common Utilities** (auto-configured from service-web):
-- ReactiveHttpLoggingFilter: HTTP request/response logging (replaces RequestLoggingWebFilter)
-- ReactiveCorrelationIdFilter: Adds correlation IDs for distributed tracing
-- ReactiveApiExceptionHandler: Global exception handling for WebFlux
-- SafeLogger (org.budgetanalyzer.core.logging): Opt-in safe logging utilities — `SafeLogger.toJson()` for `@Sensitive` masking, `SafeLogger.mask()` for string masking, `SafeLogger.truncateId()` for truncating identifiers (session IDs, OAuth2 state)
+**Consultation triggers**:
+- Read [docs/security.md](docs/security.md) before changing cookies, token handling, return URL validation, internal revocation, or heartbeat security behavior; read its [Browser Error Strategy](docs/security.md#browser-error-strategy) and [Machine Error Contract](docs/security.md#machine-error-contract) before adding or changing an exception handler or error redirect
+- Read [docs/session-configuration.md](docs/session-configuration.md) before changing session properties, the Redis session or user-index contract, heartbeat refresh, the [IdP callback HTTP client](docs/session-configuration.md#idp-callback-http-client), or [callback diagnostics](docs/session-configuration.md#callback-diagnostics)
+- Read [docs/configuration.md](docs/configuration.md) before adding, renaming, or removing an environment variable
+- Read [service-common/AGENTS.md](../service-common/AGENTS.md) before overriding or replacing an auto-configured service-web filter or exception handler
 
 ## API Endpoints
 

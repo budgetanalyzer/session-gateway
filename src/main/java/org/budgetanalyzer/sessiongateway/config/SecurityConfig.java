@@ -43,10 +43,10 @@ public class SecurityConfig {
 
   private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
-  private final ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
+  private final ServerOAuth2AuthorizationRequestResolver serverOAuth2AuthorizationRequestResolver;
   private final ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest>
-      authorizationRequestRepository;
-  private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
+      serverAuthorizationRequestRepository;
+  private final ServerOAuth2AuthorizedClientRepository serverOAuth2AuthorizedClientRepository;
   private final ServerSecurityContextRepository serverSecurityContextRepository;
   private final PermissionServiceClient permissionServiceClient;
   private final SessionWriter sessionWriter;
@@ -55,18 +55,18 @@ public class SecurityConfig {
   private final JsonMapper jsonMapper;
 
   public SecurityConfig(
-      ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
-      RedisAuthorizationRequestRepository authorizationRequestRepository,
-      ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
+      ServerOAuth2AuthorizationRequestResolver serverOAuth2AuthorizationRequestResolver,
+      RedisAuthorizationRequestRepository serverAuthorizationRequestRepository,
+      ServerOAuth2AuthorizedClientRepository serverOAuth2AuthorizedClientRepository,
       ServerSecurityContextRepository serverSecurityContextRepository,
       PermissionServiceClient permissionServiceClient,
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
       OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
       JsonMapper jsonMapper) {
-    this.authorizationRequestResolver = authorizationRequestResolver;
-    this.authorizationRequestRepository = authorizationRequestRepository;
-    this.authorizedClientRepository = authorizedClientRepository;
+    this.serverOAuth2AuthorizationRequestResolver = serverOAuth2AuthorizationRequestResolver;
+    this.serverAuthorizationRequestRepository = serverAuthorizationRequestRepository;
+    this.serverOAuth2AuthorizedClientRepository = serverOAuth2AuthorizedClientRepository;
     this.serverSecurityContextRepository = serverSecurityContextRepository;
     this.permissionServiceClient = permissionServiceClient;
     this.sessionWriter = sessionWriter;
@@ -101,9 +101,9 @@ public class SecurityConfig {
         .oauth2Login(
             oauth2 ->
                 oauth2
-                    .authorizationRequestResolver(authorizationRequestResolver)
-                    .authorizationRequestRepository(authorizationRequestRepository)
-                    .authorizedClientRepository(authorizedClientRepository)
+                    .authorizationRequestResolver(serverOAuth2AuthorizationRequestResolver)
+                    .authorizationRequestRepository(serverAuthorizationRequestRepository)
+                    .authorizedClientRepository(serverOAuth2AuthorizedClientRepository)
                     .securityContextRepository(serverSecurityContextRepository)
                     .authenticationSuccessHandler(this::handleAuthenticationSuccess)
                     .authenticationFailureHandler(
