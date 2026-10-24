@@ -225,13 +225,14 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 **Configuration** (src/main/java/.../config/):
 - SecurityConfig: OAuth2 login, authorization, entry points, return URL handling, permission fetching on login success, session creation
 - SessionConfig: Clock bean
-- OAuth2ClientConfig: OAuth2 client, authorization request repository, and authorized client repository configuration
-- WebClientConfig: WebClient bean for external HTTP calls
+- OAuth2ClientConfig: Dedicated IdP HTTP client, authorization-code token response client, OAuth2/OIDC user services, ID token decoder factory, and authorization request resolver (PKCE + return URL)
+- WebClientConfig: WebClient bean for permission-service calls
 
 **Controllers** (src/main/java/.../api/):
 - UserController: Returns current authenticated user info
 - LogoutController: Session deletion, cookie clearing, and Auth0 logout
 - SessionController: Session heartbeat — validates the local Redis session, refreshes authorization, and conditionally extends its TTL
+- InternalSessionController: Internal per-user session revocation for permission-service
 
 **Security** (src/main/java/.../security/):
 - RedirectUrlValidator: Validates redirect URLs to prevent open redirect attacks
@@ -239,6 +240,7 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 - RedisSessionSecurityContextRepository: Resolves session cookie → Redis hash → SecurityContext for authenticated requests
 - ExchangeServerOAuth2AuthorizedClientRepository: Stores/loads OAuth2 authorized clients per-exchange (not in WebSession)
 - SessionPrincipal: Authentication principal holding session data
+- BrowserErrorRedirectHandler, BrowserNotFoundRedirectExceptionHandler, OAuth2Callback*WebExceptionHandler: Path-classified browser error redirects; machine paths fall through to service-common JSON errors (see [docs/security.md](docs/security.md#browser-error-strategy))
 
 **Services** (src/main/java/.../service/):
 - PermissionServiceClient: Reactive WebClient for login-time user synchronization and bounded heartbeat authorization lookup (no bearer auth — platform network isolation and mesh policy enforcement)
@@ -263,8 +265,8 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 # Find all endpoint mappings
 grep -r "@GetMapping\|@PostMapping\|@RequestMapping" src/main/java
 
-# Check configured routes
-cat src/main/resources/application.yml | grep -A 5 "routes:"
+# Check per-path authorization rules
+grep -n "pathMatchers" src/main/java/org/budgetanalyzer/sessiongateway/config/SecurityConfig.java
 ```
 
 **Authentication Flow Endpoints**:
@@ -286,7 +288,7 @@ redirects to `/login?error=auth_failed&returnUrl=...` so the frontend can retry 
 losing the original deep link.
 
 **Return URL Security**:
-- All redirect URLs validated by `RedirectUrlValidator` (src/main/java/.../security/RedirectUrlValidator.java:27)
+- All redirect URLs validated by `RedirectUrlValidator.isValidRedirectUrl` (src/main/java/.../security/RedirectUrlValidator.java)
 - Only same-origin URLs allowed (prevents open redirect attacks)
 - Rejects: external URLs, protocol-relative URLs, `javascript:`, `data:`, and other malicious schemes
 - Invalid URLs safely default to `/` redirect
@@ -329,8 +331,8 @@ find . -maxdepth 3 -name "*.yml" -o -name "*.properties" -o -name ".env"
 # View Spring configuration
 cat src/main/resources/application.yml
 
-# Check environment variables
-grep "SPRING_SECURITY_OAUTH2" .env
+# Check environment variable placeholders (documented in docs/configuration.md)
+grep -n '\${' src/main/resources/application.yml
 ```
 
 **Configuration Categories**:
@@ -365,7 +367,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - TLS configuration via Spring SSL bundles
 
 **Logging**:
-- OAuth2 client debug logging
+- Framework OAuth2 and WebClient logging stays at `INFO` by default; callback failures use sanitized diagnostics (see [docs/session-configuration.md](docs/session-configuration.md))
 - Session management logging
 
 **HTTP Logging** (from service-common):
@@ -381,7 +383,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - `budgetanalyzer.service.http-logging.exclude-patterns`: List of path patterns to exclude (e.g., `/actuator/**`)
 - `budgetanalyzer.service.http-logging.log-errors-only`: Only log requests that result in errors
 
-Example configuration (application.yml lines 97-113):
+Example configuration (excerpt from application.yml):
 ```yaml
 budgetanalyzer:
   service:
@@ -611,7 +613,7 @@ find src/test -name "*.java"
 Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
 **Runtime Dependencies**:
-- **Permission Service**: Provides user roles and permissions (called at login, no bearer auth)
+- **Permission Service**: Provides user roles and permissions (called at login and heartbeat, no bearer auth)
 - **Redis**: Session persistence (hashes under `session:{id}`)
 - **Auth0**: Identity provider (login and logout)
 

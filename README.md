@@ -1,6 +1,6 @@
 # Session Gateway
 
-> "Archetype: service. Role: Session-based edge authorization; manages OAuth2 flows, session cookies, and IDP grant validation."
+> "Archetype: service. Role: Session-based edge authorization; manages OAuth2 flows and browser session cookies."
 >
 > — [AGENTS.md](AGENTS.md#tree-position)
 

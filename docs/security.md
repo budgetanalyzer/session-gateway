@@ -70,7 +70,7 @@ Session Gateway never serves Spring Boot white-label HTML for uncommitted browse
 
 - **Callback IdP/auth failures** redirect to `/login?error=auth_failed`
 - **Callback non-auth failures** redirect to `/oops`
-- **All other browser navigation failures** redirect to `/oops` via a global `ErrorWebExceptionHandler`
+- **All other browser navigation failures** redirect to `/oops` via a global `WebExceptionHandler` (`BrowserErrorRedirectHandler`)
 - **API and machine requests** always receive JSON error responses, never redirects
 
 Error handling is classified by request path. The public `/auth/` and `/api/` prefixes, the
