@@ -7,7 +7,6 @@
 | `AUTH0_CLIENT_ID` | Auth0 application client ID | `placeholder-client-id` |
 | `AUTH0_CLIENT_SECRET` | Auth0 application client secret | `placeholder-client-secret` |
 | `AUTH0_ISSUER_URI` | Auth0 tenant issuer URI | `https://placeholder.auth0.com/` |
-| `IDP_AUDIENCE` | Auth0 API audience identifier | `https://api.budgetanalyzer.org` |
 | `IDP_LOGOUT_RETURN_TO` | URL to redirect after Auth0 logout | `https://app.budgetanalyzer.localhost/peace` |
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8086` |
 | `PERMISSION_SERVICE_AUTHORIZATION_REFRESH_TIMEOUT` | Maximum duration for the heartbeat authorization lookup | `2s` |

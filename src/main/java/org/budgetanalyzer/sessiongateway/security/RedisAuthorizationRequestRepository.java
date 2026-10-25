@@ -27,9 +27,9 @@ import org.budgetanalyzer.sessiongateway.config.SessionProperties;
  * Redis-backed storage for OAuth2 authorization requests.
  *
  * <p>Stores only the per-request dynamic fields as a flat Redis hash at {@code
- * oauth2:state:{state}} with a 10-minute TTL. The full {@link OAuth2AuthorizationRequest} is
- * reconstructed on load using stored fields plus static properties from the OAuth2 client
- * registration.
+ * oauth2:state:{state}} with a TTL configured through {@code session.oauth2-state-ttl-seconds}. The
+ * full {@link OAuth2AuthorizationRequest} is reconstructed on load using stored fields plus static
+ * properties from the OAuth2 client registration.
  *
  * <p>This avoids serializing the {@link OAuth2AuthorizationRequest} object, which has no stable
  * serialization contract and couples to Spring Security internals across version upgrades.
@@ -41,7 +41,7 @@ import org.budgetanalyzer.sessiongateway.config.SessionProperties;
  *   <li>{@code return_url} — where to redirect after login (from authorization request
  *       additionalParameters, optional)
  *   <li>{@code nonce} — OIDC nonce for ID token validation
- *   <li>{@code code_verifier} — PKCE code verifier for token exchange
+ *   <li>{@code code_verifier} — PKCE code verifier for the authorization-code exchange
  * </ul>
  */
 @Component
@@ -62,16 +62,16 @@ public class RedisAuthorizationRequestRepository
   private static final String FIELD_NONCE = "nonce";
   private static final String FIELD_CODE_VERIFIER = "code_verifier";
 
-  private final ReactiveStringRedisTemplate redisTemplate;
-  private final ReactiveClientRegistrationRepository clientRegistrationRepository;
+  private final ReactiveStringRedisTemplate reactiveStringRedisTemplate;
+  private final ReactiveClientRegistrationRepository reactiveClientRegistrationRepository;
   private final Duration ttl;
 
   public RedisAuthorizationRequestRepository(
-      ReactiveStringRedisTemplate redisTemplate,
-      ReactiveClientRegistrationRepository clientRegistrationRepository,
+      ReactiveStringRedisTemplate reactiveStringRedisTemplate,
+      ReactiveClientRegistrationRepository reactiveClientRegistrationRepository,
       SessionProperties sessionProperties) {
-    this.redisTemplate = redisTemplate;
-    this.clientRegistrationRepository = clientRegistrationRepository;
+    this.reactiveStringRedisTemplate = reactiveStringRedisTemplate;
+    this.reactiveClientRegistrationRepository = reactiveClientRegistrationRepository;
     this.ttl = Duration.ofSeconds(sessionProperties.oauth2StateTtlSeconds());
   }
 
@@ -138,10 +138,10 @@ public class RedisAuthorizationRequestRepository
     var key = KEY_PREFIX + state;
     log.debug("Saving authorization request for state={}", SafeLogger.truncateId(state));
 
-    return redisTemplate
+    return reactiveStringRedisTemplate
         .<String, String>opsForHash()
         .putAll(key, fields)
-        .then(redisTemplate.expire(key, ttl))
+        .then(reactiveStringRedisTemplate.expire(key, ttl))
         .then();
   }
 
@@ -173,7 +173,7 @@ public class RedisAuthorizationRequestRepository
               return loadFromRedis(state)
                   .flatMap(
                       request ->
-                          redisTemplate
+                          reactiveStringRedisTemplate
                               .delete(key)
                               .doOnSuccess(
                                   count ->
@@ -218,7 +218,7 @@ public class RedisAuthorizationRequestRepository
 
   private Mono<OAuth2AuthorizationRequest> loadFromRedis(String state) {
     var key = KEY_PREFIX + state;
-    return redisTemplate
+    return reactiveStringRedisTemplate
         .<String, String>opsForHash()
         .entries(key)
         .collectMap(Map.Entry::getKey, Map.Entry::getValue)
@@ -232,7 +232,7 @@ public class RedisAuthorizationRequestRepository
    */
   private Mono<OAuth2AuthorizationRequest> reconstructRequest(
       String state, Map<String, String> fields) {
-    return clientRegistrationRepository
+    return reactiveClientRegistrationRepository
         .findByRegistrationId(REGISTRATION_ID)
         .map(
             registration -> {

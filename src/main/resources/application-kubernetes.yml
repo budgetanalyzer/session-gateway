@@ -2,19 +2,10 @@
 # Activated with: --spring.profiles.active=kubernetes
 
 spring:
-  # WebFlux codec configuration for file uploads
-  codec:
-    max-in-memory-size: 10MB
-
   # Redis configuration for Kubernetes
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:redis}
-
-# Kubernetes-specific IDP logout redirect
-idp:
-  logout:
-    return-to: ${IDP_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}
 
 # Disable request body logging to isolate POST timeout issue
 budgetanalyzer:

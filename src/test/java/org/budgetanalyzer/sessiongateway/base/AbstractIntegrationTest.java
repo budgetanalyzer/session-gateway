@@ -14,13 +14,12 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
@@ -28,7 +27,6 @@ import org.budgetanalyzer.sessiongateway.config.TestContainersConfig;
 import org.budgetanalyzer.sessiongateway.config.WireMockConfig;
 
 @SpringBootTest(webEnvironment = RANDOM_PORT)
-@Testcontainers
 @AutoConfigureWebTestClient
 @Import({TestContainersConfig.class, WireMockConfig.class})
 public abstract class AbstractIntegrationTest {
@@ -44,9 +42,6 @@ public abstract class AbstractIntegrationTest {
     // Point IDP OAuth2 configuration to WireMock
     registry.add(
         "spring.security.oauth2.client.provider.idp.issuer-uri", () -> wireMockUrl + "/idp");
-
-    // Point downstream gateway to WireMock
-    registry.add("api.gateway.url", () -> wireMockUrl + "/api-gateway");
 
     // Point permission-service to WireMock
     registry.add("permission-service.base-url", () -> wireMockUrl);

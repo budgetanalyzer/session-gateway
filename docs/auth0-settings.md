@@ -6,28 +6,20 @@ These settings align Auth0 with Session Gateway's current runtime defaults:
 - frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes)
 - OAuth2 authorization code flow with PKCE
 
-Session Gateway contacts Auth0 only at login (authorization-code exchange) and at logout. There
-are no refresh-token grants, no userinfo polling, and no token exchange surface. Heartbeat
-validates the local Redis session and refreshes grants through permission-service, but never calls
-Auth0.
-
-## API Configuration
-
-In Auth0, open `Applications > APIs > budget-analyzer-api`.
-
-- **Identifier**: match `IDP_AUDIENCE`
-  For this repository, the default value is `https://api.budgetanalyzer.org`.
-- **Maximum Access Token Lifetime**: `900` seconds
-- **Implicit / Hybrid Flow Lifetime**: not relevant for Session Gateway
-
-Session Gateway requests the API audience during browser login, so the API access-token lifetime
-controls the access token used by the browser authorization-code flow. Session Gateway does not use
-implicit or hybrid login.
+Session Gateway contacts Auth0 during login for the authorization-code exchange, ID token
+validation, and userinfo retrieval. At logout, Session Gateway redirects the browser to Auth0
+rather than making a server-side call. It uses the access token only to retrieve userinfo during
+the login callback; no Auth0 token is persisted or used for downstream API validation. There are
+no refresh-token grants or application token-exchange endpoints. Heartbeat validates the local
+Redis session and refreshes grants through permission-service, but never calls Auth0.
 
 ## Application Configuration
 
 In Auth0, open `Applications > [browser app] > Settings`.
 
+- **Allowed Callback URLs**: include the deployed `/login/oauth2/code/idp` URL
+- **Allowed Logout URLs**: include the configured logout return URL
+- **Implicit / Hybrid Flow Lifetime**: not relevant for Session Gateway
 - **Refresh Token Rotation**: not required (Session Gateway does not request refresh tokens)
 - **ID Token Expiration**: `3600` seconds
 

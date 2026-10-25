@@ -13,7 +13,9 @@
 
 ## Token Protection
 
-- IDP tokens are consumed at login time only; nothing from Auth0 is stored after the session is created
+- The ID token is validated and userinfo is retrieved during login; the access token is used only
+  for that userinfo request
+- No Auth0 token is persisted or used for downstream API validation after the session is created
 - Browser only sees opaque session cookie; all sensitive data lives in Redis
 - Session hash deleted on logout, cookie cleared
 
@@ -68,18 +70,22 @@ Session Gateway never serves Spring Boot white-label HTML for uncommitted browse
 
 - **Callback IdP/auth failures** redirect to `/login?error=auth_failed`
 - **Callback non-auth failures** redirect to `/oops`
-- **All other browser navigation failures** redirect to `/oops` via a global `ErrorWebExceptionHandler`
+- **All other browser navigation failures** redirect to `/oops` via a global `WebExceptionHandler` (`BrowserErrorRedirectHandler`)
 - **API and machine requests** always receive JSON error responses, never redirects
 
-Browser navigation is classified using `Sec-Fetch-Mode`, `Sec-Fetch-Dest`, and `Accept: text/html`
-signals, with explicit API path exclusion to protect JSON contracts.
+Error handling is classified by request path. The public `/auth/` and `/api/` prefixes, the
+internal `/internal/` prefix, and the OpenAPI, Swagger UI, and actuator path families are machine
+routes, so exceptions on those paths continue to the shared JSON error handler. Uncommitted errors
+on every other path redirect to `/oops`. Dedicated OAuth2 callback handlers take precedence and
+preserve the controlled login or `/oops` redirects described above; the classification does not
+inspect browser request headers.
 
 ## Machine Error Contract
 
-The versioned `GET /auth/v1/user` and `GET /auth/v1/session` endpoints return
-`application/json` errors using the shared `ApiErrorResponse` shape. A missing, blank, unknown,
-expired, deactivated, or concurrently invalidated session returns `401` with
-`type: UNAUTHORIZED` and the generic message `Authentication required`. The response never
+The versioned `/auth/` endpoints and internal service endpoints return `application/json` errors
+using the shared `ApiErrorResponse` shape. For `GET /auth/v1/user` and `GET /auth/v1/session`, a
+missing, blank, unknown, expired, deactivated, or concurrently invalidated session returns `401`
+with `type: UNAUTHORIZED` and the generic message `Authentication required`. The response never
 identifies the rejected cookie, account state, or underlying authentication exception. Optional
 error properties such as `code` and `fieldErrors` are omitted when they have no value; Session
 Gateway does not emit null-valued JSON properties in any response type.

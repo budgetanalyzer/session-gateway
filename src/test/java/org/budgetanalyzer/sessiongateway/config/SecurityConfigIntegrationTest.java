@@ -66,39 +66,22 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     var authorizationLocation = authorizationResult.getResponseHeaders().getLocation();
     assertThat(authorizationLocation).isNotNull();
 
-    var state =
-        UriComponentsBuilder.fromUri(authorizationLocation)
-            .build()
-            .getQueryParams()
-            .getFirst("state");
+    var authorizationQueryParameters =
+        UriComponentsBuilder.fromUri(authorizationLocation).build().getQueryParams();
+    assertThat(authorizationQueryParameters).doesNotContainKey("audience");
+
+    var state = authorizationQueryParameters.getFirst("state");
     assertThat(state).isNotBlank();
     state = URLDecoder.decode(state, StandardCharsets.UTF_8);
 
-    var nonce =
-        UriComponentsBuilder.fromUri(authorizationLocation)
-            .build()
-            .getQueryParams()
-            .getFirst("nonce");
+    var nonce = authorizationQueryParameters.getFirst("nonce");
     assertThat(nonce).isNotBlank();
 
-    var codeChallenge =
-        UriComponentsBuilder.fromUri(authorizationLocation)
-            .build()
-            .getQueryParams()
-            .getFirst("code_challenge");
+    var codeChallenge = authorizationQueryParameters.getFirst("code_challenge");
     assertThat(codeChallenge).isNotBlank();
-    assertThat(
-            UriComponentsBuilder.fromUri(authorizationLocation)
-                .build()
-                .getQueryParams()
-                .getFirst("code_challenge_method"))
-        .isEqualTo("S256");
+    assertThat(authorizationQueryParameters.getFirst("code_challenge_method")).isEqualTo("S256");
 
-    var redirectUri =
-        UriComponentsBuilder.fromUri(authorizationLocation)
-            .build()
-            .getQueryParams()
-            .getFirst("redirect_uri");
+    var redirectUri = authorizationQueryParameters.getFirst("redirect_uri");
     assertThat(redirectUri).isNotBlank();
 
     var authorizationRequestFields = readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + state);

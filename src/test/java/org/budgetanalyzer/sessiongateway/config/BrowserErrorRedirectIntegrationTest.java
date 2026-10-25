@@ -39,6 +39,7 @@ class BrowserErrorRedirectIntegrationTest extends AbstractIntegrationTest {
 
   private static final String BROWSER_SIMULATE_ERROR_PATH = "/test/simulate-filter-error";
   private static final String API_SIMULATE_ERROR_PATH = "/api/test/simulate-filter-error";
+  private static final String INTERNAL_SIMULATE_ERROR_PATH = "/internal/test/simulate-filter-error";
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
 
   @Autowired private SessionWriter sessionWriter;
@@ -54,7 +55,9 @@ class BrowserErrorRedirectIntegrationTest extends AbstractIntegrationTest {
     WebFilter filterErrorSimulationWebFilter() {
       return (exchange, chain) -> {
         var path = exchange.getRequest().getPath().pathWithinApplication().value();
-        if (BROWSER_SIMULATE_ERROR_PATH.equals(path) || API_SIMULATE_ERROR_PATH.equals(path)) {
+        if (BROWSER_SIMULATE_ERROR_PATH.equals(path)
+            || API_SIMULATE_ERROR_PATH.equals(path)
+            || INTERNAL_SIMULATE_ERROR_PATH.equals(path)) {
           var status = exchange.getRequest().getQueryParams().getFirst("status");
           if (status != null) {
             return Mono.error(
@@ -115,6 +118,21 @@ class BrowserErrorRedirectIntegrationTest extends AbstractIntegrationTest {
     webTestClient
         .get()
         .uri(API_SIMULATE_ERROR_PATH)
+        .exchange()
+        .expectStatus()
+        .is5xxServerError()
+        .expectHeader()
+        .contentType(MediaType.APPLICATION_JSON)
+        .expectBody()
+        .jsonPath("$.type")
+        .isEqualTo("INTERNAL_ERROR");
+  }
+
+  @Test
+  void internalRouteFilterFailureReturnsJson() {
+    webTestClient
+        .get()
+        .uri(INTERNAL_SIMULATE_ERROR_PATH)
         .exchange()
         .expectStatus()
         .is5xxServerError()

@@ -68,9 +68,7 @@ curl http://localhost:8081/actuator/health
 
 JaCoCo writes the HTML report to `build/reports/jacoco/test/html/index.html`
 and the XML report to `build/reports/jacoco/test/jacocoTestReport.xml`.
-`check` enforces the Phase 2 coverage gates: 90% line coverage and 65% branch
-coverage. The recorded baseline is 92.77% line / 67.86% branch; raise the branch
-gate after targeted reactive session and security conditional tests.
+`check` enforces the configured coverage gates: 90% line coverage and 65% branch coverage.
 
 ## Code Formatting
 

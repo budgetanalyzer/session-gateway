@@ -1,6 +1,6 @@
 # Session Gateway
 
-> "Archetype: service. Role: Session-based edge authorization; manages OAuth2 flows, session cookies, and IDP grant validation."
+> "Archetype: service. Role: Session-based edge authorization; manages OAuth2 flows and browser session cookies."
 >
 > — [AGENTS.md](AGENTS.md#tree-position)
 
@@ -31,11 +31,11 @@ Browser → Istio Ingress (:443)
 
 Bare `/login` is a frontend route served through NGINX. The real OAuth2 flow starts at `/oauth2/authorization/idp`.
 
-Versioned machine endpoints under `/auth/v1/*` return JSON errors using the shared
-`ApiErrorResponse` contract. Authentication failures use `UNAUTHORIZED` with the generic message
-`Authentication required`; heartbeat dependency failures use `SERVICE_UNAVAILABLE`. Browser
-navigation and OAuth2 protocol routes keep their redirect behavior and do not use this machine
-response policy.
+Machine endpoints under `/auth/v1/*` and `/internal/v1/*` return JSON errors using the shared
+`ApiErrorResponse` contract. Authentication failures on the auth endpoints use `UNAUTHORIZED`
+with the generic message `Authentication required`; heartbeat dependency failures use
+`SERVICE_UNAVAILABLE`. Browser navigation and OAuth2 protocol routes keep their redirect behavior
+and do not use this machine response policy.
 
 ## Tech Stack
 

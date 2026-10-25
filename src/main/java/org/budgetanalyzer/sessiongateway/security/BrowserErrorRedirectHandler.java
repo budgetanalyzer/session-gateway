@@ -24,7 +24,7 @@ public class BrowserErrorRedirectHandler implements WebExceptionHandler, Ordered
 
   private static final Logger log = LoggerFactory.getLogger(BrowserErrorRedirectHandler.class);
   private static final Set<String> API_PATH_PREFIXES =
-      Set.of("/auth/", "/api/", "/v3/api-docs", "/swagger-ui", "/actuator/");
+      Set.of("/auth/", "/api/", "/internal/", "/v3/api-docs", "/swagger-ui", "/actuator/");
 
   private static final String OOPS_PATH = "/oops";
 

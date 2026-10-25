@@ -1,15 +1,12 @@
 server:
   port: 8081
-  # Listen on all interfaces so NGINX container can reach us via host.docker.internal
+  # Listen on all interfaces so the ingress path can reach the service
   address: 0.0.0.0
   # Enable forward headers strategy for WebFlux
-  # This ensures Spring Security correctly constructs redirect URIs when behind NGINX proxy
+  # This ensures Spring Security constructs redirect URIs from the browser-facing Istio origin
   # Without this, the redirect_uri sent to the IDP may be incorrect
   forward-headers-strategy: framework
-  # Note: SSL is handled by NGINX - Session Gateway runs on HTTP internally
-  error:
-    whitelabel:
-      enabled: false
+  # Browser TLS terminates at Istio ingress; Session Gateway runs on HTTP behind the ingress
 
 logging:
   level:
@@ -77,7 +74,6 @@ session:
 
 # IDP configuration
 idp:
-  audience: ${IDP_AUDIENCE:https://api.budgetanalyzer.org}
   http-client:
     pool-name: ${IDP_HTTP_CLIENT_POOL_NAME:idp-oidc-callback}
     max-connections: ${IDP_HTTP_CLIENT_MAX_CONNECTIONS:50}
@@ -91,7 +87,7 @@ idp:
     read-timeout: ${IDP_HTTP_CLIENT_READ_TIMEOUT:10s}
     write-timeout: ${IDP_HTTP_CLIENT_WRITE_TIMEOUT:10s}
   logout:
-    return-to: ${IDP_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}  # Where to redirect after logout (Session Gateway)
+    return-to: ${IDP_LOGOUT_RETURN_TO:https://app.budgetanalyzer.localhost/peace}  # Browser destination after Auth0 logout
     url-template: ${IDP_LOGOUT_URL_TEMPLATE:${spring.security.oauth2.client.provider.idp.issuer-uri}/v2/logout?returnTo={returnTo}&client_id={clientId}}
 
 # Springdoc / Swagger UI

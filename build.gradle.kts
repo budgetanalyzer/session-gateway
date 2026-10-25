@@ -51,7 +51,7 @@ dependencies {
     implementation(libs.spring.boot.starter.webflux)
 
     // OAuth2 Client for Auth0 integration
-    implementation(libs.spring.boot.starter.oauth2.client)
+    implementation(libs.spring.boot.starter.security.oauth2.client)
 
     // Redis for session storage
     implementation(libs.spring.boot.starter.data.redis)
@@ -63,11 +63,10 @@ dependencies {
     implementation(libs.springdoc.openapi)
 
     // Test dependencies
-    testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.starter.webflux.test)
     testRuntimeOnly(libs.junit.platform.launcher)
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.testcontainers)
-    testImplementation(libs.testcontainers.junit.jupiter)
     testImplementation(libs.wiremock.standalone)
     testImplementation(libs.awaitility)
     testImplementation(libs.reactor.test)

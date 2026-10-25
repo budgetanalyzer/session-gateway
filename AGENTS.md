@@ -103,7 +103,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 **When to consult service-common documentation:**
 - **Implementing new features** → Read [service-common/AGENTS.md](../service-common/AGENTS.md) for architecture patterns
 - **Handling errors** → Read [error-handling.md](../service-common/docs/error-handling.md) for exception hierarchy
-- **Writing tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit 5 + TestContainers conventions
+- **Writing tests** → Read [testing-patterns.md](../service-common/docs/testing-patterns.md) for JUnit + Testcontainers conventions
 - **Code quality issues** → Read [code-quality-standards.md](../service-common/docs/code-quality-standards.md) for Spotless, Checkstyle, var usage
 
 **Quick reference:**
@@ -129,7 +129,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - **Defense-in-Depth Security**: Session-based edge authorization in the hybrid architecture (Istio ingress → Session Gateway or NGINX, with ext_authz enforcing `/api/*`)
 - **ext_authz-Based Authorization**: The Istio ingress Envoy proxy calls the ext_authz HTTP service, which reads session hashes directly from Redis and injects X-User-Id/X-Roles/X-Permissions headers into API requests
 - **Token Protection**: IDP tokens are consumed at login time only; nothing from Auth0 is persisted after the session is created. Browser only sees an opaque session cookie
-- **Browser-Only Auth**: Session Gateway exclusively serves browser clients. There is no token exchange or bearer token surface
+- **Browser-Only Auth**: Session Gateway exclusively serves browser clients. There is no application token-exchange endpoint or bearer-token API surface
 - **Behind Istio Ingress**: Browser auth and OAuth2 protocol endpoints reach Session Gateway through Istio ingress; bare `/login` is frontend-owned and served through NGINX
 - **Stateful Sessions**: Redis hashes (`session:{id}`) provide distributed session storage — identity, roles, permissions, expiry — read by both Session Gateway and the ext_authz service
 - **Targeted Session Revocation**: Redis sets (`user_sessions:{userId}`) index all active sessions for a user so permission-service can revoke them without scanning `session:*`
@@ -200,61 +200,55 @@ grep "implementation" build.gradle.kts
 **Service-Common Integration**:
 - Auto-configured reactive utilities from `org.budgetanalyzer:service-web:<service-common-version>`
 - Provides: HTTP request/response logging, distributed tracing correlation IDs, safe logging with sensitive data masking, global exception handling
-- OAuth2ResourceServerSecurityConfig explicitly excluded (Session Gateway is OAuth2 Client, not Resource Server)
-- DataSource/JPA auto-configuration excluded (no database required)
+- `SecurityConfig` defines its own `SecurityWebFilterChain`, so service-web's shared claims-header reactive security chain backs off (Session Gateway is an OAuth2 Client, not a claims-header resource service)
+- Session persistence uses Redis; the runtime has no JDBC or JPA dependency
 
 ## Key Components
 
+Discover current classes from source. Do not maintain a class-by-class inventory here.
+
 **Discovery**:
 ```bash
-# List all Java source files by type
+# All main-source classes, grouped by package
 find src/main/java -name "*.java" | sort
 
-# Find configuration classes
-grep -r "class.*Config" src/main/java
+# Spring configuration classes and bound configuration properties
+rg -l "@Configuration|@ConfigurationProperties" src/main/java
 
-# Find controllers
-grep -r "@RestController\|@Controller" src/main/java
+# Controllers and their endpoint mappings
+rg -n "@RestController|@Controller|@(Get|Post|Put|Patch|Delete|Request)Mapping" src/main/java
 
-# Find custom filters
-find src -name "*Filter*.java" -o -name "*FilterFactory.java"
+# Web filters, WebClient exchange filters, and exception handlers
+rg -l "WebFilter|ExchangeFilterFunction|WebExceptionHandler|@ControllerAdvice|@RestControllerAdvice" src/main/java
+
+# Downstream service clients and Redis session components
+find src/main/java \( -path "*/service/*" -o -path "*/session/*" \) -name "*.java" | sort
+
+# Reactive utilities auto-configured from service-web
+find ../service-common/service-web/src/main/java -path "*/reactive/*" -name "*.java" | sort
 ```
 
-**Component Types**:
+**Package orientation** (under `src/main/java/org/budgetanalyzer/sessiongateway/`):
+- `config/`: Security filter chain, OAuth2 client wiring, WebClient, OpenAPI, and configuration properties
+- `api/`: Auth/session lifecycle controllers, internal revocation, and `api/response/` records
+- `security/`: Redis-backed OAuth2 and security-context repositories, redirect validation, and browser error handling
+- `service/`: Permission-service client
+- `session/`: Redis session hash reads and writes, hash field names, and session cookie handling
 
-**Configuration** (src/main/java/.../config/):
-- SecurityConfig: OAuth2 login, authorization, entry points, return URL handling, permission fetching on login success, session creation
-- SessionConfig: Clock bean
-- OAuth2ClientConfig: OAuth2 client, authorization request repository, and authorized client repository configuration
-- WebClientConfig: WebClient bean for external HTTP calls
+**Component rules**:
+- Keep one application-owned `SecurityWebFilterChain` for OAuth2 login, per-path authorization, and login-success session creation after permission-service synchronization
+- Store OAuth2 authorization requests, including `returnUrl`, in Redis keyed by `state`; hold OAuth2 authorized clients per exchange only. Neither may depend on `WebSession`, and no IdP token may be persisted
+- Resolve the authenticated `SecurityContext` from the public session cookie and the Redis `session:{id}` hash, not from Spring Session
+- Keep Redis session hash, user-index, and cookie handling in `session/`; hash field names, key prefix, and cookie name are cross-repo contracts with ext_authz
+- Keep browser error redirects path-classified; machine paths must fall through to service-common JSON errors
+- Route IdP callback traffic (token exchange, userinfo, JWKS) through the dedicated IdP HTTP client, separate from the permission-service WebClient
+- Rely on service-web auto-configuration for reactive HTTP logging, correlation IDs, and exception handling; `SafeLogger` remains opt-in (see Best Practices)
 
-**Controllers** (src/main/java/.../api/):
-- UserController: Returns current authenticated user info
-- LogoutController: Session deletion, cookie clearing, and Auth0 logout
-- SessionController: Session heartbeat — validates the local Redis session, refreshes authorization, and conditionally extends its TTL
-
-**Security** (src/main/java/.../security/):
-- RedirectUrlValidator: Validates redirect URLs to prevent open redirect attacks
-- RedisAuthorizationRequestRepository: Stores OAuth2 authorization requests in Redis (keyed by state parameter), carries return URL through the OAuth2 round-trip
-- RedisSessionSecurityContextRepository: Resolves session cookie → Redis hash → SecurityContext for authenticated requests
-- ExchangeServerOAuth2AuthorizedClientRepository: Stores/loads OAuth2 authorized clients per-exchange (not in WebSession)
-- SessionPrincipal: Authentication principal holding session data
-
-**Services** (src/main/java/.../service/):
-- PermissionServiceClient: Reactive WebClient for login-time user synchronization and bounded heartbeat authorization lookup (no bearer auth — platform network isolation and mesh policy enforcement)
-
-**Session** (src/main/java/.../session/):
-- SessionWriter: Creates, updates, and deletes session Redis hashes (`session:{id}`)
-- SessionReader: Reads and deserializes session hashes from Redis
-- SessionData: Record holding deserialized session fields
-- SessionHashFields: Constants for Redis hash field names (user_id, roles, permissions, expires_at, etc.)
-- SessionCookieHelper: Manages session cookies (set, clear, read)
-
-**Service-Common Utilities** (auto-configured from service-web):
-- ReactiveHttpLoggingFilter: HTTP request/response logging (replaces RequestLoggingWebFilter)
-- ReactiveCorrelationIdFilter: Adds correlation IDs for distributed tracing
-- ReactiveApiExceptionHandler: Global exception handling for WebFlux
-- SafeLogger (org.budgetanalyzer.core.logging): Opt-in safe logging utilities — `SafeLogger.toJson()` for `@Sensitive` masking, `SafeLogger.mask()` for string masking, `SafeLogger.truncateId()` for truncating identifiers (session IDs, OAuth2 state)
+**Consultation triggers**:
+- Read [docs/security.md](docs/security.md) before changing cookies, token handling, return URL validation, internal revocation, or heartbeat security behavior; read its [Browser Error Strategy](docs/security.md#browser-error-strategy) and [Machine Error Contract](docs/security.md#machine-error-contract) before adding or changing an exception handler or error redirect
+- Read [docs/session-configuration.md](docs/session-configuration.md) before changing session properties, the Redis session or user-index contract, heartbeat refresh, the [IdP callback HTTP client](docs/session-configuration.md#idp-callback-http-client), or [callback diagnostics](docs/session-configuration.md#callback-diagnostics)
+- Read [docs/configuration.md](docs/configuration.md) before adding, renaming, or removing an environment variable
+- Read [service-common/AGENTS.md](../service-common/AGENTS.md) before overriding or replacing an auto-configured service-web filter or exception handler
 
 ## API Endpoints
 
@@ -263,8 +257,8 @@ find src -name "*Filter*.java" -o -name "*FilterFactory.java"
 # Find all endpoint mappings
 grep -r "@GetMapping\|@PostMapping\|@RequestMapping" src/main/java
 
-# Check configured routes
-cat src/main/resources/application.yml | grep -A 5 "routes:"
+# Check per-path authorization rules
+grep -n "pathMatchers" src/main/java/org/budgetanalyzer/sessiongateway/config/SecurityConfig.java
 ```
 
 **Authentication Flow Endpoints**:
@@ -286,7 +280,7 @@ redirects to `/login?error=auth_failed&returnUrl=...` so the frontend can retry 
 losing the original deep link.
 
 **Return URL Security**:
-- All redirect URLs validated by `RedirectUrlValidator` (src/main/java/.../security/RedirectUrlValidator.java:27)
+- All redirect URLs validated by `RedirectUrlValidator.isValidRedirectUrl` (src/main/java/.../security/RedirectUrlValidator.java)
 - Only same-origin URLs allowed (prevents open redirect attacks)
 - Rejects: external URLs, protocol-relative URLs, `javascript:`, `data:`, and other malicious schemes
 - Invalid URLs safely default to `/` redirect
@@ -329,8 +323,8 @@ find . -maxdepth 3 -name "*.yml" -o -name "*.properties" -o -name ".env"
 # View Spring configuration
 cat src/main/resources/application.yml
 
-# Check environment variables
-grep "SPRING_SECURITY_OAUTH2" .env
+# Check environment variable placeholders (documented in docs/configuration.md)
+grep -n '\${' src/main/resources/application.yml
 ```
 
 **Configuration Categories**:
@@ -340,6 +334,8 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - Scopes: openid, profile, email
 - Redirect URI for callback
 - Authorization-code flow only — no refresh tokens are requested
+- The login callback validates the ID token and retrieves userinfo; its access token is not
+  persisted or used for downstream API validation
 - Recommended Auth0 dashboard values and rationale are documented in [docs/auth0-settings.md](docs/auth0-settings.md)
 
 **Session**:
@@ -363,7 +359,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - TLS configuration via Spring SSL bundles
 
 **Logging**:
-- OAuth2 client debug logging
+- Framework OAuth2 and WebClient logging stays at `INFO` by default; callback failures use sanitized diagnostics (see [docs/session-configuration.md](docs/session-configuration.md))
 - Session management logging
 
 **HTTP Logging** (from service-common):
@@ -379,7 +375,7 @@ grep "SPRING_SECURITY_OAUTH2" .env
 - `budgetanalyzer.service.http-logging.exclude-patterns`: List of path patterns to exclude (e.g., `/actuator/**`)
 - `budgetanalyzer.service.http-logging.log-errors-only`: Only log requests that result in errors
 
-Example configuration (application.yml lines 97-113):
+Example configuration (excerpt from application.yml):
 ```yaml
 budgetanalyzer:
   service:
@@ -544,7 +540,8 @@ For detailed architecture diagrams and security design:
 ## Security Considerations
 
 **Token Protection**:
-- IDP tokens are consumed at login time only and never written to Redis
+- The ID token is validated and userinfo is retrieved during login; the access token is used only
+  for that userinfo request, and no IDP token is written to Redis
 - Browser only sees an opaque session cookie; all sensitive data lives in Redis
 - Session hash deleted on logout
 
@@ -607,12 +604,14 @@ find src/test -name "*.java"
 
 Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
-**Direct Dependencies**:
-- **NGINX Gateway**: Frontend/API gateway and downstream route target when requests reach Session Gateway directly
-- **ext_authz HTTP Service**: Istio ingress authorization target — validates sessions from Redis and injects claims headers
-- **Permission Service**: Provides user roles and permissions (called at login, no bearer auth)
+**Runtime Dependencies**:
+- **Permission Service**: Provides user roles and permissions (called at login and heartbeat, no bearer auth)
 - **Redis**: Session persistence (hashes under `session:{id}`)
-- **Auth0**: Identity provider (login-time only)
+- **Auth0**: Identity provider (login and logout)
+
+**Platform Routing Peers**:
+- **NGINX Gateway**: Serves the frontend and routes APIs after ingress authorization; Session Gateway does not proxy to it
+- **ext_authz HTTP Service**: Istio ingress authorization target — validates the same Redis sessions and injects claims headers
 
 **Indirect (via Istio ingress and NGINX)**:
 - **Transaction Service**: Business logic for transactions
@@ -680,7 +679,7 @@ When SSL issues occur, guide the user to run certificate scripts on their host m
 When working on this service:
 - This is a security-critical component - always consider threat models
 - Same-origin architecture means no CORS configuration needed (browser perspective)
-- Session Gateway exclusively serves browser clients (OAuth2 + cookies); there is no token exchange or bearer token surface
+- Session Gateway exclusively serves browser clients (OAuth2 + cookies); there is no application token-exchange endpoint or bearer-token API surface
 - Auth and OAuth2 protocol endpoints flow through Istio ingress to Session Gateway; bare `/login` is frontend-owned through NGINX
 - ext_authz reads session hashes directly from Redis — no JWT infrastructure needed, no separate ext_authz schema
 - Permission-service must be reachable for login and successful heartbeat extension
@@ -692,7 +691,7 @@ When working on this service:
 - Spring WebFlux reactive stack - avoid blocking operations
 - Test OAuth2 flows end-to-end - unit tests don't catch integration issues
 - Frontend heartbeat (`GET /auth/v1/session`) is the only mechanism for sliding session TTL — API activity through ext_authz does NOT extend sessions
-- Auth0 is contacted only at login (authorization-code flow) and logout — heartbeat uses local Redis plus permission-service authorization, never Auth0
+- Session Gateway calls Auth0 only during login; logout redirects the browser to Auth0, while heartbeat uses local Redis plus permission-service authorization and never calls Auth0
 - Follow the hybrid architecture: Istio ingress (edge auth/routing) → Session Gateway for auth endpoints, and Istio ingress → ext_authz → NGINX for `/api/*`
 
 ---

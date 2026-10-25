@@ -25,9 +25,8 @@ import org.springframework.security.web.server.context.ServerSecurityContextRepo
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import org.springframework.web.server.ServerWebExchange;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.api.ApiErrorType;
@@ -44,36 +43,36 @@ public class SecurityConfig {
 
   private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
-  private final ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
+  private final ServerOAuth2AuthorizationRequestResolver serverOAuth2AuthorizationRequestResolver;
   private final ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest>
-      authorizationRequestRepository;
-  private final ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
+      serverAuthorizationRequestRepository;
+  private final ServerOAuth2AuthorizedClientRepository serverOAuth2AuthorizedClientRepository;
   private final ServerSecurityContextRepository serverSecurityContextRepository;
   private final PermissionServiceClient permissionServiceClient;
   private final SessionWriter sessionWriter;
   private final SessionCookieHelper sessionCookieHelper;
   private final OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
 
   public SecurityConfig(
-      ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver,
-      RedisAuthorizationRequestRepository authorizationRequestRepository,
-      ServerOAuth2AuthorizedClientRepository authorizedClientRepository,
+      ServerOAuth2AuthorizationRequestResolver serverOAuth2AuthorizationRequestResolver,
+      RedisAuthorizationRequestRepository serverAuthorizationRequestRepository,
+      ServerOAuth2AuthorizedClientRepository serverOAuth2AuthorizedClientRepository,
       ServerSecurityContextRepository serverSecurityContextRepository,
       PermissionServiceClient permissionServiceClient,
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
       OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
-      ObjectMapper objectMapper) {
-    this.authorizationRequestResolver = authorizationRequestResolver;
-    this.authorizationRequestRepository = authorizationRequestRepository;
-    this.authorizedClientRepository = authorizedClientRepository;
+      JsonMapper jsonMapper) {
+    this.serverOAuth2AuthorizationRequestResolver = serverOAuth2AuthorizationRequestResolver;
+    this.serverAuthorizationRequestRepository = serverAuthorizationRequestRepository;
+    this.serverOAuth2AuthorizedClientRepository = serverOAuth2AuthorizedClientRepository;
     this.serverSecurityContextRepository = serverSecurityContextRepository;
     this.permissionServiceClient = permissionServiceClient;
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
     this.oauth2CallbackRedirectResolver = oauth2CallbackRedirectResolver;
-    this.objectMapper = objectMapper;
+    this.jsonMapper = jsonMapper;
   }
 
   @Bean
@@ -102,9 +101,9 @@ public class SecurityConfig {
         .oauth2Login(
             oauth2 ->
                 oauth2
-                    .authorizationRequestResolver(authorizationRequestResolver)
-                    .authorizationRequestRepository(authorizationRequestRepository)
-                    .authorizedClientRepository(authorizedClientRepository)
+                    .authorizationRequestResolver(serverOAuth2AuthorizationRequestResolver)
+                    .authorizationRequestRepository(serverAuthorizationRequestRepository)
+                    .authorizedClientRepository(serverOAuth2AuthorizedClientRepository)
                     .securityContextRepository(serverSecurityContextRepository)
                     .authenticationSuccessHandler(this::handleAuthenticationSuccess)
                     .authenticationFailureHandler(
@@ -205,7 +204,7 @@ public class SecurityConfig {
     response.setStatusCode(HttpStatus.UNAUTHORIZED);
     response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
 
-    return Mono.fromCallable(() -> objectMapper.writeValueAsBytes(apiErrorResponse))
+    return Mono.fromCallable(() -> jsonMapper.writeValueAsBytes(apiErrorResponse))
         .flatMap(body -> response.writeWith(Mono.just(response.bufferFactory().wrap(body))));
   }
 }

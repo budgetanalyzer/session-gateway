@@ -56,6 +56,21 @@ class BrowserErrorRedirectHandlerTest {
   }
 
   @Test
+  void internalPathPassesThroughToSharedJsonHandler() {
+    var exchange =
+        MockServerWebExchange.from(
+            MockServerHttpRequest.get("/internal/v1/sessions/users/user-123").build());
+    var runtimeException = new RuntimeException("boom");
+
+    StepVerifier.create(browserErrorRedirectHandler.handle(exchange, runtimeException))
+        .expectErrorSatisfies(throwable -> assertThat(throwable).isSameAs(runtimeException))
+        .verify();
+
+    assertThat(exchange.getResponse().getStatusCode()).isNull();
+    assertThat(exchange.getResponse().getHeaders().getLocation()).isNull();
+  }
+
+  @Test
   void committedResponsePassesThrough() {
     var exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/oops-source").build());
     exchange.getResponse().setStatusCode(HttpStatus.OK);
