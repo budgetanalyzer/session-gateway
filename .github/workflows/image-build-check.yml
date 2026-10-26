@@ -6,7 +6,7 @@ on:
     paths:
       - Dockerfile
       - gradlew
-      - gradle/**
+      - gradle/wrapper/**
       - build.gradle.kts
       - settings.gradle.kts
       - .github/workflows/image-build-check.yml
