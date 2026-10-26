@@ -1,0 +1,52 @@
+name: Image Build Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - gradlew
+      - gradle/**
+      - build.gradle.kts
+      - settings.gradle.kts
+      - .github/workflows/image-build-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+concurrency:
+  group: image-build-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image-build-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Build release image without pushing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: false
+          outputs: type=cacheonly
+          secrets: |
+            github_actor=${{ secrets.SERVICE_COMMON_PACKAGES_USERNAME }}
+            github_token=${{ secrets.SERVICE_COMMON_PACKAGES_READ_TOKEN }}
