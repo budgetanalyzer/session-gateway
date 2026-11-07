@@ -63,9 +63,12 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
 
     assertThat(sessionId).isNotBlank();
 
-    var sessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId);
+    var sessionFields =
+        readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId));
     var sessionTtl =
-        reactiveStringRedisTemplate.getExpire(TEST_SESSION_KEY_PREFIX + sessionId).block();
+        reactiveStringRedisTemplate
+            .getExpire(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId))
+            .block();
     var userSessionsTtl = reactiveStringRedisTemplate.getExpire(PRIMARY_USER_SESSIONS_KEY).block();
     var sessionData = sessionReader.readSession(sessionId).block();
 
@@ -102,7 +105,46 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     assertThat(sessionData.permissions()).containsExactly("transactions:read");
     assertThat(sessionData.createdAt()).isEqualTo(BASE_INSTANT);
     assertThat(sessionData.expiresAt()).isEqualTo(BASE_INSTANT.plusSeconds(900));
-    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).containsExactly(sessionId);
+    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY))
+        .containsExactly(SessionTokenDigest.sha256Hex(sessionId));
+  }
+
+  @Test
+  void sessionLifecycleNeverStoresRawTokenInRedisKeysMembersOrValues() {
+    var sessionToken = createSession(PRIMARY_USER_ID);
+    var sessionDigest = SessionTokenDigest.sha256Hex(sessionToken);
+
+    sessionWriter
+        .refreshSessionAuthorization(
+            sessionToken,
+            PRIMARY_USER_ID,
+            List.of("ADMIN"),
+            List.of("transactions:write"),
+            BASE_INSTANT.plusSeconds(600),
+            600)
+        .block();
+
+    var redisKeys = reactiveStringRedisTemplate.keys("*").collectList().block();
+
+    assertThat(redisKeys)
+        .contains(TEST_SESSION_KEY_PREFIX + sessionDigest)
+        .noneMatch(redisKey -> redisKey.contains(sessionToken));
+    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).containsExactly(sessionDigest);
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionDigest).values())
+        .noneMatch(fieldValue -> fieldValue.contains(sessionToken));
+    for (var userSessionsKey :
+        reactiveStringRedisTemplate
+            .keys(SessionHashFields.USER_SESSIONS_KEY_PREFIX + "*")
+            .collectList()
+            .block()) {
+      assertThat(readSetMembers(userSessionsKey))
+          .noneMatch(member -> member.contains(sessionToken));
+    }
+
+    sessionWriter.deleteSession(sessionToken).block();
+
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionDigest)).isEmpty();
+    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).isEmpty();
   }
 
   @Test
@@ -115,7 +157,10 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     var userSessionsTtl = reactiveStringRedisTemplate.getExpire(PRIMARY_USER_SESSIONS_KEY).block();
 
     assertThat(userSessionIds)
-        .containsExactlyInAnyOrder(firstSessionId, secondSessionId, thirdSessionId);
+        .containsExactlyInAnyOrder(
+            SessionTokenDigest.sha256Hex(firstSessionId),
+            SessionTokenDigest.sha256Hex(secondSessionId),
+            SessionTokenDigest.sha256Hex(thirdSessionId));
     assertThat(userSessionsTtl).isNotNull();
     assertThat(userSessionsTtl).isPositive();
     assertThat(userSessionsTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
@@ -129,26 +174,33 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     var deleted = sessionWriter.deleteSession(deletedSessionId).block();
 
     assertThat(deleted).isTrue();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + deletedSessionId)).isEmpty();
-    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).containsExactly(remainingSessionId);
+    assertThat(
+            readHashEntries(
+                TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(deletedSessionId)))
+        .isEmpty();
+    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY))
+        .containsExactly(SessionTokenDigest.sha256Hex(remainingSessionId));
   }
 
   @Test
   void deleteSessionWhenHashIsMissingReturnsFalseAndLeavesStaleUserIndexEntry() {
     var sessionId = createSession(PRIMARY_USER_ID);
 
-    reactiveStringRedisTemplate.unlink(TEST_SESSION_KEY_PREFIX + sessionId).block();
+    reactiveStringRedisTemplate
+        .unlink(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId))
+        .block();
 
     var deleted = sessionWriter.deleteSession(sessionId).block();
 
     assertThat(deleted).isFalse();
-    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).containsExactly(sessionId);
+    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY))
+        .containsExactly(SessionTokenDigest.sha256Hex(sessionId));
   }
 
   @Test
   void refreshSessionAuthorizationReplacesGrantsAndRefreshesBothRedisTtls() {
     var sessionId = createSession(PRIMARY_USER_ID);
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
 
     reactiveStringRedisTemplate
         .<String, String>opsForHash()
@@ -203,7 +255,7 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
             .block();
 
     assertThat(expiresAt).isEqualTo(BASE_INSTANT.plusSeconds(600));
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId)))
         .containsEntry(SessionHashFields.ROLES, "")
         .containsEntry(SessionHashFields.PERMISSIONS, "");
   }
@@ -211,12 +263,15 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
   @Test
   void refreshSessionAuthorizationReindexesSessionWhenUserIndexEntryIsMissing() {
     var sessionId = createSession(PRIMARY_USER_ID);
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
 
     reactiveStringRedisTemplate.expire(sessionKey, Duration.ofSeconds(30)).block();
     reactiveStringRedisTemplate.expire(PRIMARY_USER_SESSIONS_KEY, Duration.ofSeconds(30)).block();
 
-    reactiveStringRedisTemplate.opsForSet().remove(PRIMARY_USER_SESSIONS_KEY, sessionId).block();
+    reactiveStringRedisTemplate
+        .opsForSet()
+        .remove(PRIMARY_USER_SESSIONS_KEY, SessionTokenDigest.sha256Hex(sessionId))
+        .block();
 
     var expiresAt =
         sessionWriter
@@ -240,7 +295,8 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     assertThat(sessionTtl).isNotNull();
     assertThat(sessionTtl).isGreaterThan(Duration.ofSeconds(30));
     assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(600));
-    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).containsExactly(sessionId);
+    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY))
+        .containsExactly(SessionTokenDigest.sha256Hex(sessionId));
     assertThat(userSessionsTtl).isNotNull();
     assertThat(userSessionsTtl).isGreaterThan(Duration.ofSeconds(30));
     assertThat(userSessionsTtl).isLessThanOrEqualTo(Duration.ofSeconds(600));
@@ -250,7 +306,7 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
   void refreshSessionAuthorizationNeverShortensExistingUserIndexTtl() {
     var cappedSessionId = createSession(PRIMARY_USER_ID);
     var otherSessionId = createSession(PRIMARY_USER_ID);
-    var cappedSessionKey = TEST_SESSION_KEY_PREFIX + cappedSessionId;
+    var cappedSessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(cappedSessionId);
 
     var expiresAt =
         sessionWriter
@@ -267,7 +323,9 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     // session was created, so a later read of the other session can only report less time left.
     var userSessionsTtl = reactiveStringRedisTemplate.getExpire(PRIMARY_USER_SESSIONS_KEY).block();
     var otherSessionTtl =
-        reactiveStringRedisTemplate.getExpire(TEST_SESSION_KEY_PREFIX + otherSessionId).block();
+        reactiveStringRedisTemplate
+            .getExpire(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(otherSessionId))
+            .block();
 
     assertThat(expiresAt).isEqualTo(BASE_INSTANT.plusSeconds(60));
     assertThat(readHashEntries(cappedSessionKey))
@@ -282,7 +340,9 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     assertThat(userSessionsTtl).isGreaterThan(Duration.ofSeconds(60));
     assertThat(userSessionsTtl).isGreaterThanOrEqualTo(otherSessionTtl);
     assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY))
-        .containsExactlyInAnyOrder(cappedSessionId, otherSessionId);
+        .containsExactlyInAnyOrder(
+            SessionTokenDigest.sha256Hex(cappedSessionId),
+            SessionTokenDigest.sha256Hex(otherSessionId));
   }
 
   @Test
@@ -305,7 +365,7 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
   @Test
   void refreshSessionAuthorizationDoesNotPartiallyMutateWhenIndexHasWrongType() {
     var sessionId = createSession(PRIMARY_USER_ID);
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
     var originalFields = readHashEntries(sessionKey);
     var originalSessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
 
@@ -342,14 +402,23 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     var deletedKeyCount = sessionWriter.deleteAllSessionsForUser(PRIMARY_USER_ID).block();
 
     assertThat(deletedKeyCount).isEqualTo(4L);
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + firstSessionId)).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + secondSessionId)).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + thirdSessionId)).isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(firstSessionId)))
+        .isEmpty();
+    assertThat(
+            readHashEntries(
+                TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(secondSessionId)))
+        .isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(thirdSessionId)))
+        .isEmpty();
     assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + unrelatedSessionId))
+    assertThat(
+            readHashEntries(
+                TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(unrelatedSessionId)))
         .containsEntry(SessionHashFields.USER_ID, SECONDARY_USER_ID);
     assertThat(readSetMembers(SessionHashFields.USER_SESSIONS_KEY_PREFIX + SECONDARY_USER_ID))
-        .containsExactly(unrelatedSessionId);
+        .containsExactly(SessionTokenDigest.sha256Hex(unrelatedSessionId));
   }
 
   @Test
@@ -357,13 +426,19 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     var staleSessionId = createSession(PRIMARY_USER_ID);
     var liveSessionId = createSession(PRIMARY_USER_ID);
 
-    reactiveStringRedisTemplate.unlink(TEST_SESSION_KEY_PREFIX + staleSessionId).block();
+    reactiveStringRedisTemplate
+        .unlink(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(staleSessionId))
+        .block();
 
     var deletedKeyCount = sessionWriter.deleteAllSessionsForUser(PRIMARY_USER_ID).block();
 
     assertThat(deletedKeyCount).isEqualTo(2L);
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + staleSessionId)).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + liveSessionId)).isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(staleSessionId)))
+        .isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(liveSessionId)))
+        .isEmpty();
     assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).isEmpty();
   }
 
@@ -408,10 +483,14 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
         var createdSessionId = createFuture.get(5, TimeUnit.SECONDS);
         deleteFuture.get(5, TimeUnit.SECONDS);
 
-        var createdSessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + createdSessionId);
+        var createdSessionFields =
+            readHashEntries(
+                TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(createdSessionId));
         var userSessionIds = readSetMembers(SessionHashFields.USER_SESSIONS_KEY_PREFIX + userId);
 
-        assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + existingSessionId))
+        assertThat(
+                readHashEntries(
+                    TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(existingSessionId)))
             .withFailMessage("attempt %s: revocation left the pre-existing session behind", attempt)
             .isEmpty();
 
@@ -431,7 +510,7 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
             .withFailMessage(
                 "attempt %s: surviving session %s lost its user index entry",
                 attempt, createdSessionId)
-            .containsExactly(createdSessionId);
+            .containsExactly(SessionTokenDigest.sha256Hex(createdSessionId));
       }
     } finally {
       executorService.shutdownNow();

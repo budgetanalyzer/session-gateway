@@ -84,7 +84,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 **Key Responsibilities**:
 - Manages OAuth2/OIDC authorization-code flows with Auth0 for browser clients
 - Fetches user roles and permissions from permission-service on login and before each session extension
-- Writes session data (userId, roles, permissions, expiry) as Redis hashes (`session:{id}`)
+- Writes session data (userId, roles, permissions, expiry) as Redis hashes (`session:{digest}`)
 - Maintains per-user session indexes in Redis (`user_sessions:{userId}`) for targeted revocation
 - The ext_authz HTTP service reads these same hashes for ingress authorization — no separate schema
 - Issues HTTP-only, Secure, SameSite session cookies to browsers
@@ -131,7 +131,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - **Token Protection**: IDP tokens are consumed at login time only; nothing from Auth0 is persisted after the session is created. Browser only sees an opaque session cookie
 - **Browser-Only Auth**: Session Gateway exclusively serves browser clients. There is no application token-exchange endpoint or bearer-token API surface
 - **Behind Istio Ingress**: Browser auth and OAuth2 protocol endpoints reach Session Gateway through Istio ingress; bare `/login` is frontend-owned and served through NGINX
-- **Stateful Sessions**: Redis hashes (`session:{id}`) provide distributed session storage — identity, roles, permissions, expiry — read by both Session Gateway and the ext_authz service
+- **Stateful Sessions**: Redis hashes (`session:{digest}`) provide distributed session storage — identity, roles, permissions, expiry — read by both Session Gateway and the ext_authz service
 - **Targeted Session Revocation**: Redis sets (`user_sessions:{userId}`) index all active sessions for a user so permission-service can revoke them without scanning `session:*`
 - **Sliding Sessions**: Frontend heartbeat (`GET /auth/v1/session`) refreshes authorization through permission-service before atomically replacing grants and resetting the Redis TTL, never past `created_at + session.max-lifetime-seconds`. The frontend is responsible for calling only when the user is active (idle users = no heartbeat = session expires naturally). Auth0 is not contacted during heartbeat
 
@@ -238,8 +238,9 @@ find ../service-common/service-web/src/main/java -path "*/reactive/*" -name "*.j
 **Component rules**:
 - Keep one application-owned `SecurityWebFilterChain` for OAuth2 login, per-path authorization, and login-success session creation after permission-service synchronization
 - Store OAuth2 authorization requests, including `returnUrl`, in Redis keyed by `state`; hold OAuth2 authorized clients per exchange only. Neither may depend on `WebSession`, and no IdP token may be persisted
-- Resolve the authenticated `SecurityContext` from the public session cookie and the Redis `session:{id}` hash, not from Spring Session
-- Keep Redis session hash, user-index, and cookie handling in `session/`; hash field names, key prefix, and cookie name are cross-repo contracts with ext_authz
+- Resolve the authenticated `SecurityContext` from the public session cookie and the Redis `session:{digest}` hash, not from Spring Session
+- Keep Redis session hash, user-index, and cookie handling in `session/`; hash field names, key prefix, cookie name, and the `SessionTokenDigest` key derivation are cross-repo contracts with ext_authz
+- Build every session key and user-index member from `SessionTokenDigest.sha256Hex(token)`; never write the raw cookie token to Redis or logs (see [Hashed Session Keys](docs/session-configuration.md#hashed-session-keys))
 - Keep browser error redirects path-classified; machine paths must fall through to service-common JSON errors
 - Route IdP callback traffic (token exchange, userinfo, JWKS) through the dedicated IdP HTTP client, separate from the permission-service WebClient
 - Rely on service-web auto-configuration for reactive HTTP logging, correlation IDs, and exception handling; `SafeLogger` remains opt-in (see Best Practices)
@@ -492,7 +493,7 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 
 **Session Not Created After Login**:
 - Check that permission-service is running and reachable at `permission-service.base-url`, and answers `POST /internal/v1/users/sync` within `permission-service.login-timeout`
-- Verify session hash exists in Redis: `redis-cli HGETALL "session:{session-id}"`
+- Verify session hash exists in Redis: `redis-cli HGETALL "session:$(printf '%s' "$SESSION_TOKEN" | sha256sum | cut -d' ' -f1)"`, where `SESSION_TOKEN` is the cookie value
 - Verify `session.key-prefix` matches the ext_authz service's expected prefix
 - Enable debug logging: `logging.level.org.budgetanalyzer.sessiongateway=DEBUG`
 
@@ -506,7 +507,7 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 **Heartbeat Returns 503**:
 - Check permission-service availability and latency against `permission-service.authorization-refresh-timeout`
 - Validate the authorization response contains matching `userId`, `status`, `roles`, and `permissions`
-- Check Redis connectivity and verify `session:{id}` remains a hash while `user_sessions:{userId}` remains a set
+- Check Redis connectivity and verify `session:{digest}` remains a hash while `user_sessions:{userId}` remains a set
 - Do not extend from cached grants; the unchanged session must expire unless a later heartbeat succeeds
 
 **502 Bad Gateway**:
@@ -522,14 +523,14 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 **Downstream (Sends To)**:
 - **Auth0**: OAuth2 authorization-code flow at login, logout return URL
 - **Permission Service** (port 8086): Synchronizes login grants and returns current heartbeat authorization (no bearer auth — platform network isolation)
-- **Redis**: Session storage as hashes (`session:{id}`) — read by both Session Gateway and the ext_authz HTTP service
+- **Redis**: Session storage as hashes (`session:{digest}`) — read by both Session Gateway and the ext_authz HTTP service
 
 **Data Flow**:
 1. Browser loads `/login` through Istio ingress → NGINX → frontend
 2. Frontend initiates `GET /oauth2/authorization/idp`
 3. Istio ingress routes the OAuth2 request to Session Gateway
 4. Session Gateway completes OAuth2 with Auth0 and fetches permissions from permission-service
-5. Session Gateway writes a session hash to Redis (`session:{id}`) and sets the session cookie
+5. Session Gateway writes a session hash to Redis (`session:{digest}`) and sets the session cookie
 6. Frontend periodically calls `GET /auth/v1/session` (heartbeat) — Session Gateway refreshes authorization through permission-service and atomically updates grants and TTL for active accounts
 7. Browser later calls `/api/*`
 8. Istio ingress Envoy calls the ext_authz HTTP service, which reads the session hash from Redis and injects X-User-Id/X-Roles/X-Permissions
@@ -550,10 +551,10 @@ For detailed architecture diagrams and security design:
 - Session hash deleted on logout
 
 **Session Hash Security**:
-- Sessions stored as Redis hashes under `session:{id}` with configurable TTL (default 15 min)
+- Sessions stored as Redis hashes under `session:{digest}` with configurable TTL (default 15 min), where `{digest}` is the lowercase hex SHA-256 of the cookie token; `user_sessions:{userId}` members are the same digests
 - Fields: `user_id`, `idp_sub`, `email`, `display_name`, `picture`, `roles` (comma-joined), `permissions` (comma-joined), `created_at`, `expires_at` (unix timestamps)
 - The ext_authz HTTP service reads these same hashes directly from Redis — no cryptographic verification needed (Redis is trusted internal infrastructure)
-- Session IDs are opaque UUIDs — no sensitive data encoded in the cookie value itself
+- Session tokens are opaque random UUIDs — no sensitive data encoded in the cookie value itself, and the raw token is never stored in Redis
 
 **Session Cookies**:
 - HttpOnly: Not accessible via JavaScript
@@ -610,7 +611,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
 **Runtime Dependencies**:
 - **Permission Service**: Provides user roles and permissions (called at login and heartbeat, no bearer auth)
-- **Redis**: Session persistence (hashes under `session:{id}`)
+- **Redis**: Session persistence (hashes under `session:{digest}`)
 - **Auth0**: Identity provider (login and logout)
 
 **Platform Routing Peers**:
@@ -635,7 +636,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 5. **Health Checks**: Monitor Redis connectivity and Auth0 availability
 6. **Environment Parity**: Use same Auth0 tenant structure for dev/staging/prod
 7. **Return URL Validation**: All returnUrl redirects automatically validated by RedirectUrlValidator - no additional validation needed
-8. **Safe Logging**: SafeLogger is **opt-in** — use `SafeLogger.toJson(obj)` for objects with `@Sensitive` fields, `SafeLogger.mask(value)` for sensitive strings, `SafeLogger.truncateId(sessionId)` for session IDs and OAuth2 state values. Never log raw session IDs, OAuth2 code/state, or identity tokens.
+8. **Safe Logging**: SafeLogger is **opt-in** — use `SafeLogger.toJson(obj)` for objects with `@Sensitive` fields, `SafeLogger.mask(value)` for sensitive strings, `SessionTokenDigest.logId(token)` for session tokens, and `SafeLogger.truncateId(state)` for OAuth2 state values. Never log raw or truncated session tokens, OAuth2 code/state, or identity tokens.
 9. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production. OAuth2 callback path (`/login/oauth2/code/**`) is excluded from HTTP logging (defense-in-depth).
 10. **Session Key Prefix Alignment**: `session.key-prefix` must match the ext_authz service's expected prefix so it can find session hashes
 11. **Permission-Service Dependency**: Login fails (redirect to `/oops`, no session) if the bounded user-sync call fails or exceeds `permission-service.login-timeout`; heartbeat returns 503 without extending when its bounded authorization lookup fails
@@ -688,7 +689,7 @@ When working on this service:
 - ext_authz reads session hashes directly from Redis — no JWT infrastructure needed, no separate ext_authz schema
 - Permission-service must be reachable for login and successful heartbeat extension
 - Permission-service calls use no bearer auth — relies on platform network isolation and mesh policy enforcement
-- Sessions are custom Redis hashes (`session:{id}`) — NOT Spring Session
+- Sessions are custom Redis hashes (`session:{digest}`) — NOT Spring Session
 - `session.key-prefix` must match the ext_authz service's expected prefix
 - Changes to OAuth2 configuration require Auth0 console updates
 - Redis is critical dependency - session loss means user re-authentication

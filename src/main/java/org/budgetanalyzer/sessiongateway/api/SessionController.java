@@ -19,7 +19,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
-import org.budgetanalyzer.core.logging.SafeLogger;
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.sessiongateway.api.response.SessionStatusResponse;
 import org.budgetanalyzer.sessiongateway.config.SessionProperties;
@@ -29,6 +28,7 @@ import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient.Authori
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
 import org.budgetanalyzer.sessiongateway.session.SessionData;
 import org.budgetanalyzer.sessiongateway.session.SessionReader;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 /**
@@ -125,7 +125,7 @@ public class SessionController {
       return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
 
-    log.debug("Session heartbeat for sessionId={}", SafeLogger.truncateId(sessionId));
+    log.debug("Session heartbeat for sessionId={}", SessionTokenDigest.logId(sessionId));
 
     return sessionReader
         .readSession(sessionId)
@@ -136,7 +136,7 @@ public class SessionController {
             exception -> {
               log.warn(
                   "Session heartbeat failed for sessionId={} exceptionType={}",
-                  SafeLogger.truncateId(sessionId),
+                  SessionTokenDigest.logId(sessionId),
                   exception.getClass().getSimpleName());
               return new ResponseStatusException(
                   HttpStatus.SERVICE_UNAVAILABLE, "Session refresh unavailable", exception);
@@ -173,7 +173,7 @@ public class SessionController {
     if (remainingSeconds <= 0) {
       log.debug(
           "Session {} reached its absolute lifetime during heartbeat",
-          SafeLogger.truncateId(sessionId));
+          SessionTokenDigest.logId(sessionId));
       return invalidateSession(exchange, sessionId);
     }
 
@@ -195,7 +195,8 @@ public class SessionController {
             Mono.defer(
                 () -> {
                   log.warn(
-                      "Session {} disappeared during heartbeat", SafeLogger.truncateId(sessionId));
+                      "Session {} disappeared during heartbeat",
+                      SessionTokenDigest.logId(sessionId));
                   return unauthorizedAndClearCookie(exchange);
                 }));
   }

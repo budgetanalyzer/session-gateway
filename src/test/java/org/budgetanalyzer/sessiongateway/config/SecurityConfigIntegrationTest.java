@@ -41,6 +41,7 @@ import com.nimbusds.jwt.SignedJWT;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 
 class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
 
@@ -158,7 +159,9 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(sessionCookie.getPath()).isEqualTo("/");
     assertThat(sessionCookie.getSameSite()).isEqualTo("Strict");
 
-    var sessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + sessionCookie.getValue());
+    var sessionFields =
+        readHashEntries(
+            TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionCookie.getValue()));
 
     assertThat(sessionFields).isNotNull();
     assertThat(sessionFields)
@@ -805,7 +808,9 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(result.getResponseCookies().keySet()).containsExactly(PUBLIC_SESSION_COOKIE_NAME);
     var cookie = result.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME);
     assertThat(cookie.getValue()).isNotEqualTo(login.binding());
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + cookie.getValue()))
+    assertThat(
+            readHashEntries(
+                TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(cookie.getValue())))
         .containsEntry("user_id", "internal-user-456");
     assertThat(readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + login.state())).isEmpty();
   }

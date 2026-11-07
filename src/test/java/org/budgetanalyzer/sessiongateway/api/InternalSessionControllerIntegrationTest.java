@@ -16,6 +16,7 @@ import reactor.core.publisher.Mono;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 @TestPropertySource(
@@ -50,6 +51,11 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
     var secondSessionId = createSession(PRIMARY_USER_ID, "auth0|internal-primary-2");
     var thirdSessionId = createSession(PRIMARY_USER_ID, "auth0|internal-primary-3");
     var unrelatedSessionId = createSession(SECONDARY_USER_ID, "auth0|internal-secondary");
+    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY))
+        .containsExactlyInAnyOrder(
+            SessionTokenDigest.sha256Hex(firstSessionId),
+            SessionTokenDigest.sha256Hex(secondSessionId),
+            SessionTokenDigest.sha256Hex(thirdSessionId));
 
     webTestClient
         .delete()
@@ -60,13 +66,23 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
         .expectBody()
         .isEmpty();
 
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + firstSessionId)).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + secondSessionId)).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + thirdSessionId)).isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(firstSessionId)))
+        .isEmpty();
+    assertThat(
+            readHashEntries(
+                TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(secondSessionId)))
+        .isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(thirdSessionId)))
+        .isEmpty();
     assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + unrelatedSessionId))
+    assertThat(
+            readHashEntries(
+                TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(unrelatedSessionId)))
         .containsEntry(SessionHashFields.USER_ID, SECONDARY_USER_ID);
-    assertThat(readSetMembers(SECONDARY_USER_SESSIONS_KEY)).containsExactly(unrelatedSessionId);
+    assertThat(readSetMembers(SECONDARY_USER_SESSIONS_KEY))
+        .containsExactly(SessionTokenDigest.sha256Hex(unrelatedSessionId));
   }
 
   @Test
@@ -86,7 +102,9 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
     var staleSessionId = createSession(PRIMARY_USER_ID, "auth0|internal-stale");
     var liveSessionId = createSession(PRIMARY_USER_ID, "auth0|internal-live");
 
-    reactiveStringRedisTemplate.unlink(TEST_SESSION_KEY_PREFIX + staleSessionId).block();
+    reactiveStringRedisTemplate
+        .unlink(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(staleSessionId))
+        .block();
 
     webTestClient
         .delete()
@@ -97,8 +115,12 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
         .expectBody()
         .isEmpty();
 
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + staleSessionId)).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + liveSessionId)).isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(staleSessionId)))
+        .isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(liveSessionId)))
+        .isEmpty();
     assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).isEmpty();
   }
 
@@ -125,7 +147,8 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
             .blockOptional();
 
     assertThat(expiresAt).isEmpty();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId)))
+        .isEmpty();
     assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY)).isEmpty();
   }
 

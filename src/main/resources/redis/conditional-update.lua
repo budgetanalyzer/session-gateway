@@ -1,7 +1,7 @@
 -- Conditionally updates hash fields and TTL only if the key exists.
 -- KEYS[1]: session hash key
 -- KEYS[2]: user sessions index key
--- ARGV[1]: session ID
+-- ARGV[1]: SHA-256 hex digest of the session token (the session key suffix)
 -- ARGV[2..N-1]: field/value pairs to HSET
 -- ARGV[N]: TTL in seconds (always the last argument)
 -- The index TTL only moves forward while the index exists, so a session refreshed near its

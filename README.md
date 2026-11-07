@@ -24,7 +24,7 @@ Browser → Istio Ingress (:443)
 
 - Manages OAuth2 authorization-code flows with Auth0 for browser clients
 - Fetches user roles and permissions from permission-service on login and before each session extension
-- Writes session data (userId, roles, permissions, expiry) as Redis hashes (`session:{id}`)
+- Writes session data (userId, roles, permissions, expiry) as Redis hashes keyed by the SHA-256 digest of the cookie token (`session:{digest}`)
 - Issues HttpOnly session cookies; atomically refreshes grants and TTL via heartbeat (`GET /auth/v1/session`)
 - Exposes internal session revocation for permission-service (`DELETE /internal/v1/sessions/users/{userId}`)
 - ext_authz reads the same Redis hashes for ingress authorization — no separate schema

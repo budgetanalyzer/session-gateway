@@ -53,8 +53,9 @@ public class SessionWriter {
   /**
    * Creates a new session hash in Redis.
    *
-   * <p>Generates a UUID session ID, writes all fields, and indexes the session for targeted
-   * revocation in one Redis script execution.
+   * <p>Generates a random UUID session token, writes all fields under the token's SHA-256 digest,
+   * and indexes the digest for targeted revocation in one Redis script execution. The raw token is
+   * returned for the cookie and never stored.
    *
    * @param userId internal user ID from the permission service
    * @param idpSub IDP subject identifier
@@ -63,7 +64,7 @@ public class SessionWriter {
    * @param picture user's profile picture URL (nullable)
    * @param roles user roles
    * @param permissions user permissions
-   * @return the generated session ID
+   * @return the generated raw session token for the cookie
    */
   public Mono<String> createSession(
       String userId,
@@ -73,8 +74,9 @@ public class SessionWriter {
       String picture,
       List<String> roles,
       List<String> permissions) {
-    var sessionId = UUID.randomUUID().toString();
-    var sessionKey = sessionKey(sessionId);
+    var sessionToken = UUID.randomUUID().toString();
+    var sessionDigest = SessionTokenDigest.sha256Hex(sessionToken);
+    var sessionKey = keyPrefix + sessionDigest;
     var userSessionsKey = userSessionsKey(userId);
     var now = clock.instant();
     var expiresAt = now.plusSeconds(ttlSeconds);
@@ -91,15 +93,15 @@ public class SessionWriter {
             Map.entry(SessionHashFields.CREATED_AT, String.valueOf(now.getEpochSecond())),
             Map.entry(SessionHashFields.EXPIRES_AT, String.valueOf(expiresAt.getEpochSecond())));
 
-    log.debug("Creating session {} for userId={}", SafeLogger.truncateId(sessionId), userId);
+    log.debug("Creating session {} for userId={}", SafeLogger.truncateId(sessionDigest), userId);
 
     return redisTemplate
         .execute(
             CREATE_SESSION_SCRIPT,
             List.of(sessionKey, userSessionsKey),
-            createSessionArguments(sessionId, fields))
+            createSessionArguments(sessionDigest, fields))
         .single()
-        .thenReturn(sessionId);
+        .thenReturn(sessionToken);
   }
 
   /**
@@ -110,7 +112,7 @@ public class SessionWriter {
    * index TTL is only ever extended, so a shorter TTL near the absolute lifetime cap cannot expire
    * the index before another of the user's sessions.
    *
-   * @param sessionId the session ID
+   * @param sessionToken the raw session token from the cookie
    * @param userId the internal user ID for refreshing the session index TTL
    * @param roles the current roles from permission-service
    * @param permissions the current permissions from permission-service
@@ -119,13 +121,14 @@ public class SessionWriter {
    * @return the expiry written to Redis, or empty if the session no longer exists
    */
   public Mono<Instant> refreshSessionAuthorization(
-      String sessionId,
+      String sessionToken,
       String userId,
       List<String> roles,
       List<String> permissions,
       Instant expiresAt,
       long ttlSeconds) {
-    var sessionKey = sessionKey(sessionId);
+    var sessionDigest = SessionTokenDigest.sha256Hex(sessionToken);
+    var sessionKey = keyPrefix + sessionDigest;
     var userSessionsKey = userSessionsKey(userId);
 
     return redisTemplate
@@ -133,7 +136,7 @@ public class SessionWriter {
             CONDITIONAL_UPDATE_SCRIPT,
             List.of(sessionKey, userSessionsKey),
             conditionalUpdateArguments(
-                sessionId,
+                sessionDigest,
                 ttlSeconds,
                 SessionHashFields.ROLES,
                 String.join(",", roles),
@@ -147,14 +150,15 @@ public class SessionWriter {
   }
 
   /**
-   * Deletes a session hash from Redis.
+   * Deletes a session hash and its user index entry from Redis.
    *
-   * @param sessionId the session ID
+   * @param sessionToken the raw session token from the cookie
    * @return true if the key was deleted
    */
-  public Mono<Boolean> deleteSession(String sessionId) {
-    var sessionKey = sessionKey(sessionId);
-    log.debug("Deleting session {}", SafeLogger.truncateId(sessionId));
+  public Mono<Boolean> deleteSession(String sessionToken) {
+    var sessionDigest = SessionTokenDigest.sha256Hex(sessionToken);
+    var sessionKey = keyPrefix + sessionDigest;
+    log.debug("Deleting session {}", SafeLogger.truncateId(sessionDigest));
 
     return redisTemplate
         .<String, String>opsForHash()
@@ -167,7 +171,7 @@ public class SessionWriter {
                         deletedKeyCount ->
                             redisTemplate
                                 .opsForSet()
-                                .remove(userSessionsKey(userId), sessionId)
+                                .remove(userSessionsKey(userId), sessionDigest)
                                 .thenReturn(deletedKeyCount > 0)))
         .defaultIfEmpty(false);
   }
@@ -186,13 +190,9 @@ public class SessionWriter {
         .single();
   }
 
-  private String sessionKey(String sessionId) {
-    return keyPrefix + sessionId;
-  }
-
-  private List<String> createSessionArguments(String sessionId, Map<String, String> fields) {
+  private List<String> createSessionArguments(String sessionDigest, Map<String, String> fields) {
     var scriptArguments = new ArrayList<String>();
-    scriptArguments.add(sessionId);
+    scriptArguments.add(sessionDigest);
     scriptArguments.add(String.valueOf(ttlSeconds));
     fields.forEach(
         (field, value) -> {
@@ -203,9 +203,9 @@ public class SessionWriter {
   }
 
   private List<String> conditionalUpdateArguments(
-      String sessionId, long ttlSeconds, String... fieldValuePairs) {
+      String sessionDigest, long ttlSeconds, String... fieldValuePairs) {
     var scriptArguments = new ArrayList<String>();
-    scriptArguments.add(sessionId);
+    scriptArguments.add(sessionDigest);
     scriptArguments.addAll(List.of(fieldValuePairs));
     scriptArguments.add(String.valueOf(ttlSeconds));
     return List.copyOf(scriptArguments);

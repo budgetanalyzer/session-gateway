@@ -78,6 +78,38 @@ class SessionReaderIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void readSessionResolvesGoldenVectorKeyFromRawToken() {
+    var goldenSessionKey =
+        TEST_SESSION_KEY_PREFIX
+            + "16362f566387b3cf5a6e92fb0a986c76ca20eb3a0c12cbdfbd0b29501e0c18df";
+    reactiveStringRedisTemplate
+        .<String, String>opsForHash()
+        .putAll(
+            goldenSessionKey,
+            Map.ofEntries(
+                Map.entry(SessionHashFields.USER_ID, "user-golden"),
+                Map.entry(
+                    SessionHashFields.CREATED_AT, String.valueOf(BASE_INSTANT.getEpochSecond())),
+                Map.entry(
+                    SessionHashFields.EXPIRES_AT,
+                    String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond()))))
+        .then(reactiveStringRedisTemplate.expire(goldenSessionKey, Duration.ofMinutes(5)))
+        .block();
+
+    var sessionData = sessionReader.readSession("3f2504e0-4f89-41d3-9a0c-0305e82c3301").block();
+
+    assertThat(sessionData).isNotNull();
+    assertThat(sessionData.userId()).isEqualTo("user-golden");
+  }
+
+  @Test
+  void readSessionDoesNotResolveKeyNamedByRawToken() {
+    writeRawTokenKeyedHash("raw-token-session");
+
+    StepVerifier.create(sessionReader.readSession("raw-token-session")).verifyComplete();
+  }
+
+  @Test
   void readSessionReturnsEmptyWhenSessionMissing() {
     StepVerifier.create(sessionReader.readSession("missing-session")).verifyComplete();
   }
@@ -120,12 +152,30 @@ class SessionReaderIntegrationTest extends AbstractIntegrationTest {
   }
 
   private void writeSessionHash(String sessionId, Map<String, String> sessionFields, Duration ttl) {
-    var key = TEST_SESSION_KEY_PREFIX + sessionId;
+    var key = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
 
     reactiveStringRedisTemplate
         .<String, String>opsForHash()
         .putAll(key, sessionFields)
         .then(reactiveStringRedisTemplate.expire(key, ttl))
+        .block();
+  }
+
+  private void writeRawTokenKeyedHash(String sessionToken) {
+    var rawTokenKey = TEST_SESSION_KEY_PREFIX + sessionToken;
+
+    reactiveStringRedisTemplate
+        .<String, String>opsForHash()
+        .putAll(
+            rawTokenKey,
+            Map.ofEntries(
+                Map.entry(SessionHashFields.USER_ID, "user-raw"),
+                Map.entry(
+                    SessionHashFields.CREATED_AT, String.valueOf(BASE_INSTANT.getEpochSecond())),
+                Map.entry(
+                    SessionHashFields.EXPIRES_AT,
+                    String.valueOf(BASE_INSTANT.plusSeconds(900).getEpochSecond()))))
+        .then(reactiveStringRedisTemplate.expire(rawTokenKey, Duration.ofMinutes(5)))
         .block();
   }
 

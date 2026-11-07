@@ -18,6 +18,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.config.WireMockConfig;
 import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
@@ -53,6 +54,14 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
   @Test
   void logoutClearsPublicSessionCookieDeletesRedisSessionHashAndIgnoresFrameworkSessionCookie() {
     var sessionId = createSession();
+    var sessionDigest = SessionTokenDigest.sha256Hex(sessionId);
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionDigest)).isNotEmpty();
+    assertThat(
+            reactiveStringRedisTemplate
+                .opsForSet()
+                .isMember(TEST_USER_SESSIONS_KEY, sessionDigest)
+                .block())
+        .isTrue();
     var expectedLogoutLocation =
         "http://localhost:"
             + wireMockServer.port()
@@ -76,7 +85,13 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
         .contains(PUBLIC_SESSION_COOKIE_NAME, "SESSION");
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
     assertThat(exchangeResult.getResponseCookies().getFirst("SESSION")).isNotNull();
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionDigest)).isEmpty();
+    assertThat(
+            reactiveStringRedisTemplate
+                .opsForSet()
+                .isMember(TEST_USER_SESSIONS_KEY, sessionDigest)
+                .block())
+        .isFalse();
   }
 
   @Test

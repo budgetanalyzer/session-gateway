@@ -1,7 +1,7 @@
 -- Atomically creates a session hash and indexes it in the per-user session set.
 -- KEYS[1]: session hash key
 -- KEYS[2]: user sessions index key
--- ARGV[1]: session ID
+-- ARGV[1]: SHA-256 hex digest of the session token (the session key suffix)
 -- ARGV[2]: TTL in seconds
 -- ARGV[3..N]: alternating hash field/value pairs
 -- Returns 1 on success.
