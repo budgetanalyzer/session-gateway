@@ -55,6 +55,28 @@ class RedirectUrlValidatorTest {
     assertThat(RedirectUrlValidator.isValidRedirectUrl("")).isFalse();
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "/\\evil.com",
+        "/path\\segment",
+        "/path\tsegment",
+        "/path with spaces",
+        "/path\r\nsegment",
+        "/path\u0000segment",
+        "/path\u007fsegment",
+        "/path\u00a0segment",
+        "/path\u2003segment",
+        "/path\ufeffsegment",
+        "/bad%escape",
+        "/bad%",
+        "/path[segment]",
+        "/path?next=https://evil.com"
+      })
+  void shouldRejectUnsafeOrUnparsablePaths(String url) {
+    assertThat(RedirectUrlValidator.isValidRedirectUrl(url)).isFalse();
+  }
+
   @Test
   void shouldRejectAbsoluteHttpUrl() {
     assertThat(RedirectUrlValidator.isValidRedirectUrl("http://evil.com/phishing")).isFalse();

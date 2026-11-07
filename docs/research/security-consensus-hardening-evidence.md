@@ -82,3 +82,72 @@ Source context: [plan 02.1](../../../orchestration/docs/plans/security-hardening
 R1 finding 1, R2's cookie requirements and R4's callback test list, together with
 [RFC 9700 section 2.1.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1).
 This evidence is ready for plan 05 phase 3's cross-repository collection.
+
+
+## Plan 02.2, Phase 1: Bound OAuth Login Input
+
+Implemented on 2026-11-07 for worker run
+`20261107T090611Z-phase-1-4733a849-9c7b-4f78-87e4-cc09c0817cd5`.
+Scope: Session Gateway only; no later phases or sibling-repository changes.
+
+### Contract and decisions
+
+- The authorization resolver admits only safe `returnUrl` values of at most 2048 Java string
+  characters. Unsafe, empty, or oversized input is dropped while OAuth login continues. Valid
+  destinations retain query parameters, fragments, and valid percent encoding.
+- The Redis repository reads `return_url` exclusively from validated authorization-request
+  additional parameters. Both the authorization URI and raw request-query fallbacks are removed.
+  Validation belongs at login initiation; callback redirect validation remains defense in depth.
+- `RedirectUrlValidator` rejects backslashes, control characters, whitespace (including Unicode
+  spaces and BOM), malformed URI syntax, schemes, and authorities. Existing restrictions on a
+  single leading slash and embedded `://` remain. This covers the current frontend's unsafe
+  origin/backslash cases and adds the plan's stricter character and URI parsing rules.
+- OAuth-state lifetime defaults to 600 seconds, separate from the 900-second session lifetime.
+  The existing main-configuration default test and test configuration now agree.
+- `IDP_REDIRECT_URI` accepts a fixed callback URL. Unset, it retains
+  `{baseUrl}/login/oauth2/code/{registrationId}`; fixing the URI requires deployment configuration.
+  No ingress/header policy was changed.
+- Updated [session configuration](../session-configuration.md#bounded-login-return-url),
+  [environment variables](../configuration.md), [security behavior](../security.md#return-url-support),
+  and the existing OAuth-state default in `AGENTS.md`.
+
+### Validation results
+
+Final documented sequence:
+
+```bash
+./gradlew clean spotlessApply
+./gradlew clean build
+```
+
+Both passed; the final build took 51 seconds. **218 tests passed, 0 failures, 0 errors,
+0 skipped**. Spotless, compilation, JAR assembly, and JaCoCo gates passed; both Checkstyle reports
+contain zero violations. Coverage is **926/977 lines (94.78%)** and **210/272 branches (77.21%)**,
+above the repository's 90% line and 65% branch gates. `git diff --check` passed.
+Reports are under `build/reports/` and `build/test-results/test/`.
+
+The first build identified the old 900-second expectation in `SessionPropertiesTest`; updating
+that assertion to the planned 600-second default resolved the sole failure. A subsequent passing
+build was repeated after enabling forwarded-header processing in the fixed-URI test. Final output
+includes JVM class-sharing warnings and Redis reconnect/Netty listener errors during test-context
+shutdown; these did not fail any test or gate. No tests were skipped or weakened.
+
+### Handoff and limitations
+
+The real-bean resolver/repository tests use Testcontainers Redis. They check valid URLs,
+2048/2049-character boundaries, invalid inputs, preserved nonce/PKCE/browser-binding fields, and
+finite state TTL at or below 600 seconds. A repository regression separately proves neither raw
+URI fallback can restore an unchecked return URL. The fixed-URI HTTP test enables the application's
+`framework` forwarded-header strategy and verifies the configured URI in both the IdP redirect
+and Redis despite forged forwarded headers. Existing browser-binding and callback suites remain
+part of the full build.
+
+No live Auth0, Tilt, or cluster access was used. Existing pending state retains its old contents
+and TTL; new logins use the new validation and default. No schema migration or reset is required.
+The per-record cap and shorter TTL do not bound the number of anonymous records: rate limits and
+Redis memory settings remain plan 04 phase 1 work. Frontend and deployment configuration belong
+to later phases of plan 02.2. No git writes or runner-owned state/outcome edits were performed.
+
+Context: [plan 02.2](../../../orchestration/docs/plans/security-hardening-02.2-oauth-login-input.md),
+R2's login-start cap and finding H, R3's `noeviction` caveat, and the current frontend
+`loginRedirect.ts`. This section is available for plan 05 phase 3's evidence collection.

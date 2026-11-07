@@ -53,6 +53,26 @@ class RedisAuthorizationRequestRepositoryIntegrationTest extends AbstractIntegra
   @Autowired private LettuceConnectionFactory lettuceConnectionFactory;
 
   @Test
+  void doesNotRecoverReturnUrlFromUnvalidatedRequestUris() {
+    var state = UUID.randomUUID().toString();
+    var authorizationRequest =
+        OAuth2AuthorizationRequest.from(authorizationRequest(state))
+            .additionalParameters(parameters -> parameters.remove("return_url"))
+            .authorizationRequestUri("https://idp.example/authorize?return_url=/unchecked")
+            .build();
+    var exchange =
+        MockServerWebExchange.from(
+            MockServerHttpRequest.get("/oauth2/authorization/idp")
+                .queryParam("returnUrl", "/also-unchecked"));
+
+    redisAuthorizationRequestRepository
+        .saveAuthorizationRequest(authorizationRequest, exchange)
+        .block();
+
+    assertThat(readFields(state)).containsKey("redirect_uri").doesNotContainKey("return_url");
+  }
+
+  @Test
   void storesOnlyBindingHashAndSetsFiniteStateLifetime() throws Exception {
     var pendingLogin = startLogin(null);
     var fields = readFields(pendingLogin.state());

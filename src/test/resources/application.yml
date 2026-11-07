@@ -16,7 +16,7 @@ spring:
               - openid
               - profile
               - email
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            redirect-uri: "${IDP_REDIRECT_URI:{baseUrl}/login/oauth2/code/{registrationId}}"
         provider:
           idp:
             # Will be overridden to point to WireMock
@@ -25,7 +25,7 @@ spring:
 session:
   key-prefix: "session:test:"
   ttl-seconds: 900
-  oauth2-state-ttl-seconds: 900
+  oauth2-state-ttl-seconds: 600
   cookie:
     domain-override:
     name: BA_SESSION

@@ -115,7 +115,11 @@ After authentication, users are redirected based on priority:
 
 All returnUrl values are validated by `RedirectUrlValidator` to ensure same-origin only, preventing open redirect vulnerabilities.
 
-The `returnUrl` value is attached to the OAuth2 authorization request, stored in Redis under the
+At login start, unsafe or oversized (over 2048 characters) return URLs are dropped without
+interrupting login. Validation rejects backslashes, controls, whitespace, and malformed URIs,
+as well as external redirects. See [bounded login input and callback configuration](session-configuration.md#bounded-login-return-url).
+
+The validated `returnUrl` value is attached to the OAuth2 authorization request, stored in Redis under the
 `oauth2:state:{state}` key, and recovered after the Auth0 callback. This avoids depending on
 WebSession state during the OAuth2 round-trip.
 
