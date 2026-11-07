@@ -34,6 +34,7 @@ import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 
 import org.budgetanalyzer.sessiongateway.security.OAuth2CallbackIdpClientLoggingFilter;
+import org.budgetanalyzer.sessiongateway.security.RedirectUrlValidator;
 
 /**
  * OAuth2 Client configuration for IDP integration.
@@ -45,6 +46,7 @@ public class OAuth2ClientConfig {
 
   private static final String RETURN_URL_QUERY_PARAMETER = "returnUrl";
   private static final String RETURN_URL_ADDITIONAL_PARAMETER = "return_url";
+  private static final int MAX_RETURN_URL_LENGTH = 2048;
 
   /**
    * Creates the dedicated outbound IdP connection pool used by the browser OAuth2 callback path.
@@ -200,7 +202,9 @@ public class OAuth2ClientConfig {
   private OAuth2AuthorizationRequest addReturnUrlAdditionalParameter(
       OAuth2AuthorizationRequest authorizationRequest, ServerWebExchange exchange) {
     var returnUrl = exchange.getRequest().getQueryParams().getFirst(RETURN_URL_QUERY_PARAMETER);
-    if (returnUrl == null || returnUrl.isEmpty()) {
+    if (returnUrl == null
+        || returnUrl.length() > MAX_RETURN_URL_LENGTH
+        || !RedirectUrlValidator.isValidRedirectUrl(returnUrl)) {
       return authorizationRequest;
     }
 

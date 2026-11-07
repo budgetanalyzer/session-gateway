@@ -1,5 +1,8 @@
 package org.budgetanalyzer.sessiongateway.security;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +43,8 @@ public final class RedirectUrlValidator {
    *   <li>Start with {@code /} (relative path)
    *   <li>NOT start with {@code //} (protocol-relative URL)
    *   <li>NOT contain {@code ://} (absolute URL with protocol)
-   *   <li>NOT use dangerous protocols ({@code javascript:}, {@code data:})
+   *   <li>NOT contain backslashes, control characters, or whitespace
+   *   <li>Parse as a URI with no scheme or authority
    * </ol>
    *
    * @param url the URL to validate
@@ -70,10 +74,25 @@ public final class RedirectUrlValidator {
       return false;
     }
 
-    // Reject JavaScript and data URLs
-    var lowerUrl = url.toLowerCase();
-    if (lowerUrl.startsWith("javascript:") || lowerUrl.startsWith("data:")) {
-      log.warn("Rejected redirect URL (dangerous protocol): {}", sanitizeForLog(url));
+    if (url.codePoints()
+        .anyMatch(
+            character ->
+                character == '\\'
+                    || Character.isISOControl(character)
+                    || Character.isWhitespace(character)
+                    || Character.isSpaceChar(character)
+                    || character == 0xFEFF)) {
+      log.warn("Rejected redirect URL (unsafe characters): {}", sanitizeForLog(url));
+      return false;
+    }
+
+    try {
+      var uri = new URI(url);
+      if (uri.getScheme() != null || uri.getRawAuthority() != null) {
+        return false;
+      }
+    } catch (URISyntaxException exception) {
+      log.warn("Rejected redirect URL (invalid URI): {}", sanitizeForLog(url));
       return false;
     }
 

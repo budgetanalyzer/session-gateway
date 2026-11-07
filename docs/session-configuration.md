@@ -24,7 +24,7 @@ Defaults:
 
 - `SESSION_KEY_PREFIX=session:`
 - `SESSION_TTL_SECONDS=900`
-- `SESSION_OAUTH2_STATE_TTL_SECONDS=900`
+- `SESSION_OAUTH2_STATE_TTL_SECONDS=600`
 - `SESSION_COOKIE_NAME=BA_SESSION`
 - `SESSION_COOKIE_DOMAIN_OVERRIDE` unset
 - `SESSION_COOKIE_SECURE=true`
@@ -180,5 +180,36 @@ endpoint still depends on network-level controls to limit which services can cal
 ## OAuth2 State TTL
 
 `SESSION_OAUTH2_STATE_TTL_SECONDS` applies only to `oauth2:state:*` keys used during the OAuth2
-round-trip. It is separate from the browser session TTL and should remain long enough for MFA,
-account selection, and slow IdP handoffs.
+round-trip, with a default of 600 seconds (10 minutes). This allows time for hosted login and MFA
+while limiting the lifetime of anonymous state. It is separate from the browser session TTL;
+account selection and slow IdP handoffs must finish within this window.
+
+## Bounded Login Return URL
+
+At login start, `OAuth2ClientConfig` keeps `returnUrl` only when it is at most 2048 characters
+and passes `RedirectUrlValidator`. The decoded query parameter must start with a single `/`,
+contain no backslashes, control characters, whitespace, or `://`, and parse as a `java.net.URI`
+without a scheme or authority. Valid paths may include query parameters, fragments, and
+percent-encoded characters. Malformed URI escapes are rejected.
+
+Unsafe, empty, or oversized values are dropped; login continues and a successful login uses the
+default `/` destination. Redis stores `return_url` only from the resolver's validated additional
+parameter. It never recovers that value from the raw incoming query or authorization request URI.
+Callback redirect validation remains in place, including the failure path that preserves safe
+return URLs for retries.
+
+The cap bounds the stored return URL per record, not the number of anonymous login attempts.
+Rate limits and Redis memory controls remain necessary (hardening plan 04, phase 1). Existing
+pending state keeps its original contents and TTL until consumed or expired; start fresh logins
+when checking these changes. No schema migration or local cluster reset is required.
+
+## OAuth Callback URI
+
+Set `IDP_REDIRECT_URI` to the exact externally reachable callback URL, for example
+`https://app.budgetanalyzer.localhost/login/oauth2/code/idp`, and allow that URL in the Auth0
+application's callback settings. With a fixed value, incoming host and forwarded headers do not
+determine the callback URI sent to the IdP or stored in Redis.
+
+When unset, the default remains `{baseUrl}/login/oauth2/code/{registrationId}` for local runs.
+That default still derives the base URL from the request; deployments must explicitly configure
+the fixed value to remove that dependency. This phase does not change ingress header handling.

@@ -341,7 +341,7 @@ grep -n '\${' src/main/resources/application.yml
 **Session**:
 - `session.key-prefix` (`SESSION_KEY_PREFIX`): Redis key prefix for session hashes (default: `session:`)
 - `session.ttl-seconds` (`SESSION_TTL_SECONDS`): TTL for session keys in seconds (default: `900`)
-- `session.oauth2-state-ttl-seconds` (`SESSION_OAUTH2_STATE_TTL_SECONDS`): TTL for OAuth2 authorization request state in Redis (default: `900` / 15 min). Must be long enough for MFA enrollment, SSO handoffs, or slow IDP interactions
+- `session.oauth2-state-ttl-seconds` (`SESSION_OAUTH2_STATE_TTL_SECONDS`): TTL for OAuth2 authorization request state in Redis (default: `600` / 10 min). Must be long enough for MFA enrollment, SSO handoffs, or slow IDP interactions
 - `session.cookie.name` (`SESSION_COOKIE_NAME`): Public browser session cookie name (default: `BA_SESSION`)
 - `session.cookie.domain-override` (`SESSION_COOKIE_DOMAIN_OVERRIDE`): Optional parent-domain override. Default is unset, which emits host-only cookies
 - `session.cookie.secure` (`SESSION_COOKIE_SECURE`): HTTPS-only cookies (default: `true`)

@@ -3,8 +3,8 @@ server:
   # Listen on all interfaces so the ingress path can reach the service
   address: 0.0.0.0
   # Enable forward headers strategy for WebFlux
-  # This ensures Spring Security constructs redirect URIs from the browser-facing Istio origin
-  # Without this, the redirect_uri sent to the IDP may be incorrect
+  # This resolves the browser-facing Istio origin for request-derived URLs.
+  # Set IDP_REDIRECT_URI to fix the OAuth callback independently of forwarded headers.
   forward-headers-strategy: framework
   # Browser TLS terminates at Istio ingress; Session Gateway runs on HTTP behind the ingress
 
@@ -55,7 +55,7 @@ spring:
               - profile
               - email
             authorization-grant-type: authorization_code
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            redirect-uri: "${IDP_REDIRECT_URI:{baseUrl}/login/oauth2/code/{registrationId}}"
             client-authentication-method: client_secret_basic
         provider:
           idp:
@@ -65,7 +65,7 @@ spring:
 session:
   key-prefix: ${SESSION_KEY_PREFIX:session:}
   ttl-seconds: ${SESSION_TTL_SECONDS:900}
-  oauth2-state-ttl-seconds: ${SESSION_OAUTH2_STATE_TTL_SECONDS:900}
+  oauth2-state-ttl-seconds: ${SESSION_OAUTH2_STATE_TTL_SECONDS:600}
   cookie:
     domain-override: ${SESSION_COOKIE_DOMAIN_OVERRIDE:}
     name: ${SESSION_COOKIE_NAME:BA_SESSION}

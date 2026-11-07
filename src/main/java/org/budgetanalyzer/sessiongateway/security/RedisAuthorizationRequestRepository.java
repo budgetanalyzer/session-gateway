@@ -133,16 +133,7 @@ public class RedisAuthorizationRequestRepository
 
     var returnUrl =
         valueAsString(authorizationRequest.getAdditionalParameters(), FIELD_RETURN_URL)
-            .orElseGet(
-                () ->
-                    queryParamValue(
-                            authorizationRequest.getAuthorizationRequestUri(), FIELD_RETURN_URL)
-                        .orElseGet(
-                            () ->
-                                valueAsString(
-                                        exchange.getRequest().getQueryParams().toSingleValueMap(),
-                                        "returnUrl")
-                                    .orElse(null)));
+            .orElse(null);
     if (returnUrl != null) {
       fields.put(FIELD_RETURN_URL, returnUrl);
     }

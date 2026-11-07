@@ -7,6 +7,7 @@
 | `AUTH0_CLIENT_ID` | Auth0 application client ID | `placeholder-client-id` |
 | `AUTH0_CLIENT_SECRET` | Auth0 application client secret | `placeholder-client-secret` |
 | `AUTH0_ISSUER_URI` | Auth0 tenant issuer URI | `https://placeholder.auth0.com/` |
+| `IDP_REDIRECT_URI` | OAuth callback URI; set an exact external URL to avoid deriving it from request headers | `{baseUrl}/login/oauth2/code/{registrationId}` |
 | `IDP_LOGOUT_RETURN_TO` | URL to redirect after Auth0 logout | `https://app.budgetanalyzer.localhost/peace` |
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8086` |
 | `PERMISSION_SERVICE_AUTHORIZATION_REFRESH_TIMEOUT` | Maximum duration for the heartbeat authorization lookup | `2s` |
@@ -19,7 +20,7 @@
 | `INFRA_CA_CERT_PATH` | `file:` URI for the infrastructure CA certificate | — |
 | `SESSION_KEY_PREFIX` | Redis key prefix for session hashes | `session:` |
 | `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `900` |
-| `SESSION_OAUTH2_STATE_TTL_SECONDS` | TTL for OAuth2 authorization request state in Redis | `900` |
+| `SESSION_OAUTH2_STATE_TTL_SECONDS` | TTL for OAuth2 authorization request state in Redis (seconds) | `600` |
 | `SESSION_COOKIE_NAME` | Public browser session cookie contract shared with ext_authz; distinct from any internal framework `SESSION` cookie | `BA_SESSION` |
 | `SESSION_COOKIE_DOMAIN_OVERRIDE` | Optional parent-domain cookie override; unset means host-only cookies | — |
 | `SESSION_COOKIE_SECURE` | Secure cookie flag | `true` |
