@@ -2,6 +2,7 @@ package org.budgetanalyzer.sessiongateway.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -115,7 +116,12 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
     var expiresAt =
         sessionWriter
             .refreshSessionAuthorization(
-                sessionId, PRIMARY_USER_ID, List.of("USER"), List.of("transactions:read"), 900)
+                sessionId,
+                PRIMARY_USER_ID,
+                List.of("USER"),
+                List.of("transactions:read"),
+                Instant.now().plusSeconds(900),
+                900)
             .blockOptional();
 
     assertThat(expiresAt).isEmpty();

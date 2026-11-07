@@ -13,12 +13,20 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "session")
 public record SessionProperties(
-    String keyPrefix, long ttlSeconds, long oauth2StateTtlSeconds, CookieProperties cookie) {
+    String keyPrefix,
+    long ttlSeconds,
+    long maxLifetimeSeconds,
+    long oauth2StateTtlSeconds,
+    CookieProperties cookie) {
 
   /** Creates validated session properties. */
   public SessionProperties {
     keyPrefix = requireNonBlank(keyPrefix, "session.key-prefix");
     ttlSeconds = requirePositive(ttlSeconds, "session.ttl-seconds");
+    if (maxLifetimeSeconds < ttlSeconds) {
+      throw new IllegalArgumentException(
+          "session.max-lifetime-seconds must be greater than or equal to session.ttl-seconds.");
+    }
     oauth2StateTtlSeconds =
         requirePositive(oauth2StateTtlSeconds, "session.oauth2-state-ttl-seconds");
 

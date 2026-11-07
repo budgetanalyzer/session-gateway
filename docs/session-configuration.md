@@ -24,6 +24,7 @@ Defaults:
 
 - `SESSION_KEY_PREFIX=session:`
 - `SESSION_TTL_SECONDS=900`
+- `SESSION_MAX_LIFETIME_SECONDS=28800`
 - `SESSION_OAUTH2_STATE_TTL_SECONDS=600`
 - `SESSION_COOKIE_NAME=BA_SESSION`
 - `SESSION_COOKIE_DOMAIN_OVERRIDE` unset
@@ -38,6 +39,7 @@ Startup validation rejects:
 - blank `session.key-prefix`
 - blank `session.cookie.name`
 - non-positive `session.ttl-seconds` or `session.oauth2-state-ttl-seconds`
+- `session.max-lifetime-seconds` below `session.ttl-seconds`
 - unsupported `session.cookie.same-site` values
 
 Startup does not enforce an allowlist of cookie names beyond the non-blank requirement. Changing
@@ -52,13 +54,15 @@ domain override is enabled.
 The current runtime defaults across the active browser-session path are:
 
 - `SESSION_TTL_SECONDS=900` (15 minutes)
+- `SESSION_MAX_LIFETIME_SECONDS=28800` (8 hours, matching the Auth0 tenant Maximum Session
+  Lifetime in [auth0-settings.md](auth0-settings.md))
 - frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes in `budget-analyzer-web`)
 
 That heartbeat cadence is frontend-owned, not Session Gateway-owned. On every
 `GET /auth/v1/session` call, Session Gateway reads the local session and asks permission-service for
 the current account status, roles, and permissions by internal `userId`. It extends the session
-only after that lookup succeeds for an active account. Auth0 is not contacted. The frontend decides
-when to call based on user activity.
+only after that lookup succeeds for an active account, and never past the absolute session lifetime.
+Auth0 is not contacted. The frontend decides when to call based on user activity.
 
 ## Login User Sync
 
@@ -83,6 +87,35 @@ For an active account, one conditional Redis script replaces `roles`, `permissio
 `expires_at`; refreshes the session hash TTL; restores the `user_sessions:{userId}` membership when
 needed; and refreshes the index TTL. The response uses the same expiry value written by that script.
 An active user with no grants stores empty role and permission fields.
+
+## Absolute Session Lifetime
+
+Heartbeats cannot renew a session past `created_at + SESSION_MAX_LIFETIME_SECONDS`. After a
+successful authorization lookup for an active account, Session Gateway sets the new `expires_at` to
+the earlier of `now + SESSION_TTL_SECONDS` and `created_at + SESSION_MAX_LIFETIME_SECONDS`, and
+writes the remaining whole seconds as the session hash TTL. Grants are still refreshed on every
+heartbeat, including a capped one. When no lifetime remains, Session Gateway deletes the session,
+clears the cookie, and returns the same generic 401 as any other invalid session. The browser then
+goes through a fresh OAuth2 login.
+
+`created_at` is written once at login and never changed by heartbeat. ext_authz does not re-check
+the cap; it rejects any session whose `expires_at` has passed, so the cap is enforced through the
+expiry that Session Gateway writes.
+
+A capped refresh can give one session a shorter TTL than the user's other sessions. The heartbeat
+script therefore only extends the `user_sessions:{userId}` TTL (`EXPIRE ... GT`) while the index
+exists, so the index keeps outliving every indexed session and bulk revocation still finds them.
+When the index was missing and `SADD` recreates it, the script uses a plain `EXPIRE`, because `GT`
+treats a key with no TTL as infinite and would leave the recreated index persistent.
+
+The cap bounds how long one session lives. It does not require fresh credentials or MFA at the cap,
+because a new OAuth2 login can reuse a live Auth0 SSO session. It also does not provide
+account-wide revocation, which remains the internal revocation endpoint. With the recommended
+Auth0 tenant settings, the Auth0 idle lifetime (15 minutes) has lapsed long before the cap because
+nothing after login reaches Auth0, so a user at the cap gets a real Auth0 login prompt.
+
+Changing `SESSION_MAX_LIFETIME_SECONDS` applies to existing sessions on their next heartbeat,
+because the cap is computed from the stored `created_at`. No Redis reset is required.
 
 If the account is deactivated or permission-service returns 404 for a missing or deleted user,
 Session Gateway deletes only the current session, clears the cookie, and returns 401. If the lookup
@@ -182,7 +215,8 @@ Behavior:
 - uses one Redis script execution to delete all indexed `session:{id}` hashes for the user and to
   remove the `user_sessions:{userId}` index key atomically
 - relies on login and successful heartbeat refreshes to keep the `user_sessions:{userId}` index both
-  TTL-aligned and self-healing
+  TTL-aligned and self-healing; heartbeat never shortens an existing index TTL (see
+  [Absolute Session Lifetime](#absolute-session-lifetime))
 - when a successful heartbeat refreshes a live session, Session Gateway re-adds that session ID to
   `user_sessions:{userId}` before refreshing both TTLs, so a missing index entry does not leave the
   session invisible to targeted revocation

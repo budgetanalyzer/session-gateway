@@ -3,6 +3,7 @@
 These settings align Auth0 with Session Gateway's current runtime defaults:
 
 - `SESSION_TTL_SECONDS=900`
+- `SESSION_MAX_LIFETIME_SECONDS=28800` (8 hours)
 - frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes)
 - OAuth2 authorization code flow with PKCE
 
@@ -34,7 +35,11 @@ In Auth0, open `Settings > Advanced > Session Expiration`.
 - **Idle Session Lifetime**: `15` minutes
 - **Maximum Session Lifetime**: `480` minutes
 
-These values keep the Auth0 SSO session closer to the app session model. If the Redis session
+These values keep the Auth0 SSO session closer to the app session model. Session Gateway's default
+`SESSION_MAX_LIFETIME_SECONDS=28800` matches the 480-minute Maximum Session Lifetime, so an app
+session does not outlive what the tenant allows. Heartbeats and API calls never reach Auth0, so the
+15-minute Auth0 idle lifetime has always lapsed by the time an app session reaches its cap, and the
+next login prompts for credentials. If the Redis session
 expires and the user goes back through login, they should not keep getting silently reauthenticated
 for days from a long-lived Auth0 session.
 
@@ -63,5 +68,5 @@ cleanly (browser crash, tab close, session timeout).
 - These recommendations apply to the browser OAuth2 authorization-code flow.
 - Session Gateway requests only `openid`, `profile`, and `email` scopes. There is no
   `offline_access` request and no refresh-token storage.
-- The Redis session lifetime is governed entirely by `SESSION_TTL_SECONDS` and the frontend
-  heartbeat cadence.
+- The Redis session lifetime is governed by `SESSION_TTL_SECONDS`, the frontend heartbeat
+  cadence, and the absolute cap `SESSION_MAX_LIFETIME_SECONDS`.

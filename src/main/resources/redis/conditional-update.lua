@@ -4,6 +4,10 @@
 -- ARGV[1]: session ID
 -- ARGV[2..N-1]: field/value pairs to HSET
 -- ARGV[N]: TTL in seconds (always the last argument)
+-- The index TTL only moves forward while the index exists, so a session refreshed near its
+-- absolute lifetime cap cannot expire the index before the user's other sessions. When SADD
+-- recreates a missing index, it has no TTL and gets a plain EXPIRE, because GT treats a key
+-- without a TTL as infinite and would leave it persistent.
 -- Returns 1 if updated, 0 if session does not exist.
 local session_type = redis.call('type', KEYS[1]).ok
 if session_type == 'none' then
@@ -24,5 +28,9 @@ for i = 2, #ARGV - 1, 2 do
   redis.call('hset', KEYS[1], ARGV[i], ARGV[i + 1])
 end
 redis.call('expire', KEYS[1], ttl)
-redis.call('expire', KEYS[2], ttl)
+if index_type == 'none' then
+  redis.call('expire', KEYS[2], ttl)
+else
+  redis.call('expire', KEYS[2], ttl, 'GT')
+end
 return 1

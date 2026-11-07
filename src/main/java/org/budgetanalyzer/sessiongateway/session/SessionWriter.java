@@ -106,13 +106,16 @@ public class SessionWriter {
    * Refreshes authorization and expiry for the heartbeat-driven sliding window.
    *
    * <p>Atomically checks that the session hash exists before writing. Returns an empty publisher if
-   * the session was deleted or expired between the caller's read and this write.
+   * the session was deleted or expired between the caller's read and this write. The user session
+   * index TTL is only ever extended, so a shorter TTL near the absolute lifetime cap cannot expire
+   * the index before another of the user's sessions.
    *
    * @param sessionId the session ID
    * @param userId the internal user ID for refreshing the session index TTL
    * @param roles the current roles from permission-service
    * @param permissions the current permissions from permission-service
-   * @param ttlSeconds the new TTL in seconds
+   * @param expiresAt the new session expiry
+   * @param ttlSeconds the new session TTL in seconds, matching {@code expiresAt}
    * @return the expiry written to Redis, or empty if the session no longer exists
    */
   public Mono<Instant> refreshSessionAuthorization(
@@ -120,10 +123,10 @@ public class SessionWriter {
       String userId,
       List<String> roles,
       List<String> permissions,
+      Instant expiresAt,
       long ttlSeconds) {
     var sessionKey = sessionKey(sessionId);
     var userSessionsKey = userSessionsKey(userId);
-    var expiresAt = clock.instant().plusSeconds(ttlSeconds);
 
     return redisTemplate
         .execute(

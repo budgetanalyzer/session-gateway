@@ -81,13 +81,14 @@ handoff details. Live browser proof belongs to hardening plan 02.1 phase 3.
 ## Session Heartbeat
 
 - **Sliding window**: Frontend calls `GET /auth/v1/session` periodically (~2 min); Session Gateway extends the session only after permission-service returns current authorization for an active account
+- **Absolute lifetime**: Heartbeat never sets `expires_at` past `created_at + session.max-lifetime-seconds` (default 8 hours). At the cap, heartbeat deletes the session, clears the cookie, and returns 401. The cap does not require fresh credentials or MFA, and it is not account-wide revocation (see [session-configuration.md](session-configuration.md#absolute-session-lifetime))
 - **Activity-gated**: The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
 - **Authoritative refresh**: A successful heartbeat atomically replaces `roles`, `permissions`, and `expires_at`, refreshes the session and user-index TTLs, and returns the stored expiry. Auth0 is not contacted
 - **Account invalidation**: A deactivated, deleted, or missing account deletes this session, clears its cookie, and returns 401
 - **Failure behavior**: Timeout, malformed response, upstream error, or Redis mutation failure returns 503 without extending the session or clearing its cookie. Repeated failures therefore cannot keep stale grants alive beyond the remaining Redis TTL
 - **Race safety**: Conditional Redis mutation prevents a session deleted or expired during the permission lookup from being recreated; heartbeat returns 401 and clears the stale cookie
 - **Stale-cookie cleanup**: If the browser presents a cookie for a missing or expired Redis session, heartbeat returns 401 and clears the cookie
-- **Operational defaults**: 15-minute session TTL, 2-minute frontend heartbeat cadence
+- **Operational defaults**: 15-minute session TTL, 8-hour absolute session lifetime, 2-minute frontend heartbeat cadence
 
 ## ext_authz Session Validation
 

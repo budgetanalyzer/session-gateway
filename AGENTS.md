@@ -133,7 +133,7 @@ Session Gateway provides session-based edge authorization for browser-based clie
 - **Behind Istio Ingress**: Browser auth and OAuth2 protocol endpoints reach Session Gateway through Istio ingress; bare `/login` is frontend-owned and served through NGINX
 - **Stateful Sessions**: Redis hashes (`session:{id}`) provide distributed session storage — identity, roles, permissions, expiry — read by both Session Gateway and the ext_authz service
 - **Targeted Session Revocation**: Redis sets (`user_sessions:{userId}`) index all active sessions for a user so permission-service can revoke them without scanning `session:*`
-- **Sliding Sessions**: Frontend heartbeat (`GET /auth/v1/session`) refreshes authorization through permission-service before atomically replacing grants and resetting the Redis TTL. The frontend is responsible for calling only when the user is active (idle users = no heartbeat = session expires naturally). Auth0 is not contacted during heartbeat
+- **Sliding Sessions**: Frontend heartbeat (`GET /auth/v1/session`) refreshes authorization through permission-service before atomically replacing grants and resetting the Redis TTL, never past `created_at + session.max-lifetime-seconds`. The frontend is responsible for calling only when the user is active (idle users = no heartbeat = session expires naturally). Auth0 is not contacted during heartbeat
 
 ## Service Architecture
 
@@ -291,6 +291,7 @@ losing the original deep link.
   - If the cookie points at a missing or expired Redis session: clears the stale cookie and returns 401
   - Looks up current account status and grants by the session's internal `userId`
   - If the account is active: atomically replaces roles and permissions, resets `expires_at`, session TTL, and user-index membership/TTL
+  - The new expiry is capped at `created_at + session.max-lifetime-seconds`; once no lifetime remains: deletes this session, clears the cookie, and returns 401
   - If the account is deactivated, deleted, or missing: deletes this session, clears the cookie, and returns 401
   - If permission-service or Redis is unavailable, times out, or returns invalid data: returns 503 without extending the session or clearing the cookie
   - Response: `{ "userId": "...", "roles": [...], "expiresAt": <epoch> }`
@@ -300,10 +301,10 @@ losing the original deep link.
 **Heartbeat Responsibility Contract**:
 Session Gateway attempts one bounded authorization refresh on every `GET /auth/v1/session` call — it does not track or evaluate user activity. The responsibility split is:
 - **Frontend owns the activity decision**: It tracks user activity (mouse movement, keyboard input, tab focus, etc.) and only calls the heartbeat while the user is active
-- **Session Gateway owns the refresh and extension**: Only an active-account response from permission-service permits one atomic grant replacement and reset of `expires_at` and Redis TTL to a fresh `session.ttl-seconds` window
+- **Session Gateway owns the refresh and extension**: Only an active-account response from permission-service permits one atomic grant replacement and reset of `expires_at` and Redis TTL to a fresh `session.ttl-seconds` window, capped by `session.max-lifetime-seconds` from `created_at`
 - **Idle timeout is frontend-driven**: When the frontend detects the user is idle, it stops calling the heartbeat. The session TTL (default 15 min) lapses naturally and Redis expires the key — the user is logged out on their next interaction
 - **Failed refreshes do not extend**: Dependency and payload failures return 503 while the existing finite TTL continues to count down; missing or inactive accounts return 401 after invalidation
-- **No server-side idle tracking**: Session Gateway has no concept of "idle." An active account can remain alive while a tab keeps successfully calling heartbeat on a fixed timer without checking activity — this is a frontend bug, not a feature
+- **No server-side idle tracking**: Session Gateway has no concept of "idle." An active account can remain alive up to the absolute lifetime cap while a tab keeps successfully calling heartbeat on a fixed timer without checking activity — this is a frontend bug, not a feature
 
 **User Endpoints**:
 - `GET /auth/v1/user` - Returns current authenticated user information including roles and the resolved permission list. This endpoint is the frontend's source of truth for action-level permission gating — roles are for layout (`AdminRoute`), permissions are for actions. Response shape: `UserInfoResponse` carries `permissions: string[]` alongside `roles: string[]`.
@@ -341,6 +342,7 @@ grep -n '\${' src/main/resources/application.yml
 **Session**:
 - `session.key-prefix` (`SESSION_KEY_PREFIX`): Redis key prefix for session hashes (default: `session:`)
 - `session.ttl-seconds` (`SESSION_TTL_SECONDS`): TTL for session keys in seconds (default: `900`)
+- `session.max-lifetime-seconds` (`SESSION_MAX_LIFETIME_SECONDS`): Absolute session lifetime from `created_at` that heartbeats cannot extend past (default: `28800` / 8 hours, matching the Auth0 tenant Maximum Session Lifetime). Startup fails if it is below `session.ttl-seconds`
 - `session.oauth2-state-ttl-seconds` (`SESSION_OAUTH2_STATE_TTL_SECONDS`): TTL for OAuth2 authorization request state in Redis (default: `600` / 10 min). Must be long enough for MFA enrollment, SSO handoffs, or slow IDP interactions
 - `session.cookie.name` (`SESSION_COOKIE_NAME`): Public browser session cookie name (default: `BA_SESSION`)
 - `session.cookie.domain-override` (`SESSION_COOKIE_DOMAIN_OVERRIDE`): Optional parent-domain override. Default is unset, which emits host-only cookies
@@ -498,6 +500,7 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 - Verify session cookie is present and the corresponding session hash exists in Redis
 - The Redis key may have expired naturally (TTL lapsed) — the user must log in again
 - The session may have been revoked through `DELETE /internal/v1/sessions/users/{userId}`
+- The session may have reached `created_at + session.max-lifetime-seconds` — the user must log in again
 - Confirm permission-service still reports the account as active and present
 
 **Heartbeat Returns 503**:
@@ -569,7 +572,7 @@ For detailed architecture diagrams and security design:
 **Session Lifecycle**:
 - Frontend heartbeat (`GET /auth/v1/session`) keeps the session alive only after current authorization is fetched from permission-service — Auth0 is not contacted after login
 - Targeted revocation is available through `DELETE /internal/v1/sessions/users/{userId}` (called by permission-service)
-- Operational defaults: 15-minute session TTL, 2-minute frontend heartbeat cadence
+- Operational defaults: 15-minute session TTL, 8-hour absolute session lifetime, 2-minute frontend heartbeat cadence
 - Recommended Auth0 dashboard values that pair with these defaults are documented in [docs/auth0-settings.md](docs/auth0-settings.md)
 
 **No CORS Needed**:
@@ -636,7 +639,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 9. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production. OAuth2 callback path (`/login/oauth2/code/**`) is excluded from HTTP logging (defense-in-depth).
 10. **Session Key Prefix Alignment**: `session.key-prefix` must match the ext_authz service's expected prefix so it can find session hashes
 11. **Permission-Service Dependency**: Login fails (redirect to `/oops`, no session) if the bounded user-sync call fails or exceeds `permission-service.login-timeout`; heartbeat returns 503 without extending when its bounded authorization lookup fails
-12. **Heartbeat Interval**: Frontend should call `GET /auth/v1/session` every ~2 min **only while the user is active**. The current default is a 15-minute session TTL. Successful heartbeats can otherwise keep an active account alive indefinitely in an open tab
+12. **Heartbeat Interval**: Frontend should call `GET /auth/v1/session` every ~2 min **only while the user is active**. The current default is a 15-minute session TTL. Successful heartbeats can otherwise keep an active account alive in an open tab until the absolute session lifetime (default 8 hours)
 
 ## NOTES FOR AI AGENTS
 
