@@ -60,6 +60,19 @@ the current account status, roles, and permissions by internal `userId`. It exte
 only after that lookup succeeds for an active account. Auth0 is not contacted. The frontend decides
 when to call based on user activity.
 
+## Login User Sync
+
+After Auth0 authentication succeeds, the OAuth2 callback calls
+`POST /internal/v1/users/sync` with a JSON body `{"idpSub", "email", "displayName"}`. The
+permission-service creates or updates the user and returns `{userId, roles, permissions}`, which
+Session Gateway writes to the new session hash. Identity fields travel in the body, never in the
+URL.
+
+The whole call, including connect, request, and response decoding, is bounded by
+`PERMISSION_SERVICE_LOGIN_TIMEOUT` (default `5s`). A timeout, transport failure, non-2xx response
+(including 422 for a deactivated user), or undecodable body fails the callback: Session Gateway
+redirects to `/oops`, writes no session hash or user-index entry, and sets no session cookie.
+
 ## Heartbeat Authorization Refresh
 
 The heartbeat uses `GET /internal/v1/users/{userId}/authorization` with a bounded timeout controlled

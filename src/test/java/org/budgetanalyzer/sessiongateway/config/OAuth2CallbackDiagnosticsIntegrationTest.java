@@ -4,8 +4,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.budgetanalyzer.sessiongateway.security.RedisAuthorizationRequestRepository.BROWSER_BINDING_COOKIE_NAME;
 
@@ -171,7 +171,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
             message ->
                 message.contains("classification=response_timeout")
                     && message.contains("path=/idp/userinfo"));
-    wireMockServer.verify(0, getRequestedFor(urlPathMatching("/internal/v1/users/.*/permissions")));
+    wireMockServer.verify(0, postRequestedFor(urlEqualTo(USER_SYNC_PATH)));
   }
 
   @Test

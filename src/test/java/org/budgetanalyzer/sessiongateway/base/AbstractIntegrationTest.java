@@ -3,13 +3,11 @@ package org.budgetanalyzer.sessiongateway.base;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +28,8 @@ import org.budgetanalyzer.sessiongateway.config.WireMockConfig;
 @AutoConfigureWebTestClient
 @Import({TestContainersConfig.class, WireMockConfig.class})
 public abstract class AbstractIntegrationTest {
+
+  protected static final String USER_SYNC_PATH = "/internal/v1/users/sync";
 
   @Autowired protected WebTestClient webTestClient;
 
@@ -145,12 +145,12 @@ public abstract class AbstractIntegrationTest {
       String userId,
       List<String> roles,
       List<String> permissions) {
-    var encodedIdpSub = URLEncoder.encode(idpSub, StandardCharsets.UTF_8);
-
     wireMockServer.stubFor(
-        get(urlPathEqualTo("/internal/v1/users/" + encodedIdpSub + "/permissions"))
-            .withQueryParam("email", equalTo(email))
-            .withQueryParam("displayName", equalTo(displayName))
+        post(urlEqualTo(USER_SYNC_PATH))
+            .withHeader("Content-Type", equalTo("application/json"))
+            .withRequestBody(matchingJsonPath("$.idpSub", equalTo(idpSub)))
+            .withRequestBody(matchingJsonPath("$.email", equalTo(email)))
+            .withRequestBody(matchingJsonPath("$.displayName", equalTo(displayName)))
             .willReturn(
                 aResponse()
                     .withStatus(200)
@@ -167,10 +167,9 @@ public abstract class AbstractIntegrationTest {
   }
 
   protected void stubPermissionServiceError(String idpSub, int status) {
-    var encodedIdpSub = URLEncoder.encode(idpSub, StandardCharsets.UTF_8);
-
     wireMockServer.stubFor(
-        get(urlPathEqualTo("/internal/v1/users/" + encodedIdpSub + "/permissions"))
+        post(urlEqualTo(USER_SYNC_PATH))
+            .withRequestBody(matchingJsonPath("$.idpSub", equalTo(idpSub)))
             .willReturn(aResponse().withStatus(status)));
   }
 

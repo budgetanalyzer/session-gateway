@@ -2,21 +2,21 @@ package org.budgetanalyzer.sessiongateway.config;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
-import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.budgetanalyzer.sessiongateway.security.RedisAuthorizationRequestRepository.BROWSER_BINDING_COOKIE_NAME;
 
 import java.net.URLDecoder;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 
@@ -49,9 +49,13 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
   private static final String SESSION_WRITE_FAILURE_USER_ID = "security-config-write-failure";
+  private static final String LOGIN_TIMEOUT_USER_ID = "security-config-login-timeout";
+  private static final int PERMISSION_SERVICE_DELAY_MILLISECONDS = 10_000;
   private static final RSAKey TEST_RSA_KEY = createTestRsaKey();
 
   @Autowired private ReactiveStringRedisTemplate reactiveStringRedisTemplate;
+
+  @Autowired private PermissionServiceProperties permissionServiceProperties;
 
   @Test
   void oauth2LoginCreatesPublicSessionCookieAndRedisSessionHashWithoutDependingOnFrameworkCookie()
@@ -474,6 +478,87 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void oauth2CallbackRedirectsToOopsWithoutSessionWhenPermissionServiceExceedsLoginTimeout()
+      throws Exception {
+    var rsaKey = TEST_RSA_KEY;
+    stubJwks(rsaKey);
+
+    var authorizationResult =
+        webTestClient
+            .get()
+            .uri("/oauth2/authorization/idp?returnUrl=/dashboard")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var authorizationQueryParameters =
+        UriComponentsBuilder.fromUri(authorizationResult.getResponseHeaders().getLocation())
+            .build()
+            .getQueryParams();
+    var nonce = authorizationQueryParameters.getFirst("nonce");
+
+    stubOidcTokenEndpoint("access-token-value", createIdToken(rsaKey, nonce));
+    stubOidcUserInfo(
+        "auth0|user-123", "user@example.com", "Test User", "https://cdn.example.com/avatar.png");
+    stubDelayedPermissionService("auth0|user-123", PERMISSION_SERVICE_DELAY_MILLISECONDS);
+
+    var state =
+        URLDecoder.decode(authorizationQueryParameters.getFirst("state"), StandardCharsets.UTF_8);
+    var startedAt = System.nanoTime();
+    var callbackResult =
+        webTestClient
+            .mutate()
+            .responseTimeout(Duration.ofMillis(PERMISSION_SERVICE_DELAY_MILLISECONDS))
+            .build()
+            .get()
+            .uri(
+                UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                    .queryParam("code", "test-code")
+                    .queryParam("state", state)
+                    .build()
+                    .toUriString())
+            .cookie(
+                BROWSER_BINDING_COOKIE_NAME,
+                authorizationResult
+                    .getResponseCookies()
+                    .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                    .getValue())
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+    var elapsed = Duration.ofNanos(System.nanoTime() - startedAt);
+
+    var loginTimeout = permissionServiceProperties.loginTimeout();
+    assertThat(elapsed).isBetween(loginTimeout, loginTimeout.plusSeconds(3));
+    var redirectLocation = callbackResult.getResponseHeaders().getLocation();
+    assertThat(redirectLocation).isNotNull();
+    assertThat(redirectLocation.getPath()).isEqualTo("/oops");
+    assertThat(callbackResult.getResponseCookies().keySet())
+        .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
+    wireMockServer.verify(1, postRequestedFor(urlEqualTo(USER_SYNC_PATH)));
+    assertThat(
+            reactiveStringRedisTemplate
+                .hasKey(SessionHashFields.USER_SESSIONS_KEY_PREFIX + LOGIN_TIMEOUT_USER_ID)
+                .block())
+        .isFalse();
+    assertThat(
+            reactiveStringRedisTemplate
+                .keys(TEST_SESSION_KEY_PREFIX + "*")
+                .filterWhen(
+                    key ->
+                        reactiveStringRedisTemplate
+                            .<String, String>opsForHash()
+                            .get(key, SessionHashFields.USER_ID)
+                            .map(LOGIN_TIMEOUT_USER_ID::equals)
+                            .defaultIfEmpty(false))
+                .collectList()
+                .block())
+        .isEmpty();
+  }
+
+  @Test
   void oauth2CallbackRedirectsToOopsWhenSessionCreationFails() throws Exception {
     var rsaKey = TEST_RSA_KEY;
     stubJwks(rsaKey);
@@ -550,12 +635,18 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
       assertThat(callbackResult.getResponseCookies().keySet())
           .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
 
-      var encodedIdpSub = URLEncoder.encode("auth0|user-123", StandardCharsets.UTF_8);
       wireMockServer.verify(
           1,
-          getRequestedFor(urlPathEqualTo("/internal/v1/users/" + encodedIdpSub + "/permissions"))
-              .withQueryParam("email", equalTo("user@example.com"))
-              .withQueryParam("displayName", equalTo("Test User")));
+          postRequestedFor(urlEqualTo(USER_SYNC_PATH))
+              .withRequestBody(
+                  equalToJson(
+                      """
+                      {
+                        "idpSub": "auth0|user-123",
+                        "email": "user@example.com",
+                        "displayName": "Test User"
+                      }
+                      """)));
 
       var failedSessionKeys =
           reactiveStringRedisTemplate
@@ -739,11 +830,30 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
   }
 
   private void stubPermissionServiceTransportFailure(String idpSub) {
-    var encodedIdpSub = URLEncoder.encode(idpSub, StandardCharsets.UTF_8);
-
     wireMockServer.stubFor(
-        get(urlPathEqualTo("/internal/v1/users/" + encodedIdpSub + "/permissions"))
+        post(urlEqualTo(USER_SYNC_PATH))
+            .withRequestBody(matchingJsonPath("$.idpSub", equalTo(idpSub)))
             .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+  }
+
+  private void stubDelayedPermissionService(String idpSub, int delayMilliseconds) {
+    wireMockServer.stubFor(
+        post(urlEqualTo(USER_SYNC_PATH))
+            .withRequestBody(matchingJsonPath("$.idpSub", equalTo(idpSub)))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        """
+                        {
+                          "userId": "%s",
+                          "roles": ["ROLE_USER"],
+                          "permissions": ["transactions:read"]
+                        }
+                        """
+                            .formatted(LOGIN_TIMEOUT_USER_ID))
+                    .withFixedDelay(delayMilliseconds)));
   }
 
   private void deleteFailedSessionCreationData(String userSessionsKey) {

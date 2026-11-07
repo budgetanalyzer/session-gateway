@@ -246,7 +246,7 @@ find ../service-common/service-web/src/main/java -path "*/reactive/*" -name "*.j
 
 **Consultation triggers**:
 - Read [docs/security.md](docs/security.md) before changing cookies, token handling, return URL validation, internal revocation, or heartbeat security behavior; read its [Browser Error Strategy](docs/security.md#browser-error-strategy) and [Machine Error Contract](docs/security.md#machine-error-contract) before adding or changing an exception handler or error redirect
-- Read [docs/session-configuration.md](docs/session-configuration.md) before changing session properties, the Redis session or user-index contract, heartbeat refresh, the [IdP callback HTTP client](docs/session-configuration.md#idp-callback-http-client), or [callback diagnostics](docs/session-configuration.md#callback-diagnostics)
+- Read [docs/session-configuration.md](docs/session-configuration.md) before changing session properties, the Redis session or user-index contract, login user sync, heartbeat refresh, the [IdP callback HTTP client](docs/session-configuration.md#idp-callback-http-client), or [callback diagnostics](docs/session-configuration.md#callback-diagnostics)
 - Read [docs/configuration.md](docs/configuration.md) before adding, renaming, or removing an environment variable
 - Read [service-common/AGENTS.md](../service-common/AGENTS.md) before overriding or replacing an auto-configured service-web filter or exception handler
 
@@ -349,8 +349,9 @@ grep -n '\${' src/main/resources/application.yml
 
 **Permission Service**:
 - `permission-service.base-url` (`PERMISSION_SERVICE_URL`): Base URL for the permission-service (default: `http://permission-service:8086`)
+- `permission-service.login-timeout` (`PERMISSION_SERVICE_LOGIN_TIMEOUT`): Maximum login user-sync duration (default: `5s`); on expiry the callback redirects to `/oops` without creating a session
 - `permission-service.authorization-refresh-timeout` (`PERMISSION_SERVICE_AUTHORIZATION_REFRESH_TIMEOUT`): Maximum heartbeat lookup duration (default: `2s`)
-- Login endpoint: `GET /internal/v1/users/{idpSub}/permissions?email={email}&displayName={displayName}`
+- Login endpoint: `POST /internal/v1/users/sync` with JSON body `{"idpSub","email","displayName"}`; keep identity fields out of the URL
 - Heartbeat endpoint: `GET /internal/v1/users/{userId}/authorization`
 - No bearer auth — relies on platform network isolation and mesh policy enforcement
 
@@ -488,7 +489,7 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 - Inspect Redis session keys with the `redis-ops` credentials shown above
 
 **Session Not Created After Login**:
-- Check that permission-service is running and reachable at `permission-service.base-url`
+- Check that permission-service is running and reachable at `permission-service.base-url`, and answers `POST /internal/v1/users/sync` within `permission-service.login-timeout`
 - Verify session hash exists in Redis: `redis-cli HGETALL "session:{session-id}"`
 - Verify `session.key-prefix` matches the ext_authz service's expected prefix
 - Enable debug logging: `logging.level.org.budgetanalyzer.sessiongateway=DEBUG`
@@ -634,7 +635,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 8. **Safe Logging**: SafeLogger is **opt-in** — use `SafeLogger.toJson(obj)` for objects with `@Sensitive` fields, `SafeLogger.mask(value)` for sensitive strings, `SafeLogger.truncateId(sessionId)` for session IDs and OAuth2 state values. Never log raw session IDs, OAuth2 code/state, or identity tokens.
 9. **HTTP Logging**: Configure `budgetanalyzer.service.http-logging.*` appropriately - disable or reduce verbosity in production. OAuth2 callback path (`/login/oauth2/code/**`) is excluded from HTTP logging (defense-in-depth).
 10. **Session Key Prefix Alignment**: `session.key-prefix` must match the ext_authz service's expected prefix so it can find session hashes
-11. **Permission-Service Dependency**: Login fails if permission-service is unreachable; heartbeat returns 503 without extending when its bounded authorization lookup fails
+11. **Permission-Service Dependency**: Login fails (redirect to `/oops`, no session) if the bounded user-sync call fails or exceeds `permission-service.login-timeout`; heartbeat returns 503 without extending when its bounded authorization lookup fails
 12. **Heartbeat Interval**: Frontend should call `GET /auth/v1/session` every ~2 min **only while the user is active**. The current default is a 15-minute session TTL. Successful heartbeats can otherwise keep an active account alive indefinitely in an open tab
 
 ## NOTES FOR AI AGENTS

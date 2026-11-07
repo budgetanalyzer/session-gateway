@@ -2,12 +2,17 @@ package org.budgetanalyzer.sessiongateway.service;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +21,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.http.Fault;
 
 import org.budgetanalyzer.sessiongateway.config.PermissionServiceProperties;
 
@@ -32,7 +38,7 @@ class PermissionServiceClientIntegrationTest {
     var baseUrl = "http://localhost:" + wireMock.port();
     var webClient = WebClient.builder().baseUrl(baseUrl).build();
     var permissionServiceProperties =
-        new PermissionServiceProperties(baseUrl, Duration.ofMillis(250));
+        new PermissionServiceProperties(baseUrl, Duration.ofMillis(250), Duration.ofMillis(250));
     permissionServiceClient = new PermissionServiceClient(webClient, permissionServiceProperties);
   }
 
@@ -44,9 +50,17 @@ class PermissionServiceClientIntegrationTest {
   @Test
   void shouldReturnParsedResponseWhenFetchingPermissions() {
     wireMock.stubFor(
-        get(urlPathEqualTo("/internal/v1/users/auth0%7Cabc123/permissions"))
-            .withQueryParam("email", equalTo("user@example.com"))
-            .withQueryParam("displayName", equalTo("Test User"))
+        post(urlEqualTo("/internal/v1/users/sync"))
+            .withHeader("Content-Type", equalTo("application/json"))
+            .withRequestBody(
+                equalToJson(
+                    """
+                    {
+                      "idpSub": "auth0|abc123",
+                      "email": "user@example.com",
+                      "displayName": "Test User"
+                    }
+                    """))
             .willReturn(
                 aResponse()
                     .withStatus(200)
@@ -72,15 +86,16 @@ class PermissionServiceClientIntegrationTest {
   }
 
   @Test
-  void shouldThrowOnClientErrorWhenFetchingPermissions() {
+  void shouldThrowOnDeactivatedUserWhenFetchingPermissions() {
     wireMock.stubFor(
-        get(urlPathEqualTo("/internal/v1/users/auth0%7Cnotfound/permissions"))
-            .willReturn(aResponse().withStatus(404)));
+        post(urlEqualTo("/internal/v1/users/sync"))
+            .withRequestBody(matchingJsonPath("$.idpSub", equalTo("auth0|deactivated")))
+            .willReturn(aResponse().withStatus(422)));
 
     assertThatThrownBy(
             () ->
                 permissionServiceClient
-                    .fetchPermissions("auth0|notfound", "user@example.com", "Test User")
+                    .fetchPermissions("auth0|deactivated", "user@example.com", "Test User")
                     .block())
         .isInstanceOf(PermissionServiceClient.PermissionServiceException.class);
   }
@@ -88,8 +103,7 @@ class PermissionServiceClientIntegrationTest {
   @Test
   void shouldThrowOnServerErrorWhenFetchingPermissions() {
     wireMock.stubFor(
-        get(urlPathEqualTo("/internal/v1/users/auth0%7Cerror/permissions"))
-            .willReturn(aResponse().withStatus(500)));
+        post(urlEqualTo("/internal/v1/users/sync")).willReturn(aResponse().withStatus(500)));
 
     assertThatThrownBy(
             () ->
@@ -97,6 +111,37 @@ class PermissionServiceClientIntegrationTest {
                     .fetchPermissions("auth0|error", "user@example.com", "Test User")
                     .block())
         .isInstanceOf(PermissionServiceClient.PermissionServiceException.class);
+  }
+
+  @Test
+  void shouldTimeoutWhenFetchingPermissions() {
+    wireMock.stubFor(
+        post(urlEqualTo("/internal/v1/users/sync"))
+            .willReturn(aResponse().withStatus(200).withFixedDelay(1000)));
+
+    assertThatThrownBy(
+            () ->
+                permissionServiceClient
+                    .fetchPermissions("auth0|slow", "user@example.com", "Test User")
+                    .block())
+        .isInstanceOf(PermissionServiceClient.PermissionServiceException.class)
+        .hasMessageContaining("user sync failed")
+        .hasCauseInstanceOf(TimeoutException.class);
+  }
+
+  @Test
+  void shouldThrowOnTransportFailureWhenFetchingPermissions() {
+    wireMock.stubFor(
+        post(urlEqualTo("/internal/v1/users/sync"))
+            .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+
+    assertThatThrownBy(
+            () ->
+                permissionServiceClient
+                    .fetchPermissions("auth0|reset", "user@example.com", "Test User")
+                    .block())
+        .isInstanceOf(PermissionServiceClient.PermissionServiceException.class)
+        .hasMessageContaining("user sync failed");
   }
 
   @Test
