@@ -11,12 +11,71 @@
 - **Domain override is an escape hatch**: Use it only when ingress/header behavior requires a parent-domain cookie
 - **Timeout**: 15 minutes
 
+## OAuth Callback Browser Binding
+
+Each login transaction is bound to the initiating browser, in addition to its transaction-specific
+PKCE verifier and OIDC nonce ([RFC 9700 section 2.1.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1)).
+The authorization request uses `response_type=code` without `response_mode=form_post`; Auth0 returns
+through a top-level GET to `/login/oauth2/code/idp` with query parameters.
+
+On login start, `RedisAuthorizationRequestRepository` reuses a valid `__Host-BA_OAUTH_BINDING`
+cookie or generates a new independent 256-bit secret with `SecureRandom`, encoded as 64 lowercase
+hex characters. A valid incoming binding must be a single cookie in that format. A newly issued
+cookie always has `Secure`, `HttpOnly`, `Path=/`, `SameSite=Lax`, no `Domain`, and no `Max-Age` or
+`Expires` (browser-session lifetime). These attributes are fixed, independent of application-session
+cookie configuration, including domain overrides. HTTPS is required. Lax permits the cross-site
+GET callback; Strict would prevent that cookie from accompanying the callback.
+
+Only the SHA-256 hash of the binding is stored as `browser_binding_hash` in the existing
+`oauth2:state:{state}` Redis hash. The raw secret is neither stored there nor derived from state,
+and it is distinct from `BA_SESSION`. The binding cookie alone cannot authenticate an application
+request.
+
+State records are immutable. Login initiation generates a fresh random state for every request;
+state values must never be reused or recreated after consumption or expiry. Creation uses a small
+Redis script to reject an existing key and write the complete hash plus its configured
+`session.oauth2-state-ttl-seconds` TTL atomically. Its `TYPE`, `HSET`, and `EXPIRE` commands, plus
+`EVALSHA`/`EVAL`, are already in the Session Gateway Redis allowlist from hardening plan 01.
+No additional Redis permissions are required.
+
+On both successful and denial/error callbacks, the repository:
+
+1. Reads state only when a valid binding cookie is present.
+2. Compares its SHA-256 hash with the stored hash using `MessageDigest.isEqual`.
+3. Deletes that exact state key only after the binding matches.
+4. Returns the authorization request and sets callback attributes only when `DEL` returns **1**.
+
+Missing, malformed, duplicate, or mismatched binding cookies cannot consume the record. A replay,
+expiry (including between read and delete), or competing callback that receives `DEL == 0` fails
+closed before code exchange or session issuance. Redis errors also fail closed. Immutable,
+never-reused state keys make the deletion count sufficient for a single winner; callback
+consumption does not require Lua. Callback attributes, including the existing return URL, are
+available only to that winner. Binding failures use the existing login-failure redirect, without
+recovering callback attributes from an unconsumed transaction.
+
+The binding cookie is retained across callbacks, including denial and error callbacks. It is not
+rotated or cleared per login, so tabs that start with an existing binding can complete in either
+order. If two first starts are sent before either cookie response is stored, they can generate
+different bindings: the callback for the cookie retained by the browser can succeed, and the other
+fails closed and needs a fresh login. Cookie loss similarly invalidates pending callbacks. One
+cookie does not cap pending Redis records: the existing state TTL and platform rate/capacity
+controls remain necessary.
+
+API-test login helpers must retain this cookie from login initiation and send it on callback.
+Existing local pending OAuth records without a binding hash cannot complete; start a fresh login
+and let those records expire. No migration or compatibility reader is provided. No cluster reset
+is required for this additive hash field; an optional local state reset uses the orchestration
+`./scripts/ops/flush-redis.sh` procedure.
+
+See [hardening evidence](research/security-consensus-hardening-evidence.md) for phase 1 checks and
+handoff details. Live browser proof belongs to hardening plan 02.1 phase 3.
+
 ## Token Protection
 
 - The ID token is validated and userinfo is retrieved during login; the access token is used only
   for that userinfo request
 - No Auth0 token is persisted or used for downstream API validation after the session is created
-- Browser only sees opaque session cookie; all sensitive data lives in Redis
+- Browser receives opaque session and binding cookies; IdP tokens remain server-side
 - Session hash deleted on logout, cookie cleared
 
 ## Session Heartbeat

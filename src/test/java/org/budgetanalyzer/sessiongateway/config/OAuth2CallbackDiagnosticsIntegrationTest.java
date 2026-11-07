@@ -7,6 +7,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.budgetanalyzer.sessiongateway.security.RedisAuthorizationRequestRepository.BROWSER_BINDING_COOKIE_NAME;
 
 import java.net.URI;
 import java.net.URLDecoder;
@@ -105,7 +106,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
         List.of("ROLE_USER"),
         List.of("transactions:read"));
 
-    var redirectLocation = executeCallback(authorizationRequest.state(), SECRET_AUTH_CODE);
+    var redirectLocation = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
 
     assertLoginFailureRedirect(redirectLocation, SECRET_RETURN_URL);
     assertSanitizedLogs(authorizationRequest.state(), SECRET_AUTH_CODE);
@@ -132,7 +133,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
         List.of("ROLE_USER"),
         List.of("transactions:read"));
 
-    var redirectLocation = executeCallback(authorizationRequest.state(), SECRET_AUTH_CODE);
+    var redirectLocation = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
 
     assertLoginFailureRedirect(redirectLocation, SECRET_RETURN_URL);
     assertSanitizedLogs(authorizationRequest.state(), SECRET_AUTH_CODE);
@@ -161,7 +162,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
         List.of("ROLE_USER"),
         List.of("transactions:read"));
 
-    var redirectLocation = executeCallback(authorizationRequest.state(), SECRET_AUTH_CODE);
+    var redirectLocation = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
 
     assertLoginFailureRedirect(redirectLocation, SECRET_RETURN_URL);
     assertSanitizedLogs(authorizationRequest.state(), SECRET_AUTH_CODE);
@@ -192,7 +193,7 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
                           () -> {
                             startLatch.await(5, TimeUnit.SECONDS);
                             return executeCallback(
-                                authorizationRequest.state(),
+                                authorizationRequest,
                                 "code-" + authorizationRequest.state().substring(0, 8));
                           }))
               .toList();
@@ -237,19 +238,23 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
     assertThat(state).isNotBlank();
     assertThat(nonce).isNotBlank();
 
-    return new AuthorizationRequest(URLDecoder.decode(state, StandardCharsets.UTF_8), nonce);
+    return new AuthorizationRequest(
+        URLDecoder.decode(state, StandardCharsets.UTF_8),
+        nonce,
+        authorizationResult.getResponseCookies().getFirst(BROWSER_BINDING_COOKIE_NAME).getValue());
   }
 
-  private URI executeCallback(String state, String code) {
+  private URI executeCallback(AuthorizationRequest authorizationRequest, String code) {
     var callbackResult =
         webTestClient
             .get()
             .uri(
                 UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
                     .queryParam("code", code)
-                    .queryParam("state", state)
+                    .queryParam("state", authorizationRequest.state())
                     .build()
                     .toUriString())
+            .cookie(BROWSER_BINDING_COOKIE_NAME, authorizationRequest.binding())
             .exchange()
             .expectStatus()
             .is3xxRedirection()
@@ -388,5 +393,5 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
                     .withBody(new JWKSet(rsaKey.toPublicJWK()).toString())));
   }
 
-  private record AuthorizationRequest(String state, String nonce) {}
+  private record AuthorizationRequest(String state, String nonce, String binding) {}
 }

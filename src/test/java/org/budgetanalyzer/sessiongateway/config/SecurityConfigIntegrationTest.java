@@ -5,9 +5,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.budgetanalyzer.sessiongateway.security.RedisAuthorizationRequestRepository.BROWSER_BINDING_COOKIE_NAME;
 
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -19,9 +21,12 @@ import java.time.Instant;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.web.reactive.server.FluxExchangeResult;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.github.tomakehurst.wiremock.http.Fault;
@@ -68,7 +73,17 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
 
     var authorizationQueryParameters =
         UriComponentsBuilder.fromUri(authorizationLocation).build().getQueryParams();
-    assertThat(authorizationQueryParameters).doesNotContainKey("audience");
+    assertThat(authorizationQueryParameters).doesNotContainKeys("audience", "response_mode");
+    assertThat(authorizationQueryParameters.getFirst("response_type")).isEqualTo("code");
+    var bindingCookie =
+        authorizationResult.getResponseCookies().getFirst(BROWSER_BINDING_COOKIE_NAME);
+    assertThat(bindingCookie).isNotNull();
+    assertThat(bindingCookie.isSecure()).isTrue();
+    assertThat(bindingCookie.isHttpOnly()).isTrue();
+    assertThat(bindingCookie.getPath()).isEqualTo("/");
+    assertThat(bindingCookie.getDomain()).isNull();
+    assertThat(bindingCookie.getSameSite()).isEqualTo("Lax");
+    assertThat(bindingCookie.getMaxAge()).isNegative();
 
     var state = authorizationQueryParameters.getFirst("state");
     assertThat(state).isNotBlank();
@@ -113,6 +128,12 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
                     .queryParam("state", state)
                     .build()
                     .toUriString())
+            .cookie(
+                BROWSER_BINDING_COOKIE_NAME,
+                authorizationResult
+                    .getResponseCookies()
+                    .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                    .getValue())
             .exchange()
             .expectStatus()
             .is3xxRedirection()
@@ -200,6 +221,12 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
                     .queryParam("state", state)
                     .build()
                     .toUriString())
+            .cookie(
+                BROWSER_BINDING_COOKIE_NAME,
+                authorizationResult
+                    .getResponseCookies()
+                    .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                    .getValue())
             .exchange()
             .expectStatus()
             .is3xxRedirection()
@@ -247,6 +274,12 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
                     .queryParam("state", state)
                     .build()
                     .toUriString())
+            .cookie(
+                BROWSER_BINDING_COOKIE_NAME,
+                authorizationResult
+                    .getResponseCookies()
+                    .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                    .getValue())
             .exchange()
             .expectStatus()
             .is3xxRedirection()
@@ -294,6 +327,12 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
                     .queryParam("state", state)
                     .build()
                     .toUriString())
+            .cookie(
+                BROWSER_BINDING_COOKIE_NAME,
+                authorizationResult
+                    .getResponseCookies()
+                    .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                    .getValue())
             .exchange()
             .expectStatus()
             .is3xxRedirection()
@@ -350,6 +389,12 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
                     .queryParam("state", state)
                     .build()
                     .toUriString())
+            .cookie(
+                BROWSER_BINDING_COOKIE_NAME,
+                authorizationResult
+                    .getResponseCookies()
+                    .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                    .getValue())
             .exchange()
             .expectStatus()
             .is3xxRedirection()
@@ -410,6 +455,12 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
                     .queryParam("state", state)
                     .build()
                     .toUriString())
+            .cookie(
+                BROWSER_BINDING_COOKIE_NAME,
+                authorizationResult
+                    .getResponseCookies()
+                    .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                    .getValue())
             .exchange()
             .expectStatus()
             .is3xxRedirection()
@@ -482,6 +533,12 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
                       .queryParam("state", state)
                       .build()
                       .toUriString())
+              .cookie(
+                  BROWSER_BINDING_COOKIE_NAME,
+                  authorizationResult
+                      .getResponseCookies()
+                      .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                      .getValue())
               .exchange()
               .expectStatus()
               .is3xxRedirection()
@@ -522,6 +579,147 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
       deleteFailedSessionCreationData(userSessionsKey);
     }
   }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void unboundCallbackCannotExchangeCodeOrIssueSessionAndOwnerCanStillLogin(boolean wrongBrowser)
+      throws Exception {
+    var owner = beginBoundLogin(null);
+    var otherBrowser = beginBoundLogin(null);
+    var rejected =
+        invokeCallback(owner.state(), wrongBrowser ? otherBrowser.binding() : null, false);
+
+    assertThat(rejected.getResponseHeaders().getLocation()).hasToString("/login?error=auth_failed");
+    assertThat(rejected.getResponseCookies()).isEmpty();
+    wireMockServer.verify(0, postRequestedFor(urlEqualTo("/idp/oauth/token")));
+    assertThat(readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + owner.state())).isNotEmpty();
+    completeBoundLogin(owner);
+  }
+
+  @Test
+  void replayedCallbackCannotExchangeCodeOrIssueAnotherSession() throws Exception {
+    var login = beginBoundLogin(null);
+    completeBoundLogin(login);
+
+    var replay = invokeCallback(login.state(), login.binding(), false);
+
+    assertThat(replay.getResponseHeaders().getLocation()).hasToString("/login?error=auth_failed");
+    assertThat(replay.getResponseCookies()).isEmpty();
+    wireMockServer.verify(1, postRequestedFor(urlEqualTo("/idp/oauth/token")));
+  }
+
+  @Test
+  void denialCallbackRequiresBindingAndConsumesOnlyOnceWithoutTokenExchange() {
+    var login = beginBoundLogin(null);
+    var otherBrowser = beginBoundLogin(null);
+    var fields = readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + login.state());
+
+    var missingBinding = invokeCallback(login.state(), null, true);
+    var wrongBinding = invokeCallback(login.state(), otherBrowser.binding(), true);
+    assertThat(missingBinding.getResponseHeaders().getLocation())
+        .hasToString("/login?error=auth_failed");
+    assertThat(wrongBinding.getResponseHeaders().getLocation())
+        .hasToString("/login?error=auth_failed");
+    assertThat(missingBinding.getResponseCookies()).isEmpty();
+    assertThat(wrongBinding.getResponseCookies()).isEmpty();
+    assertThat(readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + login.state())).isEqualTo(fields);
+
+    var denied = invokeCallback(login.state(), login.binding(), true);
+    assertThat(denied.getResponseHeaders().getLocation())
+        .hasToString("/login?error=auth_failed&returnUrl=/dashboard");
+    assertThat(denied.getResponseCookies()).isEmpty();
+    assertThat(readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + login.state())).isEmpty();
+    var replay = invokeCallback(login.state(), login.binding(), true);
+    assertThat(replay.getResponseHeaders().getLocation()).hasToString("/login?error=auth_failed");
+    assertThat(replay.getResponseCookies()).isEmpty();
+    wireMockServer.verify(0, postRequestedFor(urlEqualTo("/idp/oauth/token")));
+  }
+
+  @Test
+  void pendingTabsSharingBindingBothCompleteLogin() throws Exception {
+    var firstTab = beginBoundLogin(null);
+    var secondTab = beginBoundLogin(firstTab.binding());
+
+    assertThat(secondTab.binding()).isEqualTo(firstTab.binding());
+    completeBoundLogin(secondTab);
+    completeBoundLogin(firstTab);
+    wireMockServer.verify(2, postRequestedFor(urlEqualTo("/idp/oauth/token")));
+  }
+
+  @Test
+  void firstStartsWithoutCookieFailClosedForLosingBindingAndFreshLoginSucceeds() throws Exception {
+    // Both requests omit the cookie, as when sent before either Set-Cookie response is stored.
+    var firstTab = beginBoundLogin(null);
+    var secondTab = beginBoundLogin(null);
+    assertThat(firstTab.binding()).isNotEqualTo(secondTab.binding());
+
+    var rejected = invokeCallback(firstTab.state(), secondTab.binding(), false);
+    assertThat(rejected.getResponseHeaders().getLocation()).hasToString("/login?error=auth_failed");
+    assertThat(rejected.getResponseCookies()).isEmpty();
+    wireMockServer.verify(0, postRequestedFor(urlEqualTo("/idp/oauth/token")));
+    completeBoundLogin(secondTab);
+    completeBoundLogin(beginBoundLogin(secondTab.binding()));
+  }
+
+  private BoundLogin beginBoundLogin(String binding) {
+    var request = webTestClient.get().uri("/oauth2/authorization/idp?returnUrl=/dashboard");
+    if (binding != null) {
+      request.cookie(BROWSER_BINDING_COOKIE_NAME, binding);
+    }
+    var result = request.exchange().expectStatus().is3xxRedirection().returnResult(Void.class);
+    var queryParameters =
+        UriComponentsBuilder.fromUri(result.getResponseHeaders().getLocation())
+            .build()
+            .getQueryParams();
+    var cookie = result.getResponseCookies().getFirst(BROWSER_BINDING_COOKIE_NAME);
+    if (binding != null) {
+      assertThat(cookie).isNull();
+    }
+    return new BoundLogin(
+        URLDecoder.decode(queryParameters.getFirst("state"), StandardCharsets.UTF_8),
+        queryParameters.getFirst("nonce"),
+        cookie == null ? binding : cookie.getValue());
+  }
+
+  private FluxExchangeResult<Void> invokeCallback(String state, String binding, boolean denied) {
+    var uriBuilder =
+        UriComponentsBuilder.fromPath("/login/oauth2/code/idp").queryParam("state", state);
+    if (denied) {
+      uriBuilder.queryParam("error", "access_denied");
+    } else {
+      uriBuilder.queryParam("code", "test-code");
+    }
+    var request = webTestClient.get().uri(uriBuilder.build().toUriString());
+    if (binding != null) {
+      request.cookie(BROWSER_BINDING_COOKIE_NAME, binding);
+    }
+    return request.exchange().expectStatus().is3xxRedirection().returnResult(Void.class);
+  }
+
+  private void completeBoundLogin(BoundLogin login) throws Exception {
+    stubJwks(TEST_RSA_KEY);
+    stubOidcTokenEndpoint("access-token-value", createIdToken(TEST_RSA_KEY, login.nonce()));
+    stubOidcUserInfo("auth0|user-123", "user@example.com", "Test User");
+    stubPermissionService(
+        "auth0|user-123",
+        "user@example.com",
+        "Test User",
+        "internal-user-456",
+        java.util.List.of("ROLE_USER"),
+        java.util.List.of("transactions:read"));
+
+    var result = invokeCallback(login.state(), login.binding(), false);
+
+    assertThat(result.getResponseHeaders().getLocation()).hasToString("/dashboard");
+    assertThat(result.getResponseCookies().keySet()).containsExactly(PUBLIC_SESSION_COOKIE_NAME);
+    var cookie = result.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME);
+    assertThat(cookie.getValue()).isNotEqualTo(login.binding());
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + cookie.getValue()))
+        .containsEntry("user_id", "internal-user-456");
+    assertThat(readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + login.state())).isEmpty();
+  }
+
+  private record BoundLogin(String state, String nonce, String binding) {}
 
   private void stubTokenEndpointError() {
     wireMockServer.stubFor(
