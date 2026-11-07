@@ -221,3 +221,57 @@ Context: [plan 02.5](../../../orchestration/docs/plans/security-hardening-02.5-h
 [contested decision 2](../../../orchestration/docs/research/security-review-contested-issues-2026-11-02.md#2-redis-enumeration-after-hashing),
 R2 finding A, R3's three fixes for finding A, and R4's Redis finding. This section is available
 for plan 05 phase 3's evidence collection.
+
+## Plan 02.6, Phase 1: `__Host-` Session Cookie
+
+Validated on 2026-11-07 in the Session Gateway workspace for worker run
+`20261107T144205Z-phase-1-c1079767-86d0-4c72-bc01-0a96898669d8`.
+Scope: `application.yml`, `SessionProperties`, `SessionCookieHelper`, the startup contract logger,
+tests, and [the cookie contract](../session-configuration.md#cookie-behavior).
+
+### Implemented contract
+
+- `SESSION_COOKIE_NAME` defaults to `__Host-BA_SESSION`.
+- D4 applied by removal: `session.cookie.domain-override` / `SESSION_COOKIE_DOMAIN_OVERRIDE` and
+  `CookieProperties.domainOverride` no longer exist, so no `Domain` attribute can be emitted. The
+  former override integration suite was deleted. A leftover `SESSION_COOKIE_DOMAIN_OVERRIDE`
+  environment variable is ignored by binding.
+- Startup fails when `session.cookie.name` starts with `__Host-` (case-insensitive, as browsers
+  match the prefix) and `session.cookie.secure=false`.
+- The startup log line is now `Public session cookie contract configured: name={name}`.
+
+### Actual `Set-Cookie` output
+
+Captured from the Reactor Netty HTTP responses in the integration suites (the encoding differs from
+`ResponseCookie.toString()`, so the integration tests assert the raw header):
+
+```text
+# login callback (SecurityConfigIntegrationTest)
+__Host-BA_SESSION=<uuid>; Path=/; Secure; HTTPOnly; SameSite=Strict
+# logout clear (LogoutControllerIntegrationTest)
+__Host-BA_SESSION=; Max-Age=0; Expires=<now>; Path=/; Secure; HTTPOnly; SameSite=Strict
+```
+
+Both carry `Secure` and `Path=/` with no `Domain`, satisfying the `__Host-` prefix rules for
+setting and clearing. Heartbeat clears use the same `SessionCookieHelper` path and are covered by
+the existing `SessionControllerIntegrationTest` attribute assertions.
+
+### Validation results
+
+```bash
+./gradlew clean spotlessApply
+./gradlew clean build
+```
+
+Both succeeded: **236 tests, 0 failures, 0 errors, 0 skipped**; Spotless and Checkstyle passed.
+JaCoCo reported **945/998 lines (94.69%)** and **217/278 branches (78.06%)**. The first build run
+failed two new raw-header assertions written against `ResponseCookie.toString()` ordering
+(`HttpOnly`, `Path` before `Max-Age`); they were corrected to the real wire format above.
+
+### Handoff and limitations
+
+- ext-authz, API tests and orchestration must switch to `__Host-BA_SESSION` in the same merge unit;
+  until then the local stack is inconsistent. Existing local `BA_SESSION` cookies are simply ignored,
+  so users log in again; no migration is needed.
+- `kubernetes/production` pins older session-gateway images without this change (plan 05, Phase 3).
+- Browser acceptance of the cookie through the live ingress is not proven here.

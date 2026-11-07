@@ -5,7 +5,7 @@
 Session Gateway and ext_authz must stay aligned on four things:
 
 - `SESSION_KEY_PREFIX`, default `session:`
-- `SESSION_COOKIE_NAME`, default `BA_SESSION`
+- `SESSION_COOKIE_NAME`, default `__Host-BA_SESSION`
 - the session key derivation described in [Hashed Session Keys](#hashed-session-keys)
 - the Redis session hash field `expires_at`, written by Session Gateway and enforced by ext_authz
 
@@ -61,13 +61,9 @@ Defaults:
 - `SESSION_TTL_SECONDS=900`
 - `SESSION_MAX_LIFETIME_SECONDS=28800`
 - `SESSION_OAUTH2_STATE_TTL_SECONDS=600`
-- `SESSION_COOKIE_NAME=BA_SESSION`
-- `SESSION_COOKIE_DOMAIN_OVERRIDE` unset
+- `SESSION_COOKIE_NAME=__Host-BA_SESSION`
 - `SESSION_COOKIE_SECURE=true`
 - `SESSION_COOKIE_SAME_SITE=Strict`
-
-`SESSION_COOKIE_DOMAIN_OVERRIDE` is wired in `src/main/resources/application.yml` with a blank
-default so the public cookie remains host-only unless an explicit override is configured.
 
 Startup validation rejects:
 
@@ -76,13 +72,15 @@ Startup validation rejects:
 - non-positive `session.ttl-seconds` or `session.oauth2-state-ttl-seconds`
 - `session.max-lifetime-seconds` below `session.ttl-seconds`
 - unsupported `session.cookie.same-site` values
+- a `session.cookie.name` starting with `__Host-` (case-insensitive) combined with
+  `session.cookie.secure=false`
 
-Startup does not enforce an allowlist of cookie names beyond the non-blank requirement. Changing
+Startup does not enforce an allowlist of cookie names beyond the non-blank and `__Host-`/`Secure`
+requirements. Changing
 `SESSION_COOKIE_NAME` still changes a cross-repo cookie contract and must stay aligned with
 ext_authz.
 
-After startup completes, Session Gateway logs the configured public cookie name and whether a
-domain override is enabled.
+After startup completes, Session Gateway logs the configured public cookie name.
 
 ## Operational Defaults
 
@@ -212,24 +210,19 @@ debug logging does not become the primary callback diagnostic path.
 
 ## Cookie Behavior
 
-The public browser session contract is `BA_SESSION` by default. Session Gateway reads, sets, and
-clears that cookie exclusively through `SessionCookieHelper`. ext_authz must look up that same
-configured public cookie name.
+The public browser session contract is `__Host-BA_SESSION` by default. Session Gateway reads,
+sets, and clears that cookie exclusively through `SessionCookieHelper`. ext_authz must look up that
+same configured public cookie name.
 
 An internal framework cookie named `SESSION` may still appear during Spring-managed flows. That is
 not the browser auth contract. Session Gateway does not read, refresh, or clear that framework
 cookie when managing authenticated browser sessions.
 
-Default public-cookie behavior is host-only. Session Gateway does not emit a `Domain` attribute
-unless `SESSION_COOKIE_DOMAIN_OVERRIDE` is set.
-
-Use `SESSION_COOKIE_DOMAIN_OVERRIDE` only as an ingress workaround when a parent-domain cookie is
-required. It is not the primary path.
-
-Heartbeat and logout clearing behavior follows the same public-cookie rule:
-
-- no override configured: clear a host-only cookie
-- override configured: clear a cookie with that explicit `Domain` attribute
+The public cookie is always host-only. Setting and clearing it (login, heartbeat, logout) emit
+`Secure`, `HttpOnly`, `SameSite`, `Path=/`, and no `Domain` attribute. The `__Host-` prefix
+requires `Secure`, `Path=/`, and no `Domain`; browsers silently reject a `__Host-` cookie that
+violates any of these, including the clearing cookie. There is no domain override, and startup
+fails if a `__Host-` name is configured with `session.cookie.secure=false`.
 
 If the browser presents a cookie for a missing or expired Redis session, `GET /auth/v1/session`
 returns `401 application/json` with the shared `ApiErrorResponse` contract and clears the stale

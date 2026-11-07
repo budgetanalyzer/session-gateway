@@ -345,8 +345,7 @@ grep -n '\${' src/main/resources/application.yml
 - `session.ttl-seconds` (`SESSION_TTL_SECONDS`): TTL for session keys in seconds (default: `900`)
 - `session.max-lifetime-seconds` (`SESSION_MAX_LIFETIME_SECONDS`): Absolute session lifetime from `created_at` that heartbeats cannot extend past (default: `28800` / 8 hours, matching the Auth0 tenant Maximum Session Lifetime). Startup fails if it is below `session.ttl-seconds`
 - `session.oauth2-state-ttl-seconds` (`SESSION_OAUTH2_STATE_TTL_SECONDS`): TTL for OAuth2 authorization request state in Redis (default: `600` / 10 min). Must be long enough for MFA enrollment, SSO handoffs, or slow IDP interactions
-- `session.cookie.name` (`SESSION_COOKIE_NAME`): Public browser session cookie name (default: `BA_SESSION`)
-- `session.cookie.domain-override` (`SESSION_COOKIE_DOMAIN_OVERRIDE`): Optional parent-domain override. Default is unset, which emits host-only cookies
+- `session.cookie.name` (`SESSION_COOKIE_NAME`): Public browser session cookie name (default: `__Host-BA_SESSION`). Startup fails if a `__Host-` name is combined with `session.cookie.secure=false`
 - `session.cookie.secure` (`SESSION_COOKIE_SECURE`): HTTPS-only cookies (default: `true`)
 - `session.cookie.same-site` (`SESSION_COOKIE_SAME_SITE`): SameSite attribute (default: `Strict`; accepts `Strict`, `Lax`, or `None`, case-insensitively)
 
@@ -560,9 +559,8 @@ For detailed architecture diagrams and security design:
 - HttpOnly: Not accessible via JavaScript
 - Secure: HTTPS only in production
 - SameSite: CSRF protection
-- Public cookie contract: `BA_SESSION` by default; any framework `SESSION` cookie is internal implementation detail, not the browser auth contract
-- Host-only by default: no `Domain` attribute unless `session.cookie.domain-override` is set
-- Domain override is a workaround/escape hatch, not the primary path
+- Public cookie contract: `__Host-BA_SESSION` by default; any framework `SESSION` cookie is internal implementation detail, not the browser auth contract
+- Always host-only: every set and clear emits `Secure`, `Path=/`, and no `Domain` attribute, as the `__Host-` prefix requires. There is no domain override
 - Short TTL: 15 minutes default
 
 **OAuth2 Best Practices**:

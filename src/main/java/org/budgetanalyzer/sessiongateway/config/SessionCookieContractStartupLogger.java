@@ -19,14 +19,10 @@ public class SessionCookieContractStartupLogger {
     this.sessionProperties = sessionProperties;
   }
 
-  /** Logs the configured public cookie name and whether a domain override is enabled. */
+  /** Logs the configured public cookie name. */
   @EventListener(ApplicationReadyEvent.class)
   public void logPublicSessionCookieContract() {
-    var cookieProperties = sessionProperties.cookie();
-
     log.info(
-        "Public session cookie contract configured: name={}, domainOverrideEnabled={}",
-        cookieProperties.name(),
-        cookieProperties.hasDomainOverride());
+        "Public session cookie contract configured: name={}", sessionProperties.cookie().name());
   }
 }

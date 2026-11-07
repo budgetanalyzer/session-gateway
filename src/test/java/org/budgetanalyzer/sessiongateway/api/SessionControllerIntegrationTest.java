@@ -54,7 +54,7 @@ import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
   private static final Instant BASE_INSTANT = Instant.parse("2026-03-30T00:00:00Z");
-  private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
+  private static final String PUBLIC_SESSION_COOKIE_NAME = "__Host-BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:heartbeat:";
   private static final long MAX_LIFETIME_SECONDS = 3600;
   private static final String TEST_USER_ID = "heartbeat-user-primary";

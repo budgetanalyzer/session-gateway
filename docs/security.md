@@ -5,10 +5,9 @@
 - **HttpOnly**: Prevents XSS attacks
 - **Secure**: HTTPS only (production)
 - **SameSite=Strict**: CSRF protection
-- **Public cookie contract**: `BA_SESSION` by default
+- **Public cookie contract**: `__Host-BA_SESSION` by default
 - **Framework cookie distinction**: A Spring-managed `SESSION` cookie may appear as an internal implementation detail during framework flows, but Session Gateway and ext_authz do not treat it as the browser auth contract
-- **Host-only by default**: No `Domain` attribute unless `SESSION_COOKIE_DOMAIN_OVERRIDE` is set
-- **Domain override is an escape hatch**: Use it only when ingress/header behavior requires a parent-domain cookie
+- **Host-only, always**: Setting and clearing both emit `Secure`, `Path=/`, and no `Domain`, as the `__Host-` prefix requires. Browsers silently drop a `__Host-` cookie that violates these rules. There is no domain override; startup fails if a `__Host-` name is configured with `SESSION_COOKIE_SECURE=false`
 - **Timeout**: 15 minutes
 
 ## OAuth Callback Browser Binding
@@ -23,12 +22,12 @@ cookie or generates a new independent 256-bit secret with `SecureRandom`, encode
 hex characters. A valid incoming binding must be a single cookie in that format. A newly issued
 cookie always has `Secure`, `HttpOnly`, `Path=/`, `SameSite=Lax`, no `Domain`, and no `Max-Age` or
 `Expires` (browser-session lifetime). These attributes are fixed, independent of application-session
-cookie configuration, including domain overrides. HTTPS is required. Lax permits the cross-site
+cookie configuration. HTTPS is required. Lax permits the cross-site
 GET callback; Strict would prevent that cookie from accompanying the callback.
 
 Only the SHA-256 hash of the binding is stored as `browser_binding_hash` in the existing
 `oauth2:state:{state}` Redis hash. The raw secret is neither stored there nor derived from state,
-and it is distinct from `BA_SESSION`. The binding cookie alone cannot authenticate an application
+and it is distinct from `__Host-BA_SESSION`. The binding cookie alone cannot authenticate an application
 request.
 
 State records are immutable. Login initiation generates a fresh random state for every request;

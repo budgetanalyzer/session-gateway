@@ -34,19 +34,21 @@ public record SessionProperties(
   }
 
   /** Nested cookie configuration for browser sessions. */
-  public record CookieProperties(
-      String name, String domainOverride, boolean secure, String sameSite) {
+  public record CookieProperties(String name, boolean secure, String sameSite) {
+
+    private static final String HOST_COOKIE_PREFIX = "__Host-";
 
     /** Creates validated cookie properties. */
     public CookieProperties {
       name = requireNonBlank(name, "session.cookie.name");
-      domainOverride = normalizeOptional(domainOverride);
+      if (!secure
+          && name.regionMatches(true, 0, HOST_COOKIE_PREFIX, 0, HOST_COOKIE_PREFIX.length())) {
+        throw new IllegalArgumentException(
+            "session.cookie.secure must be true when session.cookie.name starts with "
+                + HOST_COOKIE_PREFIX
+                + ".");
+      }
       sameSite = canonicalizeSameSite(sameSite);
-    }
-
-    /** Returns whether the cookie should emit an explicit Domain attribute. */
-    public boolean hasDomainOverride() {
-      return domainOverride != null;
     }
   }
 
@@ -61,14 +63,6 @@ public record SessionProperties(
   private static long requirePositive(long value, String propertyName) {
     if (value <= 0) {
       throw new IllegalArgumentException(propertyName + " must be greater than zero.");
-    }
-
-    return value;
-  }
-
-  private static String normalizeOptional(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
     }
 
     return value;
