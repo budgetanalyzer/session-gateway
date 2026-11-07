@@ -151,3 +151,73 @@ to later phases of plan 02.2. No git writes or runner-owned state/outcome edits 
 Context: [plan 02.2](../../../orchestration/docs/plans/security-hardening-02.2-oauth-login-input.md),
 R2's login-start cap and finding H, R3's `noeviction` caveat, and the current frontend
 `loginRedirect.ts`. This section is available for plan 05 phase 3's evidence collection.
+
+## Plan 02.5, Phase 1: Hashed Session Keys
+
+Implemented on 2026-11-07 for worker run
+`20261107T120425Z-phase-1-95a286fb-5da2-4365-b6d2-17032d4b7d63`.
+Scope: Session Gateway only; ext-authz (phase 2) and orchestration consumers are later phases.
+
+### Contract and decisions
+
+- `SessionTokenDigest.sha256Hex(token)` is the single helper: the lowercase hex SHA-256 of the
+  cookie token's UTF-8 bytes. `SessionWriter` and `SessionReader` build every `session:` key from
+  it. `create-session.lua` and `conditional-update.lua` receive the digest as `ARGV[1]`, so
+  `user_sessions:{userId}` members are digests. `deleteSession` removes the digest member.
+  `delete-user-sessions.lua` is unchanged because it builds keys from those members.
+- `createSession` returns the raw random UUID token for the cookie only; no Redis command carries
+  it. Plain SHA-256 without salt or HMAC, as planned, because the tokens are random UUIDs.
+- Logs use `SessionTokenDigest.logId(token)`, the first eight digest characters. This covers
+  `SessionWriter`, `SessionReader`, and also `SessionController`, `UserController`, and
+  `LogoutController`, which previously logged `SafeLogger.truncateId` of the raw token. Leaving
+  them would have kept raw-token prefixes in logs, contrary to the phase goal.
+- There is no raw-key fallback or migration. Raw-key sessions become unreachable at cutover.
+- Golden vector for phase 2: token `3f2504e0-4f89-41d3-9a0c-0305e82c3301` →
+  digest `16362f566387b3cf5a6e92fb0a986c76ca20eb3a0c12cbdfbd0b29501e0c18df` →
+  key `session:16362f566387b3cf5a6e92fb0a986c76ca20eb3a0c12cbdfbd0b29501e0c18df`. The digest was
+  computed independently with `sha256sum` and `openssl dgst -sha256` before being pinned in tests.
+- Documented in [Hashed Session Keys](../session-configuration.md#hashed-session-keys),
+  [security](../security.md#hashed-session-keys), `AGENTS.md`, and `README.md`.
+
+### Validation results
+
+Final documented sequence:
+
+```bash
+./gradlew clean spotlessApply
+./gradlew clean build
+```
+
+Both passed; the build took 58 seconds. **237 tests passed, 0 failures, 0 errors, 0 skipped**.
+Spotless, compilation, JAR assembly, and JaCoCo gates passed, and both Checkstyle reports contain
+zero violations. Coverage is **953/1006 lines (94.73%)** and **221/282 branches (78.37%)**, above
+the 90% line and 65% branch gates. Redis reconnect/Netty listener stack traces appeared during
+test-context shutdown, as in earlier phases; no test result references them.
+
+| Evidence | Result |
+| --- | --- |
+| `SessionTokenDigestTest` (5 cases) | Golden digest and default-prefix key match; output is 64 lowercase hex characters; `logId` returns `16362f56…` and handles a missing token. |
+| `SessionReaderIntegrationTest` golden case | A hash written at the literal golden key is read using the raw golden token. A hash named by a raw token is not found. |
+| `SessionWriterIntegrationTest` raw-token case | After create and heartbeat refresh, no Redis key, `user_sessions:*` member, or session field value contains the raw token. The index holds exactly the digest, and `deleteSession` removes both. |
+| `LogoutControllerIntegrationTest` | The digest-keyed hash and index member exist before `/logout` and are gone after it. |
+| `InternalSessionControllerIntegrationTest` | The index holds the three digests before bulk revocation. Revocation deletes their hashes and index and leaves the other user's digest-keyed session. |
+| Existing heartbeat, login, security-context, and user suites | Pass with keys and members derived through the digest. |
+
+### Handoff and limitations
+
+- Phase 2 must derive ext-authz keys with the same function and pin the same golden vector.
+  Until ext-authz, the orchestration seeders, and the verifiers switch, the local stack cannot read
+  new sessions; do not rely on a running stack before the plan's Live phase.
+- After deploying, run `./scripts/ops/flush-redis.sh` from orchestration; existing sessions are
+  unreachable.
+- Hashing removes the bearer value, not enumeration. Principals that can list keys still see
+  session counts and user-index names (contested decision 2).
+- `RedisAuthorizationRequestRepository` still has its own private SHA-256 for
+  `browser_binding_hash`. It is not a session key and was left unchanged.
+- No Tilt, cluster, or live Auth0 access was used. No git writes or runner-owned state/outcome
+  edits were made.
+
+Context: [plan 02.5](../../../orchestration/docs/plans/security-hardening-02.5-hashed-session-keys.md),
+[contested decision 2](../../../orchestration/docs/research/security-review-contested-issues-2026-11-02.md#2-redis-enumeration-after-hashing),
+R2 finding A, R3's three fixes for finding A, and R4's Redis finding. This section is available
+for plan 05 phase 3's evidence collection.

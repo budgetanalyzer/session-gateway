@@ -22,6 +22,7 @@ import reactor.test.StepVerifier;
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 @TestPropertySource(properties = "session.key-prefix=session:test:security-context:")
@@ -89,7 +90,7 @@ class RedisSessionSecurityContextRepositoryIntegrationTest extends AbstractInteg
   @Test
   void saveLeavesExistingRedisSessionUnchanged() {
     var sessionId = createSession();
-    var sessionKey = sessionProperties.keyPrefix() + sessionId;
+    var sessionKey = sessionProperties.keyPrefix() + SessionTokenDigest.sha256Hex(sessionId);
     var mockServerWebExchange = exchangeWithSessionCookie(sessionId);
     var originalSessionFields = readHashEntries(sessionKey);
     var replacementSecurityContext =

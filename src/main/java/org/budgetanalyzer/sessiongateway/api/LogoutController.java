@@ -20,8 +20,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
-import org.budgetanalyzer.core.logging.SafeLogger;
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 /**
@@ -85,13 +85,15 @@ public class LogoutController {
   public Mono<Void> logout(ServerWebExchange exchange) {
     var sessionId = sessionCookieHelper.readSessionId(exchange);
 
-    log.info("Processing logout request for sessionId={}", SafeLogger.truncateId(sessionId));
+    log.info("Processing logout request for sessionId={}", SessionTokenDigest.logId(sessionId));
 
     return deleteSession(sessionId)
         .then(Mono.fromRunnable(() -> sessionCookieHelper.clearSessionCookie(exchange)))
         .then(Mono.defer(() -> redirectToIdpLogout(exchange)))
         .doOnSuccess(
-            v -> log.info("Successfully logged out sessionId={}", SafeLogger.truncateId(sessionId)))
+            v ->
+                log.info(
+                    "Successfully logged out sessionId={}", SessionTokenDigest.logId(sessionId)))
         .doOnError(error -> log.error("Error during logout", error));
   }
 
@@ -101,7 +103,7 @@ public class LogoutController {
       return Mono.empty();
     }
 
-    log.debug("Deleting session {}", SafeLogger.truncateId(sessionId));
+    log.debug("Deleting session {}", SessionTokenDigest.logId(sessionId));
     return sessionWriter.deleteSession(sessionId).then();
   }
 

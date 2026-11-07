@@ -16,11 +16,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import reactor.core.publisher.Mono;
 
-import org.budgetanalyzer.core.logging.SafeLogger;
 import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.sessiongateway.api.response.UserInfoResponse;
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
 import org.budgetanalyzer.sessiongateway.session.SessionReader;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 
 /**
  * User information controller.
@@ -79,7 +79,7 @@ public class UserController {
       return Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
 
-    log.debug("User info requested for sessionId={}", SafeLogger.truncateId(sessionId));
+    log.debug("User info requested for sessionId={}", SessionTokenDigest.logId(sessionId));
 
     return sessionReader
         .readSession(sessionId)

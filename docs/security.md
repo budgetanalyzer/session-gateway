@@ -92,11 +92,20 @@ handoff details. Live browser proof belongs to hardening plan 02.1 phase 3.
 
 ## ext_authz Session Validation
 
-- The ext_authz HTTP service reads session hashes (`session:{id}`) directly from Redis — the same hashes Session Gateway writes
+- The ext_authz HTTP service reads session hashes (`session:{digest}`) directly from Redis — the same hashes Session Gateway writes
 - On valid session: injects `X-User-Id`, `X-Roles`, `X-Permissions` headers into proxied requests
 - On invalid/missing session: returns 401 to the ingress proxy, request rejected before reaching backend
 - No cryptographic verification needed — Redis is trusted internal infrastructure
-- Session IDs are opaque UUIDs — no sensitive data encoded in the cookie value
+- Session tokens are opaque random UUIDs — no sensitive data encoded in the cookie value
+
+## Hashed Session Keys
+
+- The cookie token is a bearer credential. Redis key names, `user_sessions:{userId}` members, and the Redis append-only file hold only its lowercase hex SHA-256 digest, so a Redis key listing, `SMEMBERS`, or AOF copy does not yield a usable cookie
+- Session Gateway returns the raw token once in the `Set-Cookie` response and never stores it; ext_authz hashes the cookie the same way to find the session
+- Logs identify sessions by the first eight digest characters (`SessionTokenDigest.logId`), never by a raw-token prefix
+- Plain SHA-256 is sufficient because tokens are random UUIDs with no guessable structure; no salt or HMAC is used
+- Hashing removes the bearer value, not the enumeration: a principal allowed to list keys still sees how many sessions exist and which users have session indexes. That metadata exposure is accepted
+- The derivation, golden vector, and cutover reset are in [Hashed Session Keys](session-configuration.md#hashed-session-keys)
 
 ## Internal Session Revocation
 

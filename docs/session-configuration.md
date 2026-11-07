@@ -2,18 +2,53 @@
 
 ## Shared Session Contract
 
-Session Gateway and ext_authz must stay aligned on three things:
+Session Gateway and ext_authz must stay aligned on four things:
 
 - `SESSION_KEY_PREFIX`, default `session:`
 - `SESSION_COOKIE_NAME`, default `BA_SESSION`
+- the session key derivation described in [Hashed Session Keys](#hashed-session-keys)
 - the Redis session hash field `expires_at`, written by Session Gateway and enforced by ext_authz
 
-Changing either shared value is a cross-repo contract change. Existing live sessions are keyed by
-the current prefix and browsers hold the current cookie name.
+Changing any shared value is a cross-repo contract change. Existing live sessions are keyed by
+the current prefix and derivation, and browsers hold the current cookie name.
 
 Session Gateway also maintains a per-user Redis set under `user_sessions:{userId}`. That index is
 an internal revocation contract with permission-service, used to locate all active sessions for a
-user without scanning `session:*`.
+user without scanning `session:*`. Its members are session token digests, not raw tokens.
+
+## Hashed Session Keys
+
+The cookie value is a random UUID session token. It is a bearer credential, so Session Gateway
+returns it to the browser once in the cookie and never writes it to Redis or logs.
+
+- **Digest**: `SessionTokenDigest.sha256Hex(token)` is the lowercase hex SHA-256 of the token's
+  UTF-8 bytes (64 characters). Tokens are random UUIDs, so no salt or HMAC is used.
+- **Session key**: `{SESSION_KEY_PREFIX}{digest}`, for example `session:{digest}`.
+- **User index member**: `user_sessions:{userId}` holds the digest, so
+  `delete-user-sessions.lua` builds `{prefix}{member}` keys without seeing a raw token.
+- **Logs**: session identifiers are logged as `SessionTokenDigest.logId(token)`, the first eight
+  digest characters, never as a prefix of the raw token.
+- **No raw-key fallback**: `SessionReader` looks up only the digest key. A hash named by a raw
+  token is not found.
+
+Golden vector, shared with ext_authz:
+
+| Input | Value |
+| --- | --- |
+| Cookie token | `3f2504e0-4f89-41d3-9a0c-0305e82c3301` |
+| SHA-256 digest | `16362f566387b3cf5a6e92fb0a986c76ca20eb3a0c12cbdfbd0b29501e0c18df` |
+| Session key (default prefix) | `session:16362f566387b3cf5a6e92fb0a986c76ca20eb3a0c12cbdfbd0b29501e0c18df` |
+| Log identifier | `16362f56…` |
+
+`SessionTokenDigestTest` and `SessionReaderIntegrationTest` pin this vector. Verify it outside Java
+with `printf '%s' '3f2504e0-4f89-41d3-9a0c-0305e82c3301' | sha256sum`.
+
+Hashing removes the bearer value from key names, index members, and the append-only file. It does
+not hide that sessions exist: anyone who can list `session:*` keys still sees how many there are.
+
+**Cutover**: sessions written under raw-token keys are unreachable after this change, and there is
+no migration path. Session Gateway and ext_authz must deploy hashed keys together. On an existing
+local cluster, run `./scripts/ops/flush-redis.sh` from orchestration and sign in again.
 
 ## Session Gateway Source Of Truth
 
@@ -212,14 +247,14 @@ Permission-service can revoke all active sessions for a user through:
 Behavior:
 
 - returns `204 No Content` whether sessions were deleted or none existed
-- uses one Redis script execution to delete all indexed `session:{id}` hashes for the user and to
-  remove the `user_sessions:{userId}` index key atomically
+- uses one Redis script execution to delete all indexed `session:{digest}` hashes for the user and
+  to remove the `user_sessions:{userId}` index key atomically
 - relies on login and successful heartbeat refreshes to keep the `user_sessions:{userId}` index both
   TTL-aligned and self-healing; heartbeat never shortens an existing index TTL (see
   [Absolute Session Lifetime](#absolute-session-lifetime))
-- when a successful heartbeat refreshes a live session, Session Gateway re-adds that session ID to
-  `user_sessions:{userId}` before refreshing both TTLs, so a missing index entry does not leave the
-  session invisible to targeted revocation
+- when a successful heartbeat refreshes a live session, Session Gateway re-adds that session
+  digest to `user_sessions:{userId}` before refreshing both TTLs, so a missing index entry does not
+  leave the session invisible to targeted revocation
 
 Application security permits only that exact internal path without browser authentication. The
 endpoint still depends on network-level controls to limit which services can call it.

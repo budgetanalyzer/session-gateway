@@ -17,6 +17,7 @@ import org.budgetanalyzer.sessiongateway.api.response.UserInfoResponse;
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.config.SessionProperties;
 import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 class UserControllerIntegrationTest extends AbstractIntegrationTest {
@@ -84,7 +85,10 @@ class UserControllerIntegrationTest extends AbstractIntegrationTest {
     var sessionId = createSession();
     reactiveStringRedisTemplate
         .<String, String>opsForHash()
-        .put(TEST_SESSION_KEY_PREFIX + sessionId, SessionHashFields.EXPIRES_AT, "0")
+        .put(
+            TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId),
+            SessionHashFields.EXPIRES_AT,
+            "0")
         .block();
 
     var exchangeResult =

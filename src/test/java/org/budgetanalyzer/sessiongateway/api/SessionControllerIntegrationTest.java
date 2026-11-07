@@ -40,6 +40,7 @@ import org.budgetanalyzer.sessiongateway.api.response.SessionStatusResponse;
 import org.budgetanalyzer.sessiongateway.api.response.UserInfoResponse;
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 import org.budgetanalyzer.sessiongateway.session.SessionHashFields;
+import org.budgetanalyzer.sessiongateway.session.SessionTokenDigest;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 @Import(SessionControllerIntegrationTest.FixedClockTestConfiguration.class)
@@ -99,9 +100,12 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     var response = exchangeResult.getResponseBody();
 
-    var sessionFields = readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId);
+    var sessionFields =
+        readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId));
     var sessionTtl =
-        reactiveStringRedisTemplate.getExpire(TEST_SESSION_KEY_PREFIX + sessionId).block();
+        reactiveStringRedisTemplate
+            .getExpire(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId))
+            .block();
     var userSessionsTtl = reactiveStringRedisTemplate.getExpire(TEST_USER_SESSIONS_KEY).block();
 
     assertThat(response).isNotNull();
@@ -122,7 +126,8 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(userSessionsTtl).isNotNull();
     assertThat(userSessionsTtl).isGreaterThan(Duration.ofSeconds(30));
     assertThat(userSessionsTtl).isLessThanOrEqualTo(Duration.ofSeconds(900));
-    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).containsExactly(sessionId);
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY))
+        .containsExactly(SessionTokenDigest.sha256Hex(sessionId));
     wireMockServer.verify(1, getRequestedFor(urlEqualTo(authorizationPath())));
 
     var userInfoResponse =
@@ -164,7 +169,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(response).isNotNull();
     assertThat(response.roles()).isEmpty();
     assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(900).getEpochSecond());
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId)))
         .containsEntry(SessionHashFields.ROLES, "")
         .containsEntry(SessionHashFields.PERMISSIONS, "")
         .containsEntry(SessionHashFields.EXPIRES_AT, String.valueOf(response.expiresAt()));
@@ -173,7 +178,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   @Test
   void shouldRefreshGrantsButCapExpiryAtAbsoluteLifetime() {
     var sessionId = createSession();
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
     var lifetimeExpiresAt = BASE_INSTANT.plusSeconds(MAX_LIFETIME_SECONDS);
     var heartbeatInstant = lifetimeExpiresAt.minusSeconds(300);
     setExpiresAt(sessionKey, heartbeatInstant.plusSeconds(100));
@@ -211,7 +216,8 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   void shouldInvalidateSessionWhenAbsoluteLifetimeIsReached() {
     var sessionId = createSession();
     var lifetimeExpiresAt = BASE_INSTANT.plusSeconds(MAX_LIFETIME_SECONDS);
-    setExpiresAt(TEST_SESSION_KEY_PREFIX + sessionId, lifetimeExpiresAt);
+    setExpiresAt(
+        TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId), lifetimeExpiresAt);
     mutableClock.setInstant(lifetimeExpiresAt);
     stubActiveAuthorization(List.of("USER"), List.of("transactions:read"));
 
@@ -222,7 +228,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   void cappedHeartbeatDoesNotShortenUserIndexBelowOtherSessions() {
     var cappedSessionId = createSession();
     final var otherSessionId = createSession();
-    var cappedSessionKey = TEST_SESSION_KEY_PREFIX + cappedSessionId;
+    var cappedSessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(cappedSessionId);
     var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
     reactiveStringRedisTemplate
         .<String, String>opsForHash()
@@ -255,7 +261,8 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     await()
         .atMost(Duration.ofSeconds(5))
         .untilAsserted(() -> assertThat(readHashEntries(cappedSessionKey)).isEmpty());
-    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).contains(otherSessionId);
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY))
+        .contains(SessionTokenDigest.sha256Hex(otherSessionId));
 
     webTestClient
         .delete()
@@ -264,7 +271,9 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .expectStatus()
         .isNoContent();
 
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + otherSessionId)).isEmpty();
+    assertThat(
+            readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(otherSessionId)))
+        .isEmpty();
     assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).isEmpty();
   }
 
@@ -358,7 +367,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     assertThat(response).isNotNull();
     assertThat(response.userId()).isEqualTo(TEST_USER_ID);
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId)))
         .containsEntry(SessionHashFields.USER_ID, TEST_USER_ID);
   }
 
@@ -379,7 +388,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(exchangeResult.getResponseBody())
         .asString(StandardCharsets.UTF_8)
         .doesNotContain("missing-session", sessionId);
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId))
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId)))
         .containsEntry(SessionHashFields.USER_ID, TEST_USER_ID);
   }
 
@@ -390,7 +399,10 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     mutableClock.setInstant(heartbeatInstant);
     stubActiveAuthorization(List.of("USER"), List.of("transactions:read"));
 
-    reactiveStringRedisTemplate.opsForSet().remove(TEST_USER_SESSIONS_KEY, sessionId).block();
+    reactiveStringRedisTemplate
+        .opsForSet()
+        .remove(TEST_USER_SESSIONS_KEY, SessionTokenDigest.sha256Hex(sessionId))
+        .block();
 
     webTestClient
         .get()
@@ -400,7 +412,8 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .expectStatus()
         .isOk();
 
-    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).containsExactly(sessionId);
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY))
+        .containsExactly(SessionTokenDigest.sha256Hex(sessionId));
 
     webTestClient
         .delete()
@@ -409,7 +422,8 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .expectStatus()
         .isNoContent();
 
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId)))
+        .isEmpty();
     assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).isEmpty();
   }
 
@@ -488,7 +502,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   @Test
   void repeatedFailedHeartbeatsCannotKeepShortLivedSessionAlive() {
     var sessionId = createSession();
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
     reactiveStringRedisTemplate.expire(sessionKey, Duration.ofSeconds(1)).block();
     reactiveStringRedisTemplate.expire(TEST_USER_SESSIONS_KEY, Duration.ofSeconds(1)).block();
     stubAuthorizationError(500);
@@ -513,7 +527,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   @Test
   void successfulHeartbeatCanRecoverAfterFailureWhileSessionRemainsValid() {
     var sessionId = createSession();
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
     reactiveStringRedisTemplate.expire(sessionKey, Duration.ofSeconds(5)).block();
     reactiveStringRedisTemplate.expire(TEST_USER_SESSIONS_KEY, Duration.ofSeconds(5)).block();
     stubAuthorizationError(500);
@@ -550,14 +564,15 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     sessionWriter.deleteAllSessionsForUser(TEST_USER_ID).block();
     heartbeatFuture.get(3, TimeUnit.SECONDS);
 
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId)))
+        .isEmpty();
     assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).isEmpty();
   }
 
   @Test
   void concurrentSessionExpiryDuringLookupDoesNotResurrectSession() throws Exception {
     var sessionId = createSession();
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
     reactiveStringRedisTemplate.expire(sessionKey, Duration.ofMillis(250)).block();
     reactiveStringRedisTemplate.expire(TEST_USER_SESSIONS_KEY, Duration.ofMillis(250)).block();
     stubAuthorization("ACTIVE", List.of("ADMIN"), List.of("transactions:write"), 500);
@@ -573,7 +588,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   @Test
   void redisMutationFailureNeverReturnsSuccessOrChangesSession() {
     var sessionId = createSession();
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
     final var originalFields = readHashEntries(sessionKey);
     stubActiveAuthorization(List.of("ADMIN"), List.of("transactions:write"));
     reactiveStringRedisTemplate.unlink(TEST_USER_SESSIONS_KEY).block();
@@ -661,12 +676,13 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(exchangeResult.getResponseBody())
         .asString(StandardCharsets.UTF_8)
         .doesNotContain(sessionId, "DEACTIVATED", "deleted", "missing", TEST_USER_ID);
-    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionId)).isEmpty();
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId)))
+        .isEmpty();
     assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).isEmpty();
   }
 
   private void assertFailedHeartbeatPreservesSession(String sessionId) {
-    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
     var originalFields = readHashEntries(sessionKey);
     var originalSessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
     final var originalIndexTtl =

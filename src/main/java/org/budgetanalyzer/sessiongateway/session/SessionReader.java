@@ -33,15 +33,16 @@ public class SessionReader {
   }
 
   /**
-   * Reads a session from Redis by session ID.
+   * Reads a session from Redis by the SHA-256 digest of its session token.
    *
    * <p>Returns {@code Mono.empty()} if the session does not exist or has expired.
    *
-   * @param sessionId the session ID
+   * @param sessionToken the raw session token from the cookie
    * @return the session data, or empty if not found or expired
    */
-  public Mono<SessionData> readSession(String sessionId) {
-    var key = keyPrefix + sessionId;
+  public Mono<SessionData> readSession(String sessionToken) {
+    var sessionDigest = SessionTokenDigest.sha256Hex(sessionToken);
+    var key = keyPrefix + sessionDigest;
 
     return redisTemplate
         .<String, String>opsForHash()
@@ -54,7 +55,7 @@ public class SessionReader {
                   Instant.ofEpochSecond(Long.parseLong(fields.get(SessionHashFields.EXPIRES_AT)));
 
               if (clock.instant().isAfter(expiresAt)) {
-                log.debug("Session {} has expired", SafeLogger.truncateId(sessionId));
+                log.debug("Session {} has expired", SafeLogger.truncateId(sessionDigest));
                 return Mono.empty();
               }
 
