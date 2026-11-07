@@ -1,6 +1,7 @@
 package org.budgetanalyzer.sessiongateway;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 
 import org.budgetanalyzer.sessiongateway.base.AbstractIntegrationTest;
 
@@ -36,11 +37,11 @@ class SessionGatewayApplicationIntegrationTest extends AbstractIntegrationTest {
   @Test
   void logoutRedirectsToIdpLogoutWithoutAuthentication() {
     webTestClient
-        .get()
+        .post()
         .uri("/logout")
         .exchange()
         .expectStatus()
-        .is3xxRedirection()
+        .isEqualTo(HttpStatus.SEE_OTHER)
         .expectHeader()
         .valueMatches("Location", ".*/v2/logout.*");
   }

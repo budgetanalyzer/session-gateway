@@ -79,7 +79,8 @@ handoff details. Live browser proof belongs to hardening plan 02.1 phase 3.
 
 ## Session Heartbeat
 
-- **Sliding window**: Frontend calls `GET /auth/v1/session` periodically (~2 min); Session Gateway extends the session only after permission-service returns current authorization for an active account
+- **POST-only mutation**: Frontend calls `POST /auth/v1/session` periodically (~2 min); `GET` and `HEAD` are rejected
+- **Sliding window**: Session Gateway extends the session only after permission-service returns current authorization for an active account
 - **Absolute lifetime**: Heartbeat never sets `expires_at` past `created_at + session.max-lifetime-seconds` (default 8 hours). At the cap, heartbeat deletes the session, clears the cookie, and returns 401. The cap does not require fresh credentials or MFA, and it is not account-wide revocation (see [session-configuration.md](session-configuration.md#absolute-session-lifetime))
 - **Activity-gated**: The frontend is responsible for tracking user activity (mouse, keyboard, tab focus) and only calling while the user is active. Idle users get no heartbeat and the session expires naturally via Redis key TTL
 - **Authoritative refresh**: A successful heartbeat atomically replaces `roles`, `permissions`, and `expires_at`, refreshes the session and user-index TTLs, and returns the stored expiry. Auth0 is not contacted
@@ -155,17 +156,20 @@ inspect browser request headers.
 ## Machine Error Contract
 
 The versioned `/auth/` endpoints and internal service endpoints return `application/json` errors
-using the shared `ApiErrorResponse` shape. For `GET /auth/v1/user` and `GET /auth/v1/session`, a
+using the shared `ApiErrorResponse` shape. For `GET /auth/v1/user` and `POST /auth/v1/session`, a
 missing, blank, unknown, expired, deactivated, or concurrently invalidated session returns `401`
 with `type: UNAUTHORIZED` and the generic message `Authentication required`. The response never
 identifies the rejected cookie, account state, or underlying authentication exception. Optional
 error properties such as `code` and `fieldErrors` are omitted when they have no value; Session
 Gateway does not emit null-valued JSON properties in any response type.
 
-`GET /auth/v1/session` continues to clear the public session cookie when the cookie points to a
+`POST /auth/v1/session` continues to clear the public session cookie when the cookie points to a
 missing or expired session, the account is missing or inactive, or the session disappears
 during refresh. Authorization-refresh and Redis mutation failures return `503` with
 `type: SERVICE_UNAVAILABLE` and leave the finite session and cookie unchanged.
 
-This JSON policy does not apply to `/login`, `/oauth2/*`, `/login/oauth2/*`, or `/logout`. Those
-paths participate in browser navigation and preserve their existing redirects.
+This JSON policy does not apply to `/login`, `/oauth2/*`, `/login/oauth2/*`, or `/logout`. Logout
+accepts only a same-origin top-level form `POST`; after invalidating the session and clearing its
+cookie, Session Gateway returns a server-constructed `303 See Other` redirect to the configured
+identity provider logout URL. `GET` and `HEAD` cannot perform logout. The exact-Origin ingress
+control is applied separately by the platform.

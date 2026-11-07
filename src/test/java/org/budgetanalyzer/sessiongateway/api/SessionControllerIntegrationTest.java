@@ -28,6 +28,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.test.context.TestPropertySource;
@@ -63,10 +64,10 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   private static final String TEST_USER_SESSIONS_KEY =
       SessionHashFields.USER_SESSIONS_KEY_PREFIX + TEST_USER_ID;
   private static final String UNAUTHORIZED_RESPONSE_SCHEMA_PATH =
-      "$.paths['/auth/v1/session'].get.responses['401'].content"
+      "$.paths['/auth/v1/session'].post.responses['401'].content"
           + "['application/json'].schema['$ref']";
   private static final String SERVICE_UNAVAILABLE_RESPONSE_SCHEMA_PATH =
-      "$.paths['/auth/v1/session'].get.responses['503'].content"
+      "$.paths['/auth/v1/session'].post.responses['503'].content"
           + "['application/json'].schema['$ref']";
 
   @Autowired private SessionWriter sessionWriter;
@@ -89,7 +90,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     var exchangeResult =
         webTestClient
-            .get()
+            .post()
             .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
@@ -148,6 +149,26 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void shouldRejectGetHeartbeat() {
+    webTestClient
+        .get()
+        .uri("/auth/v1/session")
+        .exchange()
+        .expectStatus()
+        .isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+  }
+
+  @Test
+  void shouldRejectHeadHeartbeat() {
+    webTestClient
+        .head()
+        .uri("/auth/v1/session")
+        .exchange()
+        .expectStatus()
+        .isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+  }
+
+  @Test
   void shouldReplaceStaleGrantsWithEmptyGrantsForActiveUser() {
     var sessionId = createSession();
     var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
@@ -156,7 +177,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     var response =
         webTestClient
-            .get()
+            .post()
             .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
@@ -187,7 +208,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     var response =
         webTestClient
-            .get()
+            .post()
             .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
@@ -246,7 +267,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     var response =
         webTestClient
-            .get()
+            .post()
             .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, cappedSessionId)
             .exchange()
@@ -280,7 +301,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   @Test
   void shouldReturnJson401WhenSessionCookieIsAbsent() {
     var exchangeResult =
-        assertUnauthorizedHeartbeatResponse(webTestClient.get().uri("/auth/v1/session"));
+        assertUnauthorizedHeartbeatResponse(webTestClient.post().uri("/auth/v1/session"));
 
     assertThat(exchangeResult.getResponseCookies()).doesNotContainKey(PUBLIC_SESSION_COOKIE_NAME);
   }
@@ -289,7 +310,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   void shouldReturnJson401WhenSessionCookieIsBlank() {
     var exchangeResult =
         assertUnauthorizedHeartbeatResponse(
-            webTestClient.get().uri("/auth/v1/session").cookie(PUBLIC_SESSION_COOKIE_NAME, ""));
+            webTestClient.post().uri("/auth/v1/session").cookie(PUBLIC_SESSION_COOKIE_NAME, ""));
 
     assertThat(exchangeResult.getResponseCookies()).doesNotContainKey(PUBLIC_SESSION_COOKIE_NAME);
   }
@@ -302,7 +323,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         assertUnauthorizedHeartbeatResponse(
             webTestClient
-                .get()
+                .post()
                 .uri("/auth/v1/session")
                 .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
@@ -331,7 +352,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     stubActiveAuthorization(List.of("USER"), List.of("transactions:read"));
 
     webTestClient
-        .get()
+        .post()
         .uri("/auth/v1/session")
         .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
         .exchange()
@@ -353,7 +374,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     var exchangeResult =
         webTestClient
-            .get()
+            .post()
             .uri("/auth/v1/session")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .cookie("SESSION", "framework-session-123")
@@ -379,7 +400,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         assertUnauthorizedHeartbeatResponse(
             webTestClient
-                .get()
+                .post()
                 .uri("/auth/v1/session")
                 .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session")
                 .cookie("SESSION", sessionId));
@@ -405,7 +426,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .block();
 
     webTestClient
-        .get()
+        .post()
         .uri("/auth/v1/session")
         .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
         .exchange()
@@ -432,7 +453,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         assertUnauthorizedHeartbeatResponse(
             webTestClient
-                .get()
+                .post()
                 .uri("/auth/v1/session")
                 .cookie(PUBLIC_SESSION_COOKIE_NAME, "missing-session"));
 
@@ -510,7 +531,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     for (var attempt = 0; attempt < 3; attempt++) {
       assertServiceUnavailableResponse(
           webTestClient
-              .get()
+              .post()
               .uri("/auth/v1/session")
               .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
     }
@@ -533,14 +554,14 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     stubAuthorizationError(500);
 
     assertServiceUnavailableResponse(
-        webTestClient.get().uri("/auth/v1/session").cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
+        webTestClient.post().uri("/auth/v1/session").cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
     wireMockServer.resetAll();
     stubOidcDiscovery();
     stubActiveAuthorization(List.of("ADMIN"), List.of("transactions:write"));
 
     webTestClient
-        .get()
+        .post()
         .uri("/auth/v1/session")
         .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
         .exchange()
@@ -600,7 +621,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         assertServiceUnavailableResponse(
             webTestClient
-                .get()
+                .post()
                 .uri("/auth/v1/session")
                 .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
@@ -668,7 +689,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         assertUnauthorizedHeartbeatResponse(
             webTestClient
-                .get()
+                .post()
                 .uri("/auth/v1/session")
                 .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
@@ -692,7 +713,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     var exchangeResult =
         assertServiceUnavailableResponse(
             webTestClient
-                .get()
+                .post()
                 .uri("/auth/v1/session")
                 .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
@@ -718,7 +739,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
           var exchangeResult =
               assertUnauthorizedHeartbeatResponse(
                   webTestClient
-                      .get()
+                      .post()
                       .uri("/auth/v1/session")
                       .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId));
 
