@@ -50,17 +50,10 @@ public class SessionCookieHelper {
   }
 
   private ResponseCookie.ResponseCookieBuilder buildCookie(String value) {
-    var responseCookieBuilder =
-        ResponseCookie.from(cookieName, value)
-            .httpOnly(true)
-            .secure(cookieProperties.secure())
-            .sameSite(cookieProperties.sameSite())
-            .path("/");
-
-    if (cookieProperties.hasDomainOverride()) {
-      responseCookieBuilder.domain(cookieProperties.domainOverride());
-    }
-
-    return responseCookieBuilder;
+    return ResponseCookie.from(cookieName, value)
+        .httpOnly(true)
+        .secure(cookieProperties.secure())
+        .sameSite(cookieProperties.sameSite())
+        .path("/");
   }
 }

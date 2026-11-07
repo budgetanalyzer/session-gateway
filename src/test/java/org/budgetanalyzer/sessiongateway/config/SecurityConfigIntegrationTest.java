@@ -47,7 +47,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
 
   private static final String CLIENT_ID = "test-client-id";
   private static final String AUTHORIZATION_REQUEST_KEY_PREFIX = "oauth2:state:";
-  private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
+  private static final String PUBLIC_SESSION_COOKIE_NAME = "__Host-BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
   private static final String SESSION_WRITE_FAILURE_USER_ID = "security-config-write-failure";
   private static final String LOGIN_TIMEOUT_USER_ID = "security-config-login-timeout";
@@ -158,6 +158,13 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(sessionCookie.isHttpOnly()).isTrue();
     assertThat(sessionCookie.getPath()).isEqualTo("/");
     assertThat(sessionCookie.getSameSite()).isEqualTo("Strict");
+    assertThat(callbackResult.getResponseHeaders().get(HttpHeaders.SET_COOKIE))
+        .filteredOn(header -> header.startsWith(PUBLIC_SESSION_COOKIE_NAME + "="))
+        .containsExactly(
+            PUBLIC_SESSION_COOKIE_NAME
+                + "="
+                + sessionCookie.getValue()
+                + "; Path=/; Secure; HTTPOnly; SameSite=Strict");
 
     var sessionFields =
         readHashEntries(

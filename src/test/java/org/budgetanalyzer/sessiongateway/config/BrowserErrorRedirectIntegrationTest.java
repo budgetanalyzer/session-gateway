@@ -40,7 +40,7 @@ class BrowserErrorRedirectIntegrationTest extends AbstractIntegrationTest {
   private static final String BROWSER_SIMULATE_ERROR_PATH = "/test/simulate-filter-error";
   private static final String API_SIMULATE_ERROR_PATH = "/api/test/simulate-filter-error";
   private static final String INTERNAL_SIMULATE_ERROR_PATH = "/internal/test/simulate-filter-error";
-  private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
+  private static final String PUBLIC_SESSION_COOKIE_NAME = "__Host-BA_SESSION";
 
   @Autowired private SessionWriter sessionWriter;
 
@@ -178,7 +178,7 @@ class BrowserErrorRedirectIntegrationTest extends AbstractIntegrationTest {
     webTestClient
         .get()
         .uri(BROWSER_SIMULATE_ERROR_PATH + "?code=secret-code&state=secret-state")
-        .header("Cookie", "BA_SESSION=secret-session-id")
+        .header("Cookie", PUBLIC_SESSION_COOKIE_NAME + "=secret-session-id")
         .exchange()
         .expectStatus()
         .is3xxRedirection()

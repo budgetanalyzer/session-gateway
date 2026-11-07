@@ -13,10 +13,8 @@ import ch.qos.logback.core.read.ListAppender;
 
 class SessionCookieContractStartupLoggerTest {
 
-  private static final String HOST_ONLY_LOG_MESSAGE =
-      "Public session cookie contract configured: name=BA_SESSION, domainOverrideEnabled=false";
-  private static final String DOMAIN_OVERRIDE_LOG_MESSAGE =
-      "Public session cookie contract configured: name=BA_SESSION, domainOverrideEnabled=true";
+  private static final String LOG_MESSAGE =
+      "Public session cookie contract configured: name=__Host-BA_SESSION";
 
   private Logger logger;
   private ListAppender<ILoggingEvent> listAppender;
@@ -36,37 +34,19 @@ class SessionCookieContractStartupLoggerTest {
   }
 
   @Test
-  void shouldLogCookieNameAndDisabledDomainOverride() {
+  void shouldLogCookieName() {
     var sessionProperties =
         new SessionProperties(
             "session:",
             900,
             28800,
             600,
-            new SessionProperties.CookieProperties("BA_SESSION", null, true, "Strict"));
+            new SessionProperties.CookieProperties("__Host-BA_SESSION", true, "Strict"));
 
     new SessionCookieContractStartupLogger(sessionProperties).logPublicSessionCookieContract();
 
     assertThat(listAppender.list)
         .extracting(ILoggingEvent::getFormattedMessage)
-        .contains(HOST_ONLY_LOG_MESSAGE);
-  }
-
-  @Test
-  void shouldLogCookieNameAndEnabledDomainOverride() {
-    var sessionProperties =
-        new SessionProperties(
-            "session:",
-            900,
-            28800,
-            600,
-            new SessionProperties.CookieProperties(
-                "BA_SESSION", "budgetanalyzer.localhost", true, "Strict"));
-
-    new SessionCookieContractStartupLogger(sessionProperties).logPublicSessionCookieContract();
-
-    assertThat(listAppender.list)
-        .extracting(ILoggingEvent::getFormattedMessage)
-        .contains(DOMAIN_OVERRIDE_LOG_MESSAGE);
+        .contains(LOG_MESSAGE);
   }
 }

@@ -68,8 +68,7 @@ session:
   max-lifetime-seconds: ${SESSION_MAX_LIFETIME_SECONDS:28800}
   oauth2-state-ttl-seconds: ${SESSION_OAUTH2_STATE_TTL_SECONDS:600}
   cookie:
-    domain-override: ${SESSION_COOKIE_DOMAIN_OVERRIDE:}
-    name: ${SESSION_COOKIE_NAME:BA_SESSION}
+    name: ${SESSION_COOKIE_NAME:__Host-BA_SESSION}
     secure: ${SESSION_COOKIE_SECURE:true}
     same-site: ${SESSION_COOKIE_SAME_SITE:Strict}
 
