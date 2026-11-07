@@ -16,7 +16,7 @@ import org.springframework.core.io.FileSystemResource;
 
 class SessionPropertiesTest {
 
-  private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
+  private static final String PUBLIC_SESSION_COOKIE_NAME = "__Host-BA_SESSION";
 
   private final ApplicationContextRunner applicationContextRunner =
       new ApplicationContextRunner()
@@ -45,7 +45,6 @@ class SessionPropertiesTest {
           assertThat(sessionProperties.maxLifetimeSeconds()).isEqualTo(28800);
           assertThat(sessionProperties.oauth2StateTtlSeconds()).isEqualTo(600);
           assertThat(sessionProperties.cookie().name()).isEqualTo(PUBLIC_SESSION_COOKIE_NAME);
-          assertThat(sessionProperties.cookie().domainOverride()).isNull();
           assertThat(sessionProperties.cookie().secure()).isTrue();
           assertThat(sessionProperties.cookie().sameSite()).isEqualTo("Strict");
         });
@@ -82,6 +81,40 @@ class SessionPropertiesTest {
             applicationContext -> {
               assertThat(applicationContext).hasFailed();
               assertBindingValidationFailure(applicationContext);
+            });
+  }
+
+  @Test
+  void rejectsHostPrefixedCookieWithoutSecure() {
+    applicationContextRunner
+        .withPropertyValues("session.cookie.secure=false")
+        .run(
+            applicationContext -> {
+              assertThat(applicationContext).hasFailed();
+              assertBindingValidationFailure(applicationContext);
+            });
+  }
+
+  @Test
+  void rejectsCaseInsensitiveHostPrefixedCookieWithoutSecure() {
+    applicationContextRunner
+        .withPropertyValues("session.cookie.name=__host-BA_SESSION", "session.cookie.secure=false")
+        .run(
+            applicationContext -> {
+              assertThat(applicationContext).hasFailed();
+              assertBindingValidationFailure(applicationContext);
+            });
+  }
+
+  @Test
+  void acceptsUnprefixedCookieWithoutSecure() {
+    applicationContextRunner
+        .withPropertyValues("session.cookie.name=BA_SESSION", "session.cookie.secure=false")
+        .run(
+            applicationContext -> {
+              assertThat(applicationContext).hasNotFailed();
+              assertThat(applicationContext.getBean(SessionProperties.class).cookie().secure())
+                  .isFalse();
             });
   }
 

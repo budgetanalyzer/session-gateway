@@ -28,8 +28,7 @@ session:
   max-lifetime-seconds: 28800
   oauth2-state-ttl-seconds: 600
   cookie:
-    domain-override:
-    name: BA_SESSION
+    name: __Host-BA_SESSION
     secure: true
     same-site: Strict
 

@@ -23,7 +23,7 @@ import org.budgetanalyzer.sessiongateway.session.SessionWriter;
 
 class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
 
-  private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
+  private static final String PUBLIC_SESSION_COOKIE_NAME = "__Host-BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
   private static final String TEST_USER_ID = "user-logout";
   private static final String TEST_USER_SESSIONS_KEY =
@@ -84,6 +84,15 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
     assertThat(exchangeResult.getResponseCookies().keySet())
         .contains(PUBLIC_SESSION_COOKIE_NAME, "SESSION");
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+    assertThat(exchangeResult.getResponseHeaders().get(HttpHeaders.SET_COOKIE))
+        .filteredOn(header -> header.startsWith(PUBLIC_SESSION_COOKIE_NAME + "="))
+        .singleElement()
+        .satisfies(
+            header ->
+                assertThat(header)
+                    .startsWith(PUBLIC_SESSION_COOKIE_NAME + "=; Max-Age=0; Expires=")
+                    .endsWith("; Path=/; Secure; HTTPOnly; SameSite=Strict")
+                    .doesNotContainIgnoringCase("Domain="));
     assertThat(exchangeResult.getResponseCookies().getFirst("SESSION")).isNotNull();
     assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + sessionDigest)).isEmpty();
     assertThat(
