@@ -10,6 +10,7 @@
 | `IDP_REDIRECT_URI` | OAuth callback URI; set an exact external URL to avoid deriving it from request headers | `{baseUrl}/login/oauth2/code/{registrationId}` |
 | `IDP_LOGOUT_RETURN_TO` | URL to redirect after Auth0 logout | `https://app.budgetanalyzer.localhost/peace` |
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8086` |
+| `PERMISSION_SERVICE_LOGIN_TIMEOUT` | Maximum duration for the login user-sync call; on expiry the callback redirects to `/oops` without creating a session | `5s` |
 | `PERMISSION_SERVICE_AUTHORIZATION_REFRESH_TIMEOUT` | Maximum duration for the heartbeat authorization lookup | `2s` |
 | `SPRING_DATA_REDIS_HOST` | Redis host for session storage | `localhost` |
 | `SPRING_DATA_REDIS_PORT` | Redis port for session storage | `6379` |

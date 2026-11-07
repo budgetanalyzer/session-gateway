@@ -9,27 +9,52 @@ import org.junit.jupiter.api.Test;
 
 class PermissionServicePropertiesTest {
 
-  @Test
-  void shouldAcceptPositiveAuthorizationRefreshTimeout() {
-    var permissionServiceProperties =
-        new PermissionServiceProperties("http://permission-service:8086", Duration.ofSeconds(2));
+  private static final String BASE_URL = "http://permission-service:8086";
 
-    assertThat(permissionServiceProperties.baseUrl()).isEqualTo("http://permission-service:8086");
+  @Test
+  void shouldAcceptPositiveTimeouts() {
+    var permissionServiceProperties =
+        new PermissionServiceProperties(BASE_URL, Duration.ofSeconds(5), Duration.ofSeconds(2));
+
+    assertThat(permissionServiceProperties.baseUrl()).isEqualTo(BASE_URL);
+    assertThat(permissionServiceProperties.loginTimeout()).isEqualTo(Duration.ofSeconds(5));
     assertThat(permissionServiceProperties.authorizationRefreshTimeout())
         .isEqualTo(Duration.ofSeconds(2));
   }
 
   @Test
   void shouldRejectBlankBaseUrl() {
-    assertThatThrownBy(() -> new PermissionServiceProperties(" ", Duration.ofSeconds(2)))
+    assertThatThrownBy(
+            () ->
+                new PermissionServiceProperties(" ", Duration.ofSeconds(5), Duration.ofSeconds(2)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("base-url");
   }
 
   @Test
-  void shouldRejectMissingAuthorizationRefreshTimeout() {
+  void shouldRejectMissingLoginTimeout() {
+    assertThatThrownBy(() -> new PermissionServiceProperties(BASE_URL, null, Duration.ofSeconds(2)))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("login-timeout");
+  }
+
+  @Test
+  void shouldRejectNonPositiveLoginTimeout() {
     assertThatThrownBy(
-            () -> new PermissionServiceProperties("http://permission-service:8086", null))
+            () -> new PermissionServiceProperties(BASE_URL, Duration.ZERO, Duration.ofSeconds(2)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("login-timeout must be greater than zero");
+    assertThatThrownBy(
+            () ->
+                new PermissionServiceProperties(
+                    BASE_URL, Duration.ofSeconds(-1), Duration.ofSeconds(2)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("login-timeout must be greater than zero");
+  }
+
+  @Test
+  void shouldRejectMissingAuthorizationRefreshTimeout() {
+    assertThatThrownBy(() -> new PermissionServiceProperties(BASE_URL, Duration.ofSeconds(5), null))
         .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("authorization-refresh-timeout");
   }
@@ -37,14 +62,14 @@ class PermissionServicePropertiesTest {
   @Test
   void shouldRejectNonPositiveAuthorizationRefreshTimeout() {
     assertThatThrownBy(
-            () -> new PermissionServiceProperties("http://permission-service:8086", Duration.ZERO))
+            () -> new PermissionServiceProperties(BASE_URL, Duration.ofSeconds(5), Duration.ZERO))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("greater than zero");
+        .hasMessageContaining("authorization-refresh-timeout must be greater than zero");
     assertThatThrownBy(
             () ->
                 new PermissionServiceProperties(
-                    "http://permission-service:8086", Duration.ofSeconds(-1)))
+                    BASE_URL, Duration.ofSeconds(5), Duration.ofSeconds(-1)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("greater than zero");
+        .hasMessageContaining("authorization-refresh-timeout must be greater than zero");
   }
 }

@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -37,7 +38,10 @@ public class PermissionServiceClient {
   }
 
   /**
-   * Fetches permissions for a user identified by their IDP subject.
+   * Synchronizes the IDP identity with permission-service and fetches the user's permissions.
+   *
+   * <p>Non-success responses, transport failures, and calls exceeding the configured login timeout
+   * fail with {@link PermissionServiceException}.
    *
    * @param idpSub the IDP subject identifier
    * @param email the user's email address from the IDP
@@ -46,17 +50,13 @@ public class PermissionServiceClient {
    */
   public Mono<PermissionResponse> fetchPermissions(
       String idpSub, String email, String displayName) {
-    log.debug("Fetching permissions for idpSub={}", SafeLogger.truncateId(idpSub));
+    log.debug("Syncing user and fetching permissions for idpSub={}", SafeLogger.truncateId(idpSub));
 
     return webClient
-        .get()
-        .uri(
-            uriBuilder ->
-                uriBuilder
-                    .path("/internal/v1/users/{idpSub}/permissions")
-                    .queryParam("email", email)
-                    .queryParam("displayName", displayName)
-                    .build(idpSub))
+        .post()
+        .uri("/internal/v1/users/sync")
+        .contentType(MediaType.APPLICATION_JSON)
+        .bodyValue(new UserSyncRequest(idpSub, email, displayName))
         .retrieve()
         .onStatus(
             HttpStatusCode::isError,
@@ -73,6 +73,11 @@ public class PermissionServiceClient {
                                         + ": "
                                         + body))))
         .bodyToMono(PermissionResponse.class)
+        .timeout(permissionServiceProperties.loginTimeout())
+        .onErrorMap(
+            exception -> !(exception instanceof PermissionServiceException),
+            exception ->
+                new PermissionServiceException("Permission service user sync failed", exception))
         .doOnSuccess(
             r ->
                 log.debug(
@@ -152,6 +157,15 @@ public class PermissionServiceClient {
   }
 
   /**
+   * Request body for the permission-service user sync endpoint.
+   *
+   * @param idpSub the IDP subject identifier
+   * @param email the user's email address from the IDP
+   * @param displayName the user's display name from the IDP
+   */
+  public record UserSyncRequest(String idpSub, String email, String displayName) {}
+
+  /**
    * Response from the permission-service internal endpoint.
    *
    * @param userId the internal user ID
@@ -180,7 +194,7 @@ public class PermissionServiceClient {
   public record AuthorizationResponse(
       String userId, AccountStatus status, List<String> roles, List<String> permissions) {}
 
-  /** Exception thrown when the permission-service returns a non-2xx response. */
+  /** Exception thrown when a permission-service call fails or returns a non-2xx response. */
   public static class PermissionServiceException extends RuntimeException {
 
     /**
