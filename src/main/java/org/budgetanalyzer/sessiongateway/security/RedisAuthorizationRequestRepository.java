@@ -1,13 +1,23 @@
 package org.budgetanalyzer.sessiongateway.security;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.oauth2.client.registration.ReactiveClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.server.ServerAuthorizationRequestRepository;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
@@ -37,6 +47,7 @@ import org.budgetanalyzer.sessiongateway.config.SessionProperties;
  * <p>Stored fields:
  *
  * <ul>
+ *   <li>{@code browser_binding_hash} — SHA-256 of the initiating browser binding cookie
  *   <li>{@code redirect_uri} — the OAuth2 callback URI
  *   <li>{@code return_url} — where to redirect after login (from authorization request
  *       additionalParameters, optional)
@@ -51,9 +62,29 @@ public class RedisAuthorizationRequestRepository
   public static final String AUTHORIZATION_REQUEST_ATTRIBUTE =
       RedisAuthorizationRequestRepository.class.getName() + ".AUTHORIZATION_REQUEST";
 
+  public static final String BROWSER_BINDING_COOKIE_NAME = "__Host-BA_OAUTH_BINDING";
+
   private static final Logger log =
       LoggerFactory.getLogger(RedisAuthorizationRequestRepository.class);
 
+  private static final SecureRandom secureRandom = new SecureRandom();
+  private static final Pattern BINDING_PATTERN = Pattern.compile("[0-9a-f]{64}");
+
+  // Atomic creation keeps the hash immutable and gives every new record a finite lifetime.
+  // State is generated afresh by the authorization resolver and must never be reused.
+  private static final RedisScript<Long> CREATE_REQUEST_SCRIPT =
+      RedisScript.of(
+          """
+          if redis.call('TYPE', KEYS[1]).ok ~= 'none' then
+            return 0
+          end
+          redis.call('HSET', KEYS[1], unpack(ARGV, 2))
+          redis.call('EXPIRE', KEYS[1], ARGV[1])
+          return 1
+          """,
+          Long.class);
+
+  private static final String FIELD_BROWSER_BINDING_HASH = "browser_binding_hash";
   private static final String KEY_PREFIX = "oauth2:state:";
   private static final String REGISTRATION_ID = "idp";
 
@@ -76,7 +107,10 @@ public class RedisAuthorizationRequestRepository
   }
 
   /**
-   * Saves the authorization request fields to a Redis hash.
+   * Creates an immutable authorization request hash bound to the initiating browser.
+   *
+   * <p>Only call once per fresh, random state generated at login start. State values must never be
+   * reused, including after consumption or expiry.
    *
    * <p>If {@code authorizationRequest} is null, removes any existing request for the exchange.
    *
@@ -91,7 +125,9 @@ public class RedisAuthorizationRequestRepository
       return removeAuthorizationRequest(exchange).then();
     }
 
+    var binding = readBrowserBinding(exchange).orElseGet(this::generateBrowserBinding);
     var fields = new HashMap<String, String>();
+    fields.put(FIELD_BROWSER_BINDING_HASH, hashBrowserBinding(binding));
 
     fields.put(FIELD_REDIRECT_URI, authorizationRequest.getRedirectUri());
 
@@ -135,31 +171,56 @@ public class RedisAuthorizationRequestRepository
     }
 
     var state = authorizationRequest.getState();
-    var key = KEY_PREFIX + state;
     log.debug("Saving authorization request for state={}", SafeLogger.truncateId(state));
 
+    var arguments = new ArrayList<String>();
+    arguments.add(Long.toString(ttl.toSeconds()));
+    fields.forEach(
+        (field, value) -> {
+          arguments.add(field);
+          arguments.add(value);
+        });
+
     return reactiveStringRedisTemplate
-        .<String, String>opsForHash()
-        .putAll(key, fields)
-        .then(reactiveStringRedisTemplate.expire(key, ttl))
-        .then();
+        .execute(CREATE_REQUEST_SCRIPT, List.of(KEY_PREFIX + state), arguments)
+        .single()
+        .flatMap(
+            count -> {
+              if (count != 1) {
+                return Mono.error(new IllegalStateException("OAuth state already exists"));
+              }
+              if (readBrowserBinding(exchange).isEmpty()) {
+                exchange
+                    .getResponse()
+                    .addCookie(
+                        ResponseCookie.from(BROWSER_BINDING_COOKIE_NAME, binding)
+                            .secure(true)
+                            .httpOnly(true)
+                            .path("/")
+                            .sameSite("Lax")
+                            .build());
+              }
+              return Mono.empty();
+            });
   }
 
   /**
    * Loads the authorization request from Redis using the state parameter from the exchange.
    *
    * @param exchange the current server exchange (must contain a {@code state} query parameter)
-   * @return the reconstructed authorization request, or empty if not found
+   * @return the reconstructed authorization request, or empty if absent or browser binding is
+   *     invalid
    */
   @Override
   public Mono<OAuth2AuthorizationRequest> loadAuthorizationRequest(ServerWebExchange exchange) {
-    return extractState(exchange).flatMap(this::loadFromRedis);
+    return extractState(exchange).flatMap(state -> loadFromRedis(state, exchange));
   }
 
   /**
    * Removes and returns the authorization request from Redis.
    *
-   * <p>Called during the OAuth2 callback to consume the one-time-use authorization request.
+   * <p>Validates browser binding before deletion. Only the callback whose deletion removes the
+   * record may proceed; expiry or a competing callback fails closed. Redis errors propagate.
    *
    * @param exchange the current server exchange (must contain a {@code state} query parameter)
    * @return the reconstructed authorization request, or empty if not found
@@ -170,22 +231,23 @@ public class RedisAuthorizationRequestRepository
         .flatMap(
             state -> {
               var key = KEY_PREFIX + state;
-              return loadFromRedis(state)
+              return loadFromRedis(state, exchange)
                   .flatMap(
                       request ->
                           reactiveStringRedisTemplate
                               .delete(key)
-                              .doOnSuccess(
+                              .filter(count -> count == 1)
+                              .doOnNext(
                                   count ->
                                       exchange
                                           .getAttributes()
                                           .put(AUTHORIZATION_REQUEST_ATTRIBUTE, request))
-                              .doOnSuccess(
+                              .doOnNext(
                                   count ->
                                       log.debug(
                                           "Deleted authorization request for state={}",
                                           SafeLogger.truncateId(state)))
-                              .thenReturn(request));
+                              .map(count -> request));
             });
   }
 
@@ -216,13 +278,48 @@ public class RedisAuthorizationRequestRepository
     return Optional.of(value);
   }
 
-  private Mono<OAuth2AuthorizationRequest> loadFromRedis(String state) {
+  private Optional<String> readBrowserBinding(ServerWebExchange exchange) {
+    var cookies = exchange.getRequest().getCookies().get(BROWSER_BINDING_COOKIE_NAME);
+    if (cookies == null || cookies.size() != 1) {
+      return Optional.empty();
+    }
+    var binding = cookies.getFirst().getValue();
+    return BINDING_PATTERN.matcher(binding).matches() ? Optional.of(binding) : Optional.empty();
+  }
+
+  private String generateBrowserBinding() {
+    var randomBytes = new byte[32];
+    secureRandom.nextBytes(randomBytes);
+    return HexFormat.of().formatHex(randomBytes);
+  }
+
+  private String hashBrowserBinding(String binding) {
+    try {
+      var messageDigest = MessageDigest.getInstance("SHA-256");
+      return HexFormat.of()
+          .formatHex(messageDigest.digest(binding.getBytes(StandardCharsets.US_ASCII)));
+    } catch (NoSuchAlgorithmException exception) {
+      throw new IllegalStateException("SHA-256 is required", exception);
+    }
+  }
+
+  private Mono<OAuth2AuthorizationRequest> loadFromRedis(String state, ServerWebExchange exchange) {
+    var binding = readBrowserBinding(exchange);
+    if (binding.isEmpty()) {
+      return Mono.empty();
+    }
+    var bindingHash = hashBrowserBinding(binding.get()).getBytes(StandardCharsets.US_ASCII);
     var key = KEY_PREFIX + state;
     return reactiveStringRedisTemplate
         .<String, String>opsForHash()
         .entries(key)
         .collectMap(Map.Entry::getKey, Map.Entry::getValue)
-        .filter(fields -> !fields.isEmpty())
+        .filter(fields -> fields.containsKey(FIELD_BROWSER_BINDING_HASH))
+        .filter(
+            fields ->
+                MessageDigest.isEqual(
+                    bindingHash,
+                    fields.get(FIELD_BROWSER_BINDING_HASH).getBytes(StandardCharsets.US_ASCII)))
         .flatMap(fields -> reconstructRequest(state, fields));
   }
 

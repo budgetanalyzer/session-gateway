@@ -4,6 +4,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.budgetanalyzer.sessiongateway.security.RedisAuthorizationRequestRepository.BROWSER_BINDING_COOKIE_NAME;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -86,6 +87,12 @@ class SecurityConfigCookieDomainOverrideIntegrationTest extends AbstractIntegrat
                     .queryParam("state", state)
                     .build()
                     .toUriString())
+            .cookie(
+                BROWSER_BINDING_COOKIE_NAME,
+                authorizationResult
+                    .getResponseCookies()
+                    .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                    .getValue())
             .exchange()
             .expectStatus()
             .is3xxRedirection()
