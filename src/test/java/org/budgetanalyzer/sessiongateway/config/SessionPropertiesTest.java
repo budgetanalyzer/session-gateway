@@ -42,12 +42,36 @@ class SessionPropertiesTest {
 
           assertThat(sessionProperties.keyPrefix()).isEqualTo("session:");
           assertThat(sessionProperties.ttlSeconds()).isEqualTo(900);
+          assertThat(sessionProperties.maxLifetimeSeconds()).isEqualTo(28800);
           assertThat(sessionProperties.oauth2StateTtlSeconds()).isEqualTo(600);
           assertThat(sessionProperties.cookie().name()).isEqualTo(PUBLIC_SESSION_COOKIE_NAME);
           assertThat(sessionProperties.cookie().domainOverride()).isNull();
           assertThat(sessionProperties.cookie().secure()).isTrue();
           assertThat(sessionProperties.cookie().sameSite()).isEqualTo("Strict");
         });
+  }
+
+  @Test
+  void acceptsMaxLifetimeEqualToTtl() {
+    applicationContextRunner
+        .withPropertyValues("session.ttl-seconds=900", "session.max-lifetime-seconds=900")
+        .run(
+            applicationContext -> {
+              assertThat(applicationContext).hasNotFailed();
+              assertThat(applicationContext.getBean(SessionProperties.class).maxLifetimeSeconds())
+                  .isEqualTo(900);
+            });
+  }
+
+  @Test
+  void rejectsMaxLifetimeBelowTtl() {
+    applicationContextRunner
+        .withPropertyValues("session.ttl-seconds=900", "session.max-lifetime-seconds=899")
+        .run(
+            applicationContext -> {
+              assertThat(applicationContext).hasFailed();
+              assertBindingValidationFailure(applicationContext);
+            });
   }
 
   @Test

@@ -21,6 +21,7 @@
 | `INFRA_CA_CERT_PATH` | `file:` URI for the infrastructure CA certificate | — |
 | `SESSION_KEY_PREFIX` | Redis key prefix for session hashes | `session:` |
 | `SESSION_TTL_SECONDS` | TTL for session keys in seconds | `900` |
+| `SESSION_MAX_LIFETIME_SECONDS` | Absolute session lifetime in seconds from `created_at`; heartbeats never extend a session past it. Must be at least `SESSION_TTL_SECONDS` | `28800` |
 | `SESSION_OAUTH2_STATE_TTL_SECONDS` | TTL for OAuth2 authorization request state in Redis (seconds) | `600` |
 | `SESSION_COOKIE_NAME` | Public browser session cookie contract shared with ext_authz; distinct from any internal framework `SESSION` cookie | `BA_SESSION` |
 | `SESSION_COOKIE_DOMAIN_OVERRIDE` | Optional parent-domain cookie override; unset means host-only cookies | — |

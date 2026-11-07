@@ -41,6 +41,7 @@ class SessionCookieContractStartupLoggerTest {
         new SessionProperties(
             "session:",
             900,
+            28800,
             600,
             new SessionProperties.CookieProperties("BA_SESSION", null, true, "Strict"));
 
@@ -57,6 +58,7 @@ class SessionCookieContractStartupLoggerTest {
         new SessionProperties(
             "session:",
             900,
+            28800,
             600,
             new SessionProperties.CookieProperties(
                 "BA_SESSION", "budgetanalyzer.localhost", true, "Strict"));

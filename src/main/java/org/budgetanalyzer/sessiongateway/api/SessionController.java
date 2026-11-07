@@ -1,5 +1,8 @@
 package org.budgetanalyzer.sessiongateway.api;
 
+import java.time.Clock;
+import java.time.Duration;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -32,7 +35,8 @@ import org.budgetanalyzer.sessiongateway.session.SessionWriter;
  * Session heartbeat controller.
  *
  * <p>Validates the local Redis session, refreshes authorization from permission-service, and
- * extends its TTL. The frontend calls this endpoint periodically while the user is active.
+ * extends its TTL up to the absolute session lifetime. The frontend calls this endpoint
+ * periodically while the user is active.
  */
 @Tag(name = "Session", description = "Session heartbeat and status")
 @RestController
@@ -44,7 +48,9 @@ public class SessionController {
   private final SessionWriter sessionWriter;
   private final SessionCookieHelper sessionCookieHelper;
   private final PermissionServiceClient permissionServiceClient;
+  private final Clock clock;
   private final long sessionTtlSeconds;
+  private final long sessionMaxLifetimeSeconds;
 
   /**
    * Creates a new SessionController.
@@ -53,6 +59,7 @@ public class SessionController {
    * @param sessionWriter writes session data to Redis
    * @param sessionCookieHelper manages session cookies
    * @param permissionServiceClient fetches current account status and grants
+   * @param clock clock used to compute the refreshed session expiry
    * @param sessionProperties validated session configuration
    */
   public SessionController(
@@ -60,19 +67,24 @@ public class SessionController {
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
       PermissionServiceClient permissionServiceClient,
+      Clock clock,
       SessionProperties sessionProperties) {
     this.sessionReader = sessionReader;
     this.sessionWriter = sessionWriter;
     this.sessionCookieHelper = sessionCookieHelper;
     this.permissionServiceClient = permissionServiceClient;
+    this.clock = clock;
     this.sessionTtlSeconds = sessionProperties.ttlSeconds();
+    this.sessionMaxLifetimeSeconds = sessionProperties.maxLifetimeSeconds();
   }
 
   /**
    * Session heartbeat endpoint.
    *
-   * <p>Reads the session from Redis and extends it only after refreshing authorization. Returns 401
-   * if the session or account is invalid and 503 if the refresh cannot be completed.
+   * <p>Reads the session from Redis and extends it only after refreshing authorization, never past
+   * its creation time plus the absolute session lifetime. Returns 401 if the session or account is
+   * invalid or the session has reached its absolute lifetime, and 503 if the refresh cannot be
+   * completed.
    *
    * @param exchange the server web exchange
    * @return session status with expiry metadata
@@ -81,7 +93,7 @@ public class SessionController {
       summary = "Session heartbeat",
       description =
           "Refreshes current authorization and extends the local session only after a successful "
-              + "permission-service lookup.")
+              + "permission-service lookup, never past the absolute session lifetime.")
   @ApiResponses(
       value = {
         @ApiResponse(
@@ -151,19 +163,34 @@ public class SessionController {
       String sessionId,
       SessionData sessionData,
       AuthorizationResponse authorizationResponse) {
+    var now = clock.instant();
+    var slidingExpiresAt = now.plusSeconds(sessionTtlSeconds);
+    var lifetimeExpiresAt = sessionData.createdAt().plusSeconds(sessionMaxLifetimeSeconds);
+    var expiresAt =
+        slidingExpiresAt.isBefore(lifetimeExpiresAt) ? slidingExpiresAt : lifetimeExpiresAt;
+    var remainingSeconds = Duration.between(now, expiresAt).getSeconds();
+
+    if (remainingSeconds <= 0) {
+      log.debug(
+          "Session {} reached its absolute lifetime during heartbeat",
+          SafeLogger.truncateId(sessionId));
+      return invalidateSession(exchange, sessionId);
+    }
+
     return sessionWriter
         .refreshSessionAuthorization(
             sessionId,
             sessionData.userId(),
             authorizationResponse.roles(),
             authorizationResponse.permissions(),
-            sessionTtlSeconds)
+            expiresAt,
+            remainingSeconds)
         .map(
-            expiresAt ->
+            writtenExpiresAt ->
                 new SessionStatusResponse(
                     sessionData.userId(),
                     authorizationResponse.roles(),
-                    expiresAt.getEpochSecond()))
+                    writtenExpiresAt.getEpochSecond()))
         .switchIfEmpty(
             Mono.defer(
                 () -> {

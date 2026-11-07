@@ -47,6 +47,7 @@ import org.budgetanalyzer.sessiongateway.session.SessionWriter;
     properties = {
       "session.key-prefix=session:test:heartbeat:",
       "session.ttl-seconds=900",
+      "session.max-lifetime-seconds=3600",
       "permission-service.authorization-refresh-timeout=1s",
     })
 class SessionControllerIntegrationTest extends AbstractIntegrationTest {
@@ -54,6 +55,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
   private static final Instant BASE_INSTANT = Instant.parse("2026-03-30T00:00:00Z");
   private static final String PUBLIC_SESSION_COOKIE_NAME = "BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:heartbeat:";
+  private static final long MAX_LIFETIME_SECONDS = 3600;
   private static final String TEST_USER_ID = "heartbeat-user-primary";
   private static final String USER_SESSIONS_KEY_PATTERN =
       SessionHashFields.USER_SESSIONS_KEY_PREFIX + "heartbeat-user-*";
@@ -166,6 +168,104 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         .containsEntry(SessionHashFields.ROLES, "")
         .containsEntry(SessionHashFields.PERMISSIONS, "")
         .containsEntry(SessionHashFields.EXPIRES_AT, String.valueOf(response.expiresAt()));
+  }
+
+  @Test
+  void shouldRefreshGrantsButCapExpiryAtAbsoluteLifetime() {
+    var sessionId = createSession();
+    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionId;
+    var lifetimeExpiresAt = BASE_INSTANT.plusSeconds(MAX_LIFETIME_SECONDS);
+    var heartbeatInstant = lifetimeExpiresAt.minusSeconds(300);
+    setExpiresAt(sessionKey, heartbeatInstant.plusSeconds(100));
+    mutableClock.setInstant(heartbeatInstant);
+    stubActiveAuthorization(List.of("ADMIN"), List.of("transactions:write"));
+
+    var response =
+        webTestClient
+            .get()
+            .uri("/auth/v1/session")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
+            .exchange()
+            .expectStatus()
+            .isOk()
+            .expectBody(SessionStatusResponse.class)
+            .returnResult()
+            .getResponseBody();
+    var sessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
+
+    assertThat(response).isNotNull();
+    assertThat(response.roles()).containsExactly("ADMIN");
+    assertThat(response.expiresAt()).isEqualTo(lifetimeExpiresAt.getEpochSecond());
+    assertThat(readHashEntries(sessionKey))
+        .containsEntry(SessionHashFields.ROLES, "ADMIN")
+        .containsEntry(SessionHashFields.PERMISSIONS, "transactions:write")
+        .containsEntry(
+            SessionHashFields.EXPIRES_AT, String.valueOf(lifetimeExpiresAt.getEpochSecond()));
+    assertThat(sessionTtl).isNotNull();
+    assertThat(sessionTtl).isPositive();
+    assertThat(sessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(300));
+    wireMockServer.verify(1, getRequestedFor(urlEqualTo(authorizationPath())));
+  }
+
+  @Test
+  void shouldInvalidateSessionWhenAbsoluteLifetimeIsReached() {
+    var sessionId = createSession();
+    var lifetimeExpiresAt = BASE_INSTANT.plusSeconds(MAX_LIFETIME_SECONDS);
+    setExpiresAt(TEST_SESSION_KEY_PREFIX + sessionId, lifetimeExpiresAt);
+    mutableClock.setInstant(lifetimeExpiresAt);
+    stubActiveAuthorization(List.of("USER"), List.of("transactions:read"));
+
+    assertHeartbeatInvalidatesSession(sessionId);
+  }
+
+  @Test
+  void cappedHeartbeatDoesNotShortenUserIndexBelowOtherSessions() {
+    var cappedSessionId = createSession();
+    final var otherSessionId = createSession();
+    var cappedSessionKey = TEST_SESSION_KEY_PREFIX + cappedSessionId;
+    var heartbeatInstant = BASE_INSTANT.plusSeconds(300);
+    reactiveStringRedisTemplate
+        .<String, String>opsForHash()
+        .put(
+            cappedSessionKey,
+            SessionHashFields.CREATED_AT,
+            String.valueOf(
+                heartbeatInstant
+                    .minusSeconds(MAX_LIFETIME_SECONDS)
+                    .plusSeconds(1)
+                    .getEpochSecond()))
+        .block();
+    mutableClock.setInstant(heartbeatInstant);
+    stubActiveAuthorization(List.of("USER"), List.of("transactions:read"));
+
+    var response =
+        webTestClient
+            .get()
+            .uri("/auth/v1/session")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, cappedSessionId)
+            .exchange()
+            .expectStatus()
+            .isOk()
+            .expectBody(SessionStatusResponse.class)
+            .returnResult()
+            .getResponseBody();
+
+    assertThat(response).isNotNull();
+    assertThat(response.expiresAt()).isEqualTo(heartbeatInstant.plusSeconds(1).getEpochSecond());
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(() -> assertThat(readHashEntries(cappedSessionKey)).isEmpty());
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).contains(otherSessionId);
+
+    webTestClient
+        .delete()
+        .uri("/internal/v1/sessions/users/{userId}", TEST_USER_ID)
+        .exchange()
+        .expectStatus()
+        .isNoContent();
+
+    assertThat(readHashEntries(TEST_SESSION_KEY_PREFIX + otherSessionId)).isEmpty();
+    assertThat(readSetMembers(TEST_USER_SESSIONS_KEY)).isEmpty();
   }
 
   @Test
@@ -505,6 +605,13 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
             "https://example.com/avatar.png",
             List.of("ROLE_USER"),
             List.of("transactions:read"))
+        .block();
+  }
+
+  private void setExpiresAt(String sessionKey, Instant expiresAt) {
+    reactiveStringRedisTemplate
+        .<String, String>opsForHash()
+        .put(sessionKey, SessionHashFields.EXPIRES_AT, String.valueOf(expiresAt.getEpochSecond()))
         .block();
   }
 

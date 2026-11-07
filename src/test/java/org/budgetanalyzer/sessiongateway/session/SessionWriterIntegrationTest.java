@@ -161,7 +161,12 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     var expiresAt =
         sessionWriter
             .refreshSessionAuthorization(
-                sessionId, PRIMARY_USER_ID, List.of("ADMIN"), List.of("transactions:write"), 600)
+                sessionId,
+                PRIMARY_USER_ID,
+                List.of("ADMIN"),
+                List.of("transactions:write"),
+                BASE_INSTANT.plusSeconds(600),
+                600)
             .block();
     var sessionFields = readHashEntries(sessionKey);
     var sessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
@@ -188,7 +193,13 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
 
     var expiresAt =
         sessionWriter
-            .refreshSessionAuthorization(sessionId, PRIMARY_USER_ID, List.of(), List.of(), 600)
+            .refreshSessionAuthorization(
+                sessionId,
+                PRIMARY_USER_ID,
+                List.of(),
+                List.of(),
+                BASE_INSTANT.plusSeconds(600),
+                600)
             .block();
 
     assertThat(expiresAt).isEqualTo(BASE_INSTANT.plusSeconds(600));
@@ -210,7 +221,12 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
     var expiresAt =
         sessionWriter
             .refreshSessionAuthorization(
-                sessionId, PRIMARY_USER_ID, List.of("USER"), List.of("transactions:read"), 600)
+                sessionId,
+                PRIMARY_USER_ID,
+                List.of("USER"),
+                List.of("transactions:read"),
+                BASE_INSTANT.plusSeconds(600),
+                600)
             .block();
     var sessionFields = readHashEntries(sessionKey);
     var sessionTtl = reactiveStringRedisTemplate.getExpire(sessionKey).block();
@@ -231,6 +247,45 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void refreshSessionAuthorizationNeverShortensExistingUserIndexTtl() {
+    var cappedSessionId = createSession(PRIMARY_USER_ID);
+    var otherSessionId = createSession(PRIMARY_USER_ID);
+    var cappedSessionKey = TEST_SESSION_KEY_PREFIX + cappedSessionId;
+
+    var expiresAt =
+        sessionWriter
+            .refreshSessionAuthorization(
+                cappedSessionId,
+                PRIMARY_USER_ID,
+                List.of("USER"),
+                List.of("transactions:read"),
+                BASE_INSTANT.plusSeconds(60),
+                60)
+            .block();
+    var cappedSessionTtl = reactiveStringRedisTemplate.getExpire(cappedSessionKey).block();
+    // Read the index first: it and the other session were given the same expiry when the other
+    // session was created, so a later read of the other session can only report less time left.
+    var userSessionsTtl = reactiveStringRedisTemplate.getExpire(PRIMARY_USER_SESSIONS_KEY).block();
+    var otherSessionTtl =
+        reactiveStringRedisTemplate.getExpire(TEST_SESSION_KEY_PREFIX + otherSessionId).block();
+
+    assertThat(expiresAt).isEqualTo(BASE_INSTANT.plusSeconds(60));
+    assertThat(readHashEntries(cappedSessionKey))
+        .containsEntry(
+            SessionHashFields.EXPIRES_AT,
+            String.valueOf(BASE_INSTANT.plusSeconds(60).getEpochSecond()));
+    assertThat(cappedSessionTtl).isNotNull();
+    assertThat(cappedSessionTtl).isPositive();
+    assertThat(cappedSessionTtl).isLessThanOrEqualTo(Duration.ofSeconds(60));
+    assertThat(otherSessionTtl).isNotNull();
+    assertThat(userSessionsTtl).isNotNull();
+    assertThat(userSessionsTtl).isGreaterThan(Duration.ofSeconds(60));
+    assertThat(userSessionsTtl).isGreaterThanOrEqualTo(otherSessionTtl);
+    assertThat(readSetMembers(PRIMARY_USER_SESSIONS_KEY))
+        .containsExactlyInAnyOrder(cappedSessionId, otherSessionId);
+  }
+
+  @Test
   void refreshSessionAuthorizationReturnsEmptyWhenSessionDoesNotExist() {
     var expiresAt =
         sessionWriter
@@ -239,6 +294,7 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
                 PRIMARY_USER_ID,
                 List.of("USER"),
                 List.of("transactions:read"),
+                BASE_INSTANT.plusSeconds(600),
                 600)
             .blockOptional();
 
@@ -267,6 +323,7 @@ class SessionWriterIntegrationTest extends AbstractIntegrationTest {
                         PRIMARY_USER_ID,
                         List.of("ADMIN"),
                         List.of("transactions:write"),
+                        BASE_INSTANT.plusSeconds(600),
                         600)
                     .block())
         .isInstanceOf(RuntimeException.class);
