@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ServerWebExchange;
 
@@ -73,7 +73,7 @@ public class LogoutController {
   @ApiResponses(
       value = {
         @ApiResponse(
-            responseCode = "302",
+            responseCode = "303",
             description = "Redirect to the identity provider logout endpoint",
             headers =
                 @Header(
@@ -81,7 +81,7 @@ public class LogoutController {
                     description = "Identity provider logout URL",
                     schema = @Schema(type = "string", format = "uri")))
       })
-  @GetMapping("/logout")
+  @PostMapping("/logout")
   public Mono<Void> logout(ServerWebExchange exchange) {
     var sessionId = sessionCookieHelper.readSessionId(exchange);
 
@@ -126,7 +126,7 @@ public class LogoutController {
 
     log.debug("Redirecting to IDP logout: {}", idpLogoutUrl);
 
-    response.setStatusCode(HttpStatus.FOUND);
+    response.setStatusCode(HttpStatus.SEE_OTHER);
     response.getHeaders().setLocation(URI.create(idpLogoutUrl));
 
     return response.setComplete();

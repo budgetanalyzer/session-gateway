@@ -119,6 +119,7 @@ public class SecurityConfig {
                                       webFilterExchange.getExchange()));
                         }))
         .securityContextRepository(serverSecurityContextRepository)
+        .logout(ServerHttpSecurity.LogoutSpec::disable)
         .csrf(ServerHttpSecurity.CsrfSpec::disable)
         .exceptionHandling(
             exceptions -> exceptions.authenticationEntryPoint(authenticationEntryPoint()))

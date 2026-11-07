@@ -275,3 +275,47 @@ failed two new raw-header assertions written against `ResponseCookie.toString()`
   so users log in again; no migration is needed.
 - `kubernetes/production` pins older session-gateway images without this change (plan 05, Phase 3).
 - Browser acceptance of the cookie through the live ingress is not proven here.
+
+## Plan 02.7, Phase 1: POST Heartbeat And Logout
+
+Validated on 2026-11-07 in the Session Gateway workspace for worker run
+`20261107T160007Z-phase-1-d62968bd-68a9-46d9-ae83-19c3e50b67a3`.
+
+### Implemented contract
+
+- The heartbeat is now `POST /auth/v1/session`; `GET` and `HEAD` return `405 Method Not Allowed`
+  without reaching the mutating controller path.
+- Logout is now a form-compatible `POST /logout`. It deletes the Redis session, clears the public
+  cookie, and returns `303 See Other` with the server-constructed identity provider logout URL.
+- Spring Security's built-in POST logout filter is disabled so the application-owned controller
+  retains the Redis, cookie, and identity-provider behavior.
+- `GET` and `HEAD` logout requests return `405 Method Not Allowed` and leave the Redis session
+  intact. The generated OpenAPI contract publishes only the POST operations and the logout 303.
+- Session Gateway adds no CSRF token or Fetch Metadata contract. The exact-Origin control remains
+  the ingress responsibility in plan 02.8.
+
+### Validation results
+
+```bash
+./gradlew clean spotlessApply
+./gradlew clean build
+```
+
+Both succeeded on the first run; the build took 58 seconds. **240 tests passed, 0 failures, 0
+errors, 0 skipped**. Spotless, Checkstyle, JAR assembly, and JaCoCo gates passed. Coverage is
+**946/999 lines (94.69%)** and **217/278 branches (78.06%)**.
+
+`SessionControllerIntegrationTest` covers POST success and GET/HEAD rejection.
+`LogoutControllerIntegrationTest` covers POST invalidation, the exact 303 target, GET/HEAD
+rejection without invalidation, and the OpenAPI method/status contract.
+
+### Handoff and limitations
+
+- The frontend, API tests, and orchestration callers still use the old methods until later phases
+  in this synchronized merge unit update them. The local stack is intentionally inconsistent until
+  those phases complete.
+- No live stack, cluster mutation, or Auth0 access was used; live behavior belongs to plan phase 4.
+- No local state reset is required for this HTTP method change.
+
+Context: [plan 02.7](../../../orchestration/docs/plans/security-hardening-02.7-post-heartbeat-logout.md)
+and [contested decision 1](../../../orchestration/docs/research/security-review-contested-issues-2026-11-02.md#1-primary-csrf-control).

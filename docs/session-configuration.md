@@ -92,7 +92,7 @@ The current runtime defaults across the active browser-session path are:
 - frontend heartbeat cadence `VITE_HEARTBEAT_INTERVAL_MS=120000` (2 minutes in `budget-analyzer-web`)
 
 That heartbeat cadence is frontend-owned, not Session Gateway-owned. On every
-`GET /auth/v1/session` call, Session Gateway reads the local session and asks permission-service for
+`POST /auth/v1/session` call, Session Gateway reads the local session and asks permission-service for
 the current account status, roles, and permissions by internal `userId`. It extends the session
 only after that lookup succeeds for an active account, and never past the absolute session lifetime.
 Auth0 is not contacted. The frontend decides when to call based on user activity.
@@ -224,12 +224,18 @@ requires `Secure`, `Path=/`, and no `Domain`; browsers silently reject a `__Host
 violates any of these, including the clearing cookie. There is no domain override, and startup
 fails if a `__Host-` name is configured with `session.cookie.secure=false`.
 
-If the browser presents a cookie for a missing or expired Redis session, `GET /auth/v1/session`
+If the browser presents a cookie for a missing or expired Redis session, `POST /auth/v1/session`
 returns `401 application/json` with the shared `ApiErrorResponse` contract and clears the stale
 cookie. The public response is always the generic `UNAUTHORIZED` / `Authentication required`
 error; it does not distinguish a missing session from an expired or invalidated one. A blank or
 absent cookie receives the same JSON error but requires no clearing response because there is no
 usable public cookie to remove.
+
+Heartbeat and logout mutate session state only through `POST`. Logout is submitted as a top-level
+form to `/logout`; after deleting the Redis session and clearing the public cookie, Session Gateway
+returns `303 See Other` with a server-constructed identity provider logout URL. `GET` and `HEAD`
+requests to either mutating route are rejected. The platform's exact-Origin rule is a separate
+ingress control; Session Gateway does not add a CSRF token contract for these endpoints.
 
 ## Internal Revocation Endpoint
 

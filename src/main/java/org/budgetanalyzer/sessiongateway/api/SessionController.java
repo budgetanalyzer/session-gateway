@@ -6,7 +6,7 @@ import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
@@ -118,7 +118,7 @@ public class SessionController {
                     mediaType = "application/json",
                     schema = @Schema(implementation = ApiErrorResponse.class)))
       })
-  @GetMapping("/auth/v1/session")
+  @PostMapping("/auth/v1/session")
   public Mono<SessionStatusResponse> getSessionStatus(ServerWebExchange exchange) {
     var sessionId = sessionCookieHelper.readSessionId(exchange);
     if (sessionId == null || sessionId.isBlank()) {

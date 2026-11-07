@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -70,13 +71,13 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
 
     var exchangeResult =
         webTestClient
-            .get()
+            .post()
             .uri("/logout")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .cookie("SESSION", "framework-session-123")
             .exchange()
             .expectStatus()
-            .is3xxRedirection()
+            .isEqualTo(HttpStatus.SEE_OTHER)
             .expectHeader()
             .valueEquals(HttpHeaders.LOCATION, expectedLogoutLocation)
             .returnResult(Void.class);
@@ -107,11 +108,11 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
   void logoutClearsPublicSessionCookieAndRedirectsWhenSessionCookieIsMissing() {
     var exchangeResult =
         webTestClient
-            .get()
+            .post()
             .uri("/logout")
             .exchange()
             .expectStatus()
-            .is3xxRedirection()
+            .isEqualTo(HttpStatus.SEE_OTHER)
             .returnResult(Void.class);
 
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
@@ -121,12 +122,12 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
   void logoutClearsPublicSessionCookieAndRedirectsWhenSessionCookieIsBlank() {
     var exchangeResult =
         webTestClient
-            .get()
+            .post()
             .uri("/logout")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, "")
             .exchange()
             .expectStatus()
-            .is3xxRedirection()
+            .isEqualTo(HttpStatus.SEE_OTHER)
             .returnResult(Void.class);
 
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
@@ -141,11 +142,11 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
             + "&client_id=test-client-id";
 
     webTestClient
-        .get()
+        .post()
         .uri("/logout")
         .exchange()
         .expectStatus()
-        .is3xxRedirection()
+        .isEqualTo(HttpStatus.SEE_OTHER)
         .expectHeader()
         .valueEquals(HttpHeaders.LOCATION, expectedLogoutLocation);
   }
@@ -163,7 +164,7 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
 
     var exchangeResult =
         webTestClient
-            .get()
+            .post()
             .uri("/logout")
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
@@ -177,7 +178,39 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void shouldDocument302LogoutRedirect() {
+  void shouldRejectGetLogoutWithoutInvalidatingSession() {
+    var sessionId = createSession();
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
+
+    webTestClient
+        .get()
+        .uri("/logout")
+        .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
+        .exchange()
+        .expectStatus()
+        .isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+
+    assertThat(readHashEntries(sessionKey)).isNotEmpty();
+  }
+
+  @Test
+  void shouldRejectHeadLogoutWithoutInvalidatingSession() {
+    var sessionId = createSession();
+    var sessionKey = TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(sessionId);
+
+    webTestClient
+        .head()
+        .uri("/logout")
+        .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
+        .exchange()
+        .expectStatus()
+        .isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+
+    assertThat(readHashEntries(sessionKey)).isNotEmpty();
+  }
+
+  @Test
+  void shouldDocument303LogoutRedirect() {
     webTestClient
         .get()
         .uri("/v3/api-docs")
@@ -185,11 +218,11 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
         .expectStatus()
         .isOk()
         .expectBody()
-        .jsonPath("$.paths['/logout'].get.responses['302'].description")
+        .jsonPath("$.paths['/logout'].post.responses['303'].description")
         .isEqualTo("Redirect to the identity provider logout endpoint")
-        .jsonPath("$.paths['/logout'].get.responses['302'].headers.Location.schema.format")
+        .jsonPath("$.paths['/logout'].post.responses['303'].headers.Location.schema.format")
         .isEqualTo("uri")
-        .jsonPath("$.paths['/logout'].get.responses['200']")
+        .jsonPath("$.paths['/logout'].post.responses['200']")
         .doesNotExist();
   }
 
