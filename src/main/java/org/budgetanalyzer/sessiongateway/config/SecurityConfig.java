@@ -32,6 +32,7 @@ import org.budgetanalyzer.service.api.ApiErrorResponse;
 import org.budgetanalyzer.service.api.ApiErrorType;
 import org.budgetanalyzer.sessiongateway.security.OAuth2CallbackRedirectResolver;
 import org.budgetanalyzer.sessiongateway.security.RedisAuthorizationRequestRepository;
+import org.budgetanalyzer.sessiongateway.security.SessionLifecycleAuditLogger;
 import org.budgetanalyzer.sessiongateway.service.PermissionServiceClient;
 import org.budgetanalyzer.sessiongateway.session.SessionCookieHelper;
 import org.budgetanalyzer.sessiongateway.session.SessionWriter;
@@ -53,6 +54,7 @@ public class SecurityConfig {
   private final SessionCookieHelper sessionCookieHelper;
   private final OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver;
   private final JsonMapper jsonMapper;
+  private final SessionLifecycleAuditLogger sessionLifecycleAuditLogger;
 
   public SecurityConfig(
       ServerOAuth2AuthorizationRequestResolver serverOAuth2AuthorizationRequestResolver,
@@ -63,7 +65,8 @@ public class SecurityConfig {
       SessionWriter sessionWriter,
       SessionCookieHelper sessionCookieHelper,
       OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
-      JsonMapper jsonMapper) {
+      JsonMapper jsonMapper,
+      SessionLifecycleAuditLogger sessionLifecycleAuditLogger) {
     this.serverOAuth2AuthorizationRequestResolver = serverOAuth2AuthorizationRequestResolver;
     this.serverAuthorizationRequestRepository = serverAuthorizationRequestRepository;
     this.serverOAuth2AuthorizedClientRepository = serverOAuth2AuthorizedClientRepository;
@@ -73,6 +76,7 @@ public class SecurityConfig {
     this.sessionCookieHelper = sessionCookieHelper;
     this.oauth2CallbackRedirectResolver = oauth2CallbackRedirectResolver;
     this.jsonMapper = jsonMapper;
+    this.sessionLifecycleAuditLogger = sessionLifecycleAuditLogger;
   }
 
   @Bean
@@ -112,11 +116,13 @@ public class SecurityConfig {
                               "OAuth2 authentication failed with exceptionType={},"
                                   + " redirecting to controlled login path",
                               exception.getClass().getSimpleName());
+                          var exchange = webFilterExchange.getExchange();
                           return redirect(
-                              webFilterExchange.getExchange(),
-                              oauth2CallbackRedirectResolver
-                                  .resolveAuthenticationFailureRedirectUrl(
-                                      webFilterExchange.getExchange()));
+                                  exchange,
+                                  oauth2CallbackRedirectResolver
+                                      .resolveAuthenticationFailureRedirectUrl(exchange))
+                              .doOnSuccess(
+                                  ignored -> sessionLifecycleAuditLogger.loginFailure(exchange));
                         }))
         .securityContextRepository(serverSecurityContextRepository)
         .logout(ServerHttpSecurity.LogoutSpec::disable)
@@ -170,9 +176,13 @@ public class SecurityConfig {
                         sessionId -> {
                           sessionCookieHelper.setSessionCookie(exchange, sessionId);
                           return redirect(
-                              exchange,
-                              oauth2CallbackRedirectResolver
-                                  .resolveAuthenticationSuccessRedirectUrl(exchange));
+                                  exchange,
+                                  oauth2CallbackRedirectResolver
+                                      .resolveAuthenticationSuccessRedirectUrl(exchange))
+                              .doOnSuccess(
+                                  ignored ->
+                                      sessionLifecycleAuditLogger.loginSuccess(
+                                          permissionResponse.userId(), exchange));
                         }))
         .onErrorResume(
             Exception.class,
@@ -182,7 +192,9 @@ public class SecurityConfig {
                       + " exceptionType={}, redirecting to /oops",
                   exception.getClass().getSimpleName());
               return redirect(
-                  exchange, oauth2CallbackRedirectResolver.resolveUnexpectedFailureRedirectUrl());
+                      exchange,
+                      oauth2CallbackRedirectResolver.resolveUnexpectedFailureRedirectUrl())
+                  .doOnSuccess(ignored -> sessionLifecycleAuditLogger.loginFailure(exchange));
             });
   }
 

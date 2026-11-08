@@ -28,10 +28,13 @@ public class OAuth2CallbackUnexpectedFailureWebExceptionHandler
   private static final String CALLBACK_PATH_PREFIX = "/login/oauth2/code/";
 
   private final OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver;
+  private final SessionLifecycleAuditLogger sessionLifecycleAuditLogger;
 
   public OAuth2CallbackUnexpectedFailureWebExceptionHandler(
-      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver) {
+      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
+      SessionLifecycleAuditLogger sessionLifecycleAuditLogger) {
     this.oauth2CallbackRedirectResolver = oauth2CallbackRedirectResolver;
+    this.sessionLifecycleAuditLogger = sessionLifecycleAuditLogger;
   }
 
   @Override
@@ -53,7 +56,8 @@ public class OAuth2CallbackUnexpectedFailureWebExceptionHandler
         throwable.getClass().getSimpleName(),
         requestPath);
 
-    return redirect(exchange, oauth2CallbackRedirectResolver.resolveUnexpectedFailureRedirectUrl());
+    return redirect(exchange, oauth2CallbackRedirectResolver.resolveUnexpectedFailureRedirectUrl())
+        .doOnSuccess(ignored -> sessionLifecycleAuditLogger.loginFailure(exchange));
   }
 
   private boolean isCallbackPath(ServerWebExchange exchange) {

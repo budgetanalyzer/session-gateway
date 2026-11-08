@@ -27,6 +27,8 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
   private static final String PUBLIC_SESSION_COOKIE_NAME = "__Host-BA_SESSION";
   private static final String TEST_SESSION_KEY_PREFIX = "session:test:";
   private static final String TEST_USER_ID = "user-logout";
+  private static final String TEST_EMAIL = "logout@example.com";
+  private static final String TEST_DISPLAY_NAME = "Logout User";
   private static final String TEST_USER_SESSIONS_KEY =
       SessionHashFields.USER_SESSIONS_KEY_PREFIX + TEST_USER_ID;
 
@@ -102,6 +104,11 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
                 .isMember(TEST_USER_SESSIONS_KEY, sessionDigest)
                 .block())
         .isFalse();
+    assertSingleAuditEvent(exchangeResult, TEST_USER_ID, "LOGOUT_SUCCESS", 303)
+        .doesNotContain(sessionId)
+        .doesNotContain(sessionDigest)
+        .doesNotContain(TEST_EMAIL)
+        .doesNotContain(TEST_DISPLAY_NAME);
   }
 
   @Test
@@ -116,6 +123,7 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
             .returnResult(Void.class);
 
     assertCleared(exchangeResult.getResponseCookies().getFirst(PUBLIC_SESSION_COOKIE_NAME));
+    assertSingleAuditEvent(exchangeResult, "anonymous", "LOGOUT_SUCCESS", 303);
   }
 
   @Test
@@ -152,8 +160,38 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void logoutDoesNotClearCookieOrRedirectWhenRedisDeletionFails() {
+  void logoutRedirectsToOopsWithoutClearingCookieWhenSessionReadFails() {
     var sessionId = createSession();
+    var sessionDigest = SessionTokenDigest.sha256Hex(sessionId);
+    var sessionKey = TEST_SESSION_KEY_PREFIX + sessionDigest;
+    reactiveStringRedisTemplate
+        .<String, String>opsForHash()
+        .remove(sessionKey, SessionHashFields.EXPIRES_AT)
+        .block();
+
+    var exchangeResult =
+        webTestClient
+            .post()
+            .uri("/logout")
+            .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
+            .exchange()
+            .expectStatus()
+            .isFound()
+            .expectHeader()
+            .location("/oops")
+            .returnResult(Void.class);
+
+    assertThat(exchangeResult.getResponseCookies()).doesNotContainKey(PUBLIC_SESSION_COOKIE_NAME);
+    assertThat(readHashEntries(sessionKey)).containsEntry(SessionHashFields.USER_ID, TEST_USER_ID);
+    assertSingleAuditEvent(exchangeResult, "anonymous", "LOGOUT_FAILURE", 302)
+        .doesNotContain(sessionId)
+        .doesNotContain(sessionDigest);
+  }
+
+  @Test
+  void logoutRedirectsToOopsWithoutClearingCookieWhenRedisDeletionFails() {
+    var sessionId = createSession();
+    var sessionDigest = SessionTokenDigest.sha256Hex(sessionId);
     reactiveStringRedisTemplate
         .unlink(TEST_USER_SESSIONS_KEY)
         .then(
@@ -169,12 +207,15 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
             .cookie(PUBLIC_SESSION_COOKIE_NAME, sessionId)
             .exchange()
             .expectStatus()
-            .is5xxServerError()
+            .isFound()
             .expectHeader()
-            .doesNotExist(HttpHeaders.LOCATION)
+            .location("/oops")
             .returnResult(Void.class);
 
     assertThat(exchangeResult.getResponseCookies()).doesNotContainKey(PUBLIC_SESSION_COOKIE_NAME);
+    assertSingleAuditEvent(exchangeResult, TEST_USER_ID, "LOGOUT_FAILURE", 302)
+        .doesNotContain(sessionId)
+        .doesNotContain(sessionDigest);
   }
 
   @Test
@@ -222,6 +263,8 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo("Redirect to the identity provider logout endpoint")
         .jsonPath("$.paths['/logout'].post.responses['303'].headers.Location.schema.format")
         .isEqualTo("uri")
+        .jsonPath("$.paths['/logout'].post.responses['302'].headers.Location")
+        .exists()
         .jsonPath("$.paths['/logout'].post.responses['200']")
         .doesNotExist();
   }
@@ -231,8 +274,8 @@ class LogoutControllerIntegrationTest extends AbstractIntegrationTest {
         .createSession(
             TEST_USER_ID,
             "auth0|logout",
-            "logout@example.com",
-            "Logout User",
+            TEST_EMAIL,
+            TEST_DISPLAY_NAME,
             "https://example.com/avatar.png",
             List.of("ROLE_USER"),
             List.of("transactions:read"))

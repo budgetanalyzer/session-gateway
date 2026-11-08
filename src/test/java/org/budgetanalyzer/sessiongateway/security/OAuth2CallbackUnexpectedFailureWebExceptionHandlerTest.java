@@ -9,13 +9,16 @@ import org.springframework.mock.web.server.MockServerWebExchange;
 
 import reactor.test.StepVerifier;
 
+import org.budgetanalyzer.service.audit.AuditLogger;
+
 class OAuth2CallbackUnexpectedFailureWebExceptionHandlerTest {
 
   @Test
   void shouldRedirectCallbackExceptionsToOops() {
     var oauth2CallbackUnexpectedFailureWebExceptionHandler =
         new OAuth2CallbackUnexpectedFailureWebExceptionHandler(
-            new OAuth2CallbackRedirectResolver());
+            new OAuth2CallbackRedirectResolver(),
+            new SessionLifecycleAuditLogger(new AuditLogger()));
     var mockServerWebExchange =
         MockServerWebExchange.from(
             MockServerHttpRequest.get("/login/oauth2/code/idp?code=test-code&state=test-state")
@@ -34,7 +37,8 @@ class OAuth2CallbackUnexpectedFailureWebExceptionHandlerTest {
   void shouldLeaveNonCallbackExceptionsUnchanged() {
     var oauth2CallbackUnexpectedFailureWebExceptionHandler =
         new OAuth2CallbackUnexpectedFailureWebExceptionHandler(
-            new OAuth2CallbackRedirectResolver());
+            new OAuth2CallbackRedirectResolver(),
+            new SessionLifecycleAuditLogger(new AuditLogger()));
     var mockServerWebExchange =
         MockServerWebExchange.from(MockServerHttpRequest.get("/user").build());
     var illegalStateException = new IllegalStateException("boom");

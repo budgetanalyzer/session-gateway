@@ -1,0 +1,15 @@
+spring:
+  config:
+    activate:
+      on-profile: debug-logging
+
+logging:
+  level:
+    org.budgetanalyzer: TRACE
+
+budgetanalyzer:
+  service:
+    http-logging:
+      # Use only with synthetic data during local debugging.
+      include-request-body: true
+      include-response-body: true

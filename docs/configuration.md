@@ -27,6 +27,35 @@
 | `SESSION_COOKIE_SECURE` | Secure cookie flag | `true` |
 | `SESSION_COOKIE_SAME_SITE` | SameSite cookie policy (`Strict`, `Lax`, `None`) | `Strict` |
 
+## Logging
+
+Application logging defaults to `INFO` for `org.budgetanalyzer`. HTTP metadata logging remains
+enabled at `DEBUG`, but request and response body capture use the safe service-common defaults and
+are disabled.
+
+The opt-in `debug-logging` Spring profile raises application logging to `TRACE` and enables HTTP
+request and response body capture. Use it only for local debugging with synthetic data; never use
+it with real identity, session, or financial data.
+
+```bash
+SPRING_PROFILES_ACTIVE=debug-logging ./gradlew bootRun
+```
+
+Structured session lifecycle audit events are emitted at `INFO` on the dedicated
+`budgetanalyzer.audit` logger. They contain internal user identifiers, operation names, outcomes,
+and correlation IDs, but never session tokens, session digests, OAuth values, or profile data.
+
+## Health Probes
+
+Actuator liveness and readiness probes are enabled in every environment. Liveness contains only
+Spring's `livenessState` indicator. Readiness contains `readinessState` and `redis`, because Redis
+is required to authenticate and manage browser sessions. Permission-service is intentionally not
+part of readiness: it is a downstream dependency, and its outage must not remove the entire auth
+lane from service.
+
+- `/actuator/health/liveness` reports whether the process should be restarted.
+- `/actuator/health/readiness` reports unavailable when Redis cannot be reached.
+
 ## JSON Serialization
 
 Session Gateway configures Jackson with `spring.jackson.default-property-inclusion: non_null`.

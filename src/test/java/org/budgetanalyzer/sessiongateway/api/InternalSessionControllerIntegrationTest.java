@@ -6,10 +6,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 
 import reactor.core.publisher.Mono;
@@ -45,6 +48,11 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
     deleteTestKeys();
   }
 
+  @AfterEach
+  void tearDown() {
+    deleteTestKeys();
+  }
+
   @Test
   void deleteUserSessionsRevokesAllActiveSessionsForTheRequestedUser() {
     var firstSessionId = createSession(PRIMARY_USER_ID, "auth0|internal-primary-1");
@@ -57,14 +65,15 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
             SessionTokenDigest.sha256Hex(secondSessionId),
             SessionTokenDigest.sha256Hex(thirdSessionId));
 
-    webTestClient
-        .delete()
-        .uri("/internal/v1/sessions/users/{userId}", PRIMARY_USER_ID)
-        .exchange()
-        .expectStatus()
-        .isNoContent()
-        .expectBody()
-        .isEmpty();
+    var exchangeResult =
+        webTestClient
+            .delete()
+            .uri("/internal/v1/sessions/users/{userId}", PRIMARY_USER_ID)
+            .exchange()
+            .expectStatus()
+            .isNoContent()
+            .expectBody()
+            .isEmpty();
 
     assertThat(
             readHashEntries(TEST_SESSION_KEY_PREFIX + SessionTokenDigest.sha256Hex(firstSessionId)))
@@ -83,6 +92,35 @@ class InternalSessionControllerIntegrationTest extends AbstractIntegrationTest {
         .containsEntry(SessionHashFields.USER_ID, SECONDARY_USER_ID);
     assertThat(readSetMembers(SECONDARY_USER_SESSIONS_KEY))
         .containsExactly(SessionTokenDigest.sha256Hex(unrelatedSessionId));
+    assertSingleAuditEvent(
+            exchangeResult, "anonymous", "DELETE /internal/v1/sessions/users/{userId}", 204)
+        .contains("\"resourceIdentifier\":\"" + PRIMARY_USER_ID + "\"")
+        .doesNotContain(firstSessionId)
+        .doesNotContain(SessionTokenDigest.sha256Hex(firstSessionId));
+  }
+
+  @Test
+  void deleteUserSessionsReturnsJsonErrorAndAuditsFailureWhenUserIndexIsMalformed() {
+    reactiveStringRedisTemplate
+        .opsForValue()
+        .set(PRIMARY_USER_SESSIONS_KEY, "deliberately-not-a-set")
+        .block();
+
+    var exchangeResult =
+        webTestClient
+            .delete()
+            .uri("/internal/v1/sessions/users/{userId}", PRIMARY_USER_ID)
+            .exchange()
+            .expectStatus()
+            .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
+            .expectHeader()
+            .contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+            .expectBody()
+            .returnResult();
+
+    assertSingleAuditEvent(
+            exchangeResult, "anonymous", "DELETE /internal/v1/sessions/users/{userId}", 500)
+        .contains("\"resourceIdentifier\":\"" + PRIMARY_USER_ID + "\"");
   }
 
   @Test
