@@ -6,9 +6,3 @@ spring:
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:redis}
-
-# Disable request body logging to isolate POST timeout issue
-budgetanalyzer:
-  service:
-    http-logging:
-      include-request-body: false

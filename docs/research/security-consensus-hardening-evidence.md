@@ -319,3 +319,117 @@ rejection without invalidation, and the OpenAPI method/status contract.
 
 Context: [plan 02.7](../../../orchestration/docs/plans/security-hardening-02.7-post-heartbeat-logout.md)
 and [contested decision 1](../../../orchestration/docs/research/security-review-contested-issues-2026-11-02.md#1-primary-csrf-control).
+
+## Security Hardening 03, Phase 9: Safe Logging, Readiness And Session Audit Events
+
+Validated on 2026-11-07 in the Session Gateway workspace for worker run
+`20261107T212028Z-phase-9-f2a88620-0d6e-4e14-8a19-799c70c15ddb`.
+
+### Implemented contract
+
+- Base application logging is `INFO` for `org.budgetanalyzer`; HTTP request and response body
+  capture now use the disabled service-common defaults. The Kubernetes profile no longer carries
+  the obsolete request-body override or timeout-investigation comment.
+- The opt-in `debug-logging` profile enables application `TRACE` and HTTP body capture for local
+  synthetic-data diagnosis only.
+- Readiness contains `readinessState` and Redis. Liveness remains dependency-free, and
+  permission-service is deliberately excluded from readiness.
+- Login success, login failure, logout, and bulk revocation emit structured events through the
+  shared `AuditLogger`. Events use internal user IDs where an authenticated identity is
+  available; bulk revocation records the target user as the resource. No event contains a session
+  token or digest.
+- Correction: this phase did not audit callback failures completed by the dedicated callback
+  `WebExceptionHandler`s or logout session-read failures, and logout failures recorded a
+  hard-coded `500`. The review remediation below closes those paths.
+
+### Validation results
+
+- `./gradlew clean spotlessApply` and `./gradlew clean build`: passed (Spotless, Checkstyle,
+  all tests, JaCoCo verification).
+- `SessionGatewayApplicationIntegrationTest` loads the main `application.yml` with the
+  `kubernetes` profile and asserts `org.budgetanalyzer` is `INFO` and both HTTP body flags are
+  off; it also asserts readiness reports `readinessState` and `redis`, and liveness has no Redis
+  component.
+- `DebugLoggingProfileIntegrationTest` asserts the opt-in profile enables `TRACE` and both body
+  flags.
+- `SecurityConfigIntegrationTest`, `LogoutControllerIntegrationTest`, and
+  `InternalSessionControllerIntegrationTest` capture `budgetanalyzer.audit` and assert exactly one
+  event per login success, login failure, logout, and bulk revocation, with the expected actor,
+  operation, and outcome, and without the session token or its digest.
+
+### Handoff and limitations
+
+- The existing trusted-client-address gap remains out of scope and is recorded by Phase 4.
+- Permission-service failures continue to affect individual login or heartbeat operations without
+  taking the Session Gateway pod out of readiness.
+
+## Security Hardening 03 Review Remediation, Phase 1: Session Lifecycle Audit Completion
+
+Validated on 2026-11-08 in the Session Gateway workspace for worker run
+`20261108T081228Z-phase-1-76b3ef89-d592-47cb-88ca-2af70415df7c`; the logout commit-point and
+config-override follow-ups were validated in worker run
+`20261108T085210Z-phase-1-7c343686-101b-43ab-b128-81d83cd76365`.
+
+### Implemented contract
+
+- `SessionLifecycleAuditLogger` is the single Session Gateway-local emitter around `AuditLogger`.
+  Login and logout events record the completed response's status and the response correlation ID.
+- Terminal-path owners: `SecurityConfig` owns login success, OAuth2 authentication failures
+  (including userinfo transport failures, which Spring Security wraps as authentication failures),
+  and post-authentication permission-service or session-write failures.
+  `OAuth2CallbackTransportFailureWebExceptionHandler` owns token-endpoint and JWKS transport
+  failures. `OAuth2CallbackUnexpectedFailureWebExceptionHandler` owns other callback exceptions
+  that escape the security chain. `LogoutController` and `InternalSessionController` own logout
+  and bulk revocation.
+- Logout operations are `LOGOUT_SUCCESS` and `LOGOUT_FAILURE`. A session-read failure (for example
+  a malformed Redis hash) or Redis deletion failure now returns `302` to `/oops` without clearing
+  the cookie or redirecting to the identity provider, then emits one `LOGOUT_FAILURE` with outcome
+  `302`. The actor is the resolved internal user ID, or `anonymous` when the read failed. The
+  OpenAPI contract documents the `302`.
+- Logout failure recovery covers only the session read and the deletion step. Session deletion is
+  the commit point, so nothing after it reports `LOGOUT_FAILURE` or redirects to `/oops` with a
+  cookie-clearing header. `LogoutController` builds the identity provider logout `URI` once in its
+  constructor, so a malformed `idp.logout.url-template` fails startup. A failed final response
+  write is neither redirected nor audited.
+- Bulk revocation keeps its existing behavior: `204` on success; on Redis failure,
+  service-common's JSON `500`, with one event recording `500`.
+
+### Validation results
+
+- Focused run of `SecurityConfigIntegrationTest`, `OAuth2CallbackDiagnosticsIntegrationTest`,
+  `LogoutControllerIntegrationTest`, `InternalSessionControllerIntegrationTest`, and
+  `SessionGatewayApplicationIntegrationTest`: 42 tests passed, 0 failures.
+- `./gradlew clean spotlessApply` then `./gradlew clean build`: passed. **246 tests, 0
+  failures, 0 errors, 0 skipped**; Spotless, Checkstyle (0 findings), and JaCoCo gates passed.
+  Coverage: **1009/1059 lines (95.28%)**, **221/280 branches (78.93%)**.
+- `git diff --check`: clean.
+- Follow-up run `20261108T085210Z-phase-1-7c343686-101b-43ab-b128-81d83cd76365`: the focused run
+  above plus the new `LogoutControllerTest` (malformed `idp.logout.url-template` throws
+  `IllegalArgumentException` at construction) passed with 43 tests, 0 failures. The logout
+  deletion-failure case was renamed to
+  `logoutRedirectsToOopsWithoutClearingCookieWhenRedisDeletionFails`. `./gradlew clean
+  spotlessApply` then `./gradlew clean build`: passed. **247 tests, 0 failures, 0 errors, 0
+  skipped**; Checkstyle 0 findings. Coverage: **1010/1060 lines (95.28%)**, **221/280 branches
+  (78.93%)**. `git diff --check`: clean.
+- The shared `AbstractIntegrationTest` audit capture asserts exactly one event per request, with
+  operation, actor, outcome, and the response `X-Correlation-ID`, plus absence of session tokens,
+  digests, OAuth code and state, and profile values where present. Covered paths: login success;
+  token-endpoint `500`; token and JWKS connection resets; token, JWKS, and userinfo response
+  timeouts (the test asserts the transport handler logs for token and JWKS but not for userinfo);
+  permission-service transport failure, login timeout, and session-write failure; a wrong-type
+  `oauth2:state:{state}` record handled by the unexpected-failure handler; authenticated and
+  cookie-less logout success; logout with a hash missing `expires_at`; logout with a wrong-type
+  user index; and bulk-revocation success and wrong-type-index failure.
+
+### Handoff and limitations
+
+- `SessionGatewayApplicationIntegrationTest` still uses
+  `spring.config.additional-location=file:./src/main/resources/`. Removing it made
+  `readinessIncludesRedisWhileLivenessRemainsDependencyFree` and
+  `kubernetesProfileUsesSafeLoggingDefaults` fail: `src/test/resources/application.yml` shadows
+  the main `application.yml` on the test classpath, so the readiness group and base logging levels
+  are not loaded. Only `application-kubernetes.yml` is picked up from main resources. Resolved:
+  the remediation plan keeps the override, and a one-line comment at the override now explains the
+  shadowing. The readiness, base logging, and `kubernetes` profile assertions remain.
+- No test injects a post-deletion failure, because the only remaining one is the final response
+  write, which is deliberately neither redirected nor audited.

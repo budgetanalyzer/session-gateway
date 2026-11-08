@@ -113,6 +113,45 @@ handoff details. Live browser proof belongs to hardening plan 02.1 phase 3.
 - `DELETE /internal/v1/sessions/users/{userId}` revokes all indexed sessions for that user and returns `204 No Content` whether the user had sessions or not
 - The route is intentionally narrow in application security: only that exact path is unauthenticated, with network-level controls expected to restrict callers
 
+## Session Lifecycle Audit Events
+
+Session Gateway emits exactly one compact JSON event at `INFO` on the dedicated
+`budgetanalyzer.audit` logger for each completed login success, login failure, logout, and bulk
+revocation attempt. Every terminal path has one audit owner, and all owners emit through
+`SessionLifecycleAuditLogger`:
+
+| Terminal path | Owner | Operation | Outcome |
+| --- | --- | --- | --- |
+| Login success redirect | `SecurityConfig` success handler | `OAUTH2_LOGIN_SUCCESS` | `302` |
+| OAuth2 authentication failure, including IdP error responses and userinfo transport failures | `SecurityConfig` failure handler | `OAUTH2_LOGIN_FAILURE` | `302` |
+| Permission-service or session-write failure after authentication | `SecurityConfig` success handler | `OAUTH2_LOGIN_FAILURE` | `302` |
+| Token-endpoint or JWKS transport failure | `OAuth2CallbackTransportFailureWebExceptionHandler` | `OAUTH2_LOGIN_FAILURE` | `302` |
+| Any other callback exception that escapes the security chain | `OAuth2CallbackUnexpectedFailureWebExceptionHandler` | `OAUTH2_LOGIN_FAILURE` | `302` |
+| Logout redirect to the identity provider | `LogoutController` | `LOGOUT_SUCCESS` | `303` |
+| Logout session-read or Redis deletion failure | `LogoutController` | `LOGOUT_FAILURE` | `302` |
+| Bulk revocation | `InternalSessionController` | `DELETE /internal/v1/sessions/users/{userId}` | `204`, or `500` on Redis failure |
+
+Login and logout events are emitted after the redirect completes and record the response's final
+status. A failure redirect is still a failed operation even though its HTTP outcome is `302`; the
+operation name carries success or failure.
+
+Logout failure recovery covers only the session read and the Redis session deletion. Deletion is
+the commit point: once it succeeds, the outcome is `LOGOUT_SUCCESS` with the cookie cleared, never
+`LOGOUT_FAILURE` or `/oops`. The identity provider logout URI is built and validated once when
+`LogoutController` is constructed, so a malformed `idp.logout.url-template` fails startup instead
+of failing after deletion. A failed final response write is neither redirected nor audited,
+because the response is already committed.
+
+Login success and logout use the internal permission-service user ID as the actor; logout
+without a session uses `anonymous`. Login failures, a logout whose session could not be read, and
+the unauthenticated internal revocation route also use `anonymous`. No failure path makes another
+Redis or downstream call to resolve an actor. Revocation records the target internal user ID as
+the resource rather than falsely identifying that user as the actor.
+
+Audit events contain an operation name, HTTP outcome, and resolved correlation ID. They never
+contain session tokens, session digests, OAuth codes or state, email addresses, display names, or
+request and response bodies.
+
 ## Return URL Support
 
 - **Explicit parameter**: `/oauth2/authorization/idp?returnUrl=/settings`
@@ -143,6 +182,7 @@ Session Gateway never serves Spring Boot white-label HTML for uncommitted browse
 
 - **Callback IdP/auth failures** redirect to `/login?error=auth_failed`
 - **Callback non-auth failures** redirect to `/oops`
+- **Logout session-read or deletion failures** redirect to `/oops` from `LogoutController` without clearing the session cookie or redirecting to the identity provider
 - **All other browser navigation failures** redirect to `/oops` via a global `WebExceptionHandler` (`BrowserErrorRedirectHandler`)
 - **API and machine requests** always receive JSON error responses, never redirects
 
@@ -171,5 +211,7 @@ during refresh. Authorization-refresh and Redis mutation failures return `503` w
 This JSON policy does not apply to `/login`, `/oauth2/*`, `/login/oauth2/*`, or `/logout`. Logout
 accepts only a same-origin top-level form `POST`; after invalidating the session and clearing its
 cookie, Session Gateway returns a server-constructed `303 See Other` redirect to the configured
-identity provider logout URL. `GET` and `HEAD` cannot perform logout. The exact-Origin ingress
+identity provider logout URL. If the session cannot be read or deleted, it returns `302 Found` to
+`/oops` and leaves the cookie in place. Nothing after a successful deletion falls back to `/oops`;
+a malformed identity provider logout template fails startup. `GET` and `HEAD` cannot perform logout. The exact-Origin ingress
 control is applied separately by the platform.

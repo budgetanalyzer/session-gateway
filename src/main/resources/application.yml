@@ -11,7 +11,8 @@ server:
 logging:
   level:
     root: WARN
-    org.budgetanalyzer: TRACE
+    budgetanalyzer.audit: INFO
+    org.budgetanalyzer: INFO
     org.springframework.security: INFO
     org.springframework.security.oauth2: INFO
     org.springframework.web.reactive.function.client: INFO
@@ -105,8 +106,6 @@ budgetanalyzer:
     http-logging:
       enabled: true
       log-level: DEBUG
-      include-request-body: true
-      include-response-body: true
       include-request-headers: true
       include-response-headers: true
       include-query-params: true
@@ -131,3 +130,6 @@ management:
       show-details: always
       probes:
         enabled: true
+      group:
+        readiness:
+          include: readinessState,redis

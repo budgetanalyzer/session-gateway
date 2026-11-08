@@ -27,7 +27,8 @@ Browser → Istio Ingress (:443)
 - Writes session data (userId, roles, permissions, expiry) as Redis hashes keyed by the SHA-256 digest of the cookie token (`session:{digest}`)
 - Issues HttpOnly session cookies; atomically refreshes grants and TTL via heartbeat (`POST /auth/v1/session`)
 - Accepts logout only as a form `POST /logout`, then returns a server-constructed `303` redirect
-  to the identity provider logout URL
+  to the identity provider logout URL, or a `302` redirect to `/oops` without clearing the cookie
+  when the session cannot be read or deleted
 - Exposes internal session revocation for permission-service (`DELETE /internal/v1/sessions/users/{userId}`)
 - ext_authz reads the same Redis hashes for ingress authorization — no separate schema
 

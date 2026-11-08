@@ -231,7 +231,7 @@ find ../service-common/service-web/src/main/java -path "*/reactive/*" -name "*.j
 **Package orientation** (under `src/main/java/org/budgetanalyzer/sessiongateway/`):
 - `config/`: Security filter chain, OAuth2 client wiring, WebClient, OpenAPI, and configuration properties
 - `api/`: Auth/session lifecycle controllers, internal revocation, and `api/response/` records
-- `security/`: Redis-backed OAuth2 and security-context repositories, redirect validation, and browser error handling
+- `security/`: Redis-backed OAuth2 and security-context repositories, redirect validation, browser error handling, and the session lifecycle audit helper
 - `service/`: Permission-service client
 - `session/`: Redis session hash reads and writes, hash field names, and session cookie handling
 
@@ -242,6 +242,7 @@ find ../service-common/service-web/src/main/java -path "*/reactive/*" -name "*.j
 - Keep Redis session hash, user-index, and cookie handling in `session/`; hash field names, key prefix, cookie name, and the `SessionTokenDigest` key derivation are cross-repo contracts with ext_authz
 - Build every session key and user-index member from `SessionTokenDigest.sha256Hex(token)`; never write the raw cookie token to Redis or logs (see [Hashed Session Keys](docs/session-configuration.md#hashed-session-keys))
 - Keep browser error redirects path-classified; machine paths must fall through to service-common JSON errors
+- Give every terminal login, logout, and bulk-revocation path exactly one audit owner, and emit through `SessionLifecycleAuditLogger` after the response completes. Do not add a global audit filter
 - Route IdP callback traffic (token exchange, userinfo, JWKS) through the dedicated IdP HTTP client, separate from the permission-service WebClient
 - Rely on service-web auto-configuration for reactive HTTP logging, correlation IDs, and exception handling; `SafeLogger` remains opt-in (see Best Practices)
 
@@ -269,6 +270,8 @@ grep -n "pathMatchers" src/main/java/org/budgetanalyzer/sessiongateway/config/Se
   - Security: All returnUrl values validated by RedirectUrlValidator (same-origin only)
 - `GET /login/oauth2/code/idp` - OAuth2 callback (receives code from Auth0)
 - `POST /logout` - Accepts a top-level form submission, invalidates the session, clears cookies, and returns a `303` redirect to Auth0 logout
+  - If the session read or Redis deletion fails: returns a `302` redirect to `/oops` without clearing the cookie or redirecting to Auth0
+  - Deletion is the commit point: no later step falls back to `/oops`. The Auth0 logout URI is built once in the `LogoutController` constructor, so a malformed `idp.logout.url-template` fails startup
 - Bare `/login` is not a Session Gateway endpoint. It is a frontend route that initiates `GET /oauth2/authorization/idp`.
 
 **Return URL Flow**:
@@ -363,13 +366,17 @@ grep -n '\${' src/main/resources/application.yml
 
 **Logging**:
 - Framework OAuth2 and WebClient logging stays at `INFO` by default; callback failures use sanitized diagnostics (see [docs/session-configuration.md](docs/session-configuration.md))
-- Session management logging
+- `org.budgetanalyzer` logs at `INFO` and HTTP body capture is off by default; the opt-in `debug-logging` profile enables `TRACE` and bodies for synthetic-data debugging only (see [docs/configuration.md](docs/configuration.md#logging))
+- Every completed login success, login failure, logout, and bulk-revocation attempt emits exactly one event on `budgetanalyzer.audit`, including callback failures completed by the dedicated callback `WebExceptionHandler`s; read [Session Lifecycle Audit Events](docs/security.md#session-lifecycle-audit-events) before changing them
+
+**Health Probes**:
+- Readiness is `readinessState` plus Redis; never add permission-service, a downstream dependency (see [docs/configuration.md](docs/configuration.md#health-probes))
 
 **HTTP Logging** (from service-common):
 - `budgetanalyzer.service.http-logging.enabled`: Enable/disable HTTP logging
 - `budgetanalyzer.service.http-logging.log-level`: Log level (DEBUG, INFO, etc.)
-- `budgetanalyzer.service.http-logging.include-request-body`: Log request bodies
-- `budgetanalyzer.service.http-logging.include-response-body`: Log response bodies
+- `budgetanalyzer.service.http-logging.include-request-body`: Log request bodies (off by default; `debug-logging` profile only)
+- `budgetanalyzer.service.http-logging.include-response-body`: Log response bodies (off by default; `debug-logging` profile only)
 - `budgetanalyzer.service.http-logging.include-request-headers`: Log request headers
 - `budgetanalyzer.service.http-logging.include-response-headers`: Log response headers
 - `budgetanalyzer.service.http-logging.include-query-params`: Log query parameters
@@ -385,8 +392,6 @@ budgetanalyzer:
     http-logging:
       enabled: true
       log-level: DEBUG
-      include-request-body: true
-      include-response-body: true
       max-body-size: 10000
       exclude-patterns:
         - /actuator/**

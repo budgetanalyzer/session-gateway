@@ -28,10 +28,13 @@ public class OAuth2CallbackTransportFailureWebExceptionHandler
   private static final String CALLBACK_PATH_PREFIX = "/login/oauth2/code/";
 
   private final OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver;
+  private final SessionLifecycleAuditLogger sessionLifecycleAuditLogger;
 
   public OAuth2CallbackTransportFailureWebExceptionHandler(
-      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver) {
+      OAuth2CallbackRedirectResolver oauth2CallbackRedirectResolver,
+      SessionLifecycleAuditLogger sessionLifecycleAuditLogger) {
     this.oauth2CallbackRedirectResolver = oauth2CallbackRedirectResolver;
+    this.sessionLifecycleAuditLogger = sessionLifecycleAuditLogger;
   }
 
   @Override
@@ -61,7 +64,9 @@ public class OAuth2CallbackTransportFailureWebExceptionHandler
         requestPath);
 
     return redirect(
-        exchange, oauth2CallbackRedirectResolver.resolveAuthenticationFailureRedirectUrl(exchange));
+            exchange,
+            oauth2CallbackRedirectResolver.resolveAuthenticationFailureRedirectUrl(exchange))
+        .doOnSuccess(ignored -> sessionLifecycleAuditLogger.loginFailure(exchange));
   }
 
   private java.util.Optional<OAuth2CallbackIdpTransportException>

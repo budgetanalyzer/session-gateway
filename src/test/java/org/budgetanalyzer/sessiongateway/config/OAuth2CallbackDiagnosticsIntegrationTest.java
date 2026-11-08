@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.reactive.server.FluxExchangeResult;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.nimbusds.jose.JOSEException;
@@ -106,10 +107,14 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
         List.of("ROLE_USER"),
         List.of("transactions:read"));
 
-    var redirectLocation = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
+    var callbackResult = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
 
-    assertLoginFailureRedirect(redirectLocation, SECRET_RETURN_URL);
+    assertLoginFailureRedirect(
+        callbackResult.getResponseHeaders().getLocation(), SECRET_RETURN_URL);
     assertSanitizedLogs(authorizationRequest.state(), SECRET_AUTH_CODE);
+    // Token and JWKS transport failures escape the security chain to the dedicated handler.
+    assertThat(transportHandlerListAppender.list).hasSize(1);
+    assertLoginFailureAudited(callbackResult, authorizationRequest);
     assertThat(logMessages())
         .anyMatch(message -> message.contains("classification=response_timeout"))
         .anyMatch(message -> message.contains("path=/idp/oauth/token"));
@@ -133,10 +138,14 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
         List.of("ROLE_USER"),
         List.of("transactions:read"));
 
-    var redirectLocation = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
+    var callbackResult = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
 
-    assertLoginFailureRedirect(redirectLocation, SECRET_RETURN_URL);
+    assertLoginFailureRedirect(
+        callbackResult.getResponseHeaders().getLocation(), SECRET_RETURN_URL);
     assertSanitizedLogs(authorizationRequest.state(), SECRET_AUTH_CODE);
+    // Token and JWKS transport failures escape the security chain to the dedicated handler.
+    assertThat(transportHandlerListAppender.list).hasSize(1);
+    assertLoginFailureAudited(callbackResult, authorizationRequest);
     assertThat(logMessages())
         .anyMatch(
             message ->
@@ -162,10 +171,14 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
         List.of("ROLE_USER"),
         List.of("transactions:read"));
 
-    var redirectLocation = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
+    var callbackResult = executeCallback(authorizationRequest, SECRET_AUTH_CODE);
 
-    assertLoginFailureRedirect(redirectLocation, SECRET_RETURN_URL);
+    assertLoginFailureRedirect(
+        callbackResult.getResponseHeaders().getLocation(), SECRET_RETURN_URL);
     assertSanitizedLogs(authorizationRequest.state(), SECRET_AUTH_CODE);
+    // Spring Security wraps userinfo failures as authentication failures handled by SecurityConfig.
+    assertThat(transportHandlerListAppender.list).isEmpty();
+    assertLoginFailureAudited(callbackResult, authorizationRequest);
     assertThat(logMessages())
         .anyMatch(
             message ->
@@ -193,8 +206,10 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
                           () -> {
                             startLatch.await(5, TimeUnit.SECONDS);
                             return executeCallback(
-                                authorizationRequest,
-                                "code-" + authorizationRequest.state().substring(0, 8));
+                                    authorizationRequest,
+                                    "code-" + authorizationRequest.state().substring(0, 8))
+                                .getResponseHeaders()
+                                .getLocation();
                           }))
               .toList();
 
@@ -244,23 +259,21 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
         authorizationResult.getResponseCookies().getFirst(BROWSER_BINDING_COOKIE_NAME).getValue());
   }
 
-  private URI executeCallback(AuthorizationRequest authorizationRequest, String code) {
-    var callbackResult =
-        webTestClient
-            .get()
-            .uri(
-                UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
-                    .queryParam("code", code)
-                    .queryParam("state", authorizationRequest.state())
-                    .build()
-                    .toUriString())
-            .cookie(BROWSER_BINDING_COOKIE_NAME, authorizationRequest.binding())
-            .exchange()
-            .expectStatus()
-            .is3xxRedirection()
-            .returnResult(Void.class);
-
-    return callbackResult.getResponseHeaders().getLocation();
+  private FluxExchangeResult<Void> executeCallback(
+      AuthorizationRequest authorizationRequest, String code) {
+    return webTestClient
+        .get()
+        .uri(
+            UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                .queryParam("code", code)
+                .queryParam("state", authorizationRequest.state())
+                .build()
+                .toUriString())
+        .cookie(BROWSER_BINDING_COOKIE_NAME, authorizationRequest.binding())
+        .exchange()
+        .expectStatus()
+        .is3xxRedirection()
+        .returnResult(Void.class);
   }
 
   private void assertLoginFailureRedirect(URI redirectLocation, String expectedReturnUrl) {
@@ -277,6 +290,14 @@ class OAuth2CallbackDiagnosticsIntegrationTest extends AbstractIntegrationTest {
     }
 
     assertThat(redirectQueryParams.getFirst("returnUrl")).isEqualTo(expectedReturnUrl);
+  }
+
+  private void assertLoginFailureAudited(
+      FluxExchangeResult<Void> callbackResult, AuthorizationRequest authorizationRequest) {
+    assertSingleAuditEvent(callbackResult, "anonymous", "OAUTH2_LOGIN_FAILURE", 302)
+        .doesNotContain(authorizationRequest.state())
+        .doesNotContain(SECRET_AUTH_CODE)
+        .doesNotContain("user@example.com");
   }
 
   private void assertSanitizedLogs(String state, String code) {

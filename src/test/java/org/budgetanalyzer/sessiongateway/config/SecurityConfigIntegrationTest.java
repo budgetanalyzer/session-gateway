@@ -182,6 +182,14 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
         .doesNotContainKey("refresh_token")
         .doesNotContainKey("token_expires_at");
 
+    assertSingleAuditEvent(callbackResult, "internal-user-456", "OAUTH2_LOGIN_SUCCESS", 302)
+        .doesNotContain(sessionCookie.getValue())
+        .doesNotContain(SessionTokenDigest.sha256Hex(sessionCookie.getValue()))
+        .doesNotContain(state)
+        .doesNotContain("test-code")
+        .doesNotContain("user@example.com")
+        .doesNotContain("Test User");
+
     assertThat(readHashEntries(AUTHORIZATION_REQUEST_KEY_PREFIX + state)).isEmpty();
 
     var userInfo =
@@ -253,6 +261,9 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
         UriComponentsBuilder.fromUri(redirectLocation).build().getQueryParams();
     assertThat(redirectQueryParams.getFirst("error")).isEqualTo("auth_failed");
     assertThat(redirectQueryParams.getFirst("returnUrl")).isNull();
+    assertSingleAuditEvent(callbackResult, "anonymous", "OAUTH2_LOGIN_FAILURE", 302)
+        .doesNotContain(state)
+        .doesNotContain("test-code");
   }
 
   @Test
@@ -306,6 +317,9 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
         UriComponentsBuilder.fromUri(redirectLocation).build().getQueryParams();
     assertThat(redirectQueryParams.getFirst("error")).isEqualTo("auth_failed");
     assertThat(redirectQueryParams.getFirst("returnUrl")).isNull();
+    assertSingleAuditEvent(callbackResult, "anonymous", "OAUTH2_LOGIN_FAILURE", 302)
+        .doesNotContain(state)
+        .doesNotContain("test-code");
   }
 
   @Test
@@ -421,6 +435,9 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
         UriComponentsBuilder.fromUri(redirectLocation).build().getQueryParams();
     assertThat(redirectQueryParams.getFirst("error")).isEqualTo("auth_failed");
     assertThat(redirectQueryParams.getFirst("returnUrl")).isEqualTo("/dashboard");
+    assertSingleAuditEvent(callbackResult, "anonymous", "OAUTH2_LOGIN_FAILURE", 302)
+        .doesNotContain(state)
+        .doesNotContain("test-code");
   }
 
   @Test
@@ -485,6 +502,67 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(redirectLocation.getPath()).isEqualTo("/oops");
     assertThat(callbackResult.getResponseCookies().keySet())
         .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
+    assertSingleAuditEvent(callbackResult, "anonymous", "OAUTH2_LOGIN_FAILURE", 302)
+        .doesNotContain(state)
+        .doesNotContain("user@example.com");
+  }
+
+  @Test
+  void oauth2CallbackRedirectsToOopsThroughUnexpectedFailureHandlerWhenStateRecordIsMalformed() {
+    var authorizationResult =
+        webTestClient
+            .get()
+            .uri("/oauth2/authorization/idp")
+            .exchange()
+            .expectStatus()
+            .is3xxRedirection()
+            .returnResult(Void.class);
+
+    var state =
+        UriComponentsBuilder.fromUri(authorizationResult.getResponseHeaders().getLocation())
+            .build()
+            .getQueryParams()
+            .getFirst("state");
+    assertThat(state).isNotBlank();
+    state = URLDecoder.decode(state, StandardCharsets.UTF_8);
+    var stateKey = AUTHORIZATION_REQUEST_KEY_PREFIX + state;
+    reactiveStringRedisTemplate
+        .unlink(stateKey)
+        .then(reactiveStringRedisTemplate.opsForValue().set(stateKey, "deliberately-not-a-hash"))
+        .block();
+
+    try {
+      var callbackResult =
+          webTestClient
+              .get()
+              .uri(
+                  UriComponentsBuilder.fromPath("/login/oauth2/code/idp")
+                      .queryParam("code", "test-code")
+                      .queryParam("state", state)
+                      .build()
+                      .toUriString())
+              .cookie(
+                  BROWSER_BINDING_COOKIE_NAME,
+                  authorizationResult
+                      .getResponseCookies()
+                      .getFirst(BROWSER_BINDING_COOKIE_NAME)
+                      .getValue())
+              .exchange()
+              .expectStatus()
+              .isFound()
+              .expectHeader()
+              .location("/oops")
+              .returnResult(Void.class);
+
+      assertThat(callbackResult.getResponseCookies().keySet())
+          .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
+      assertSingleAuditEvent(callbackResult, "anonymous", "OAUTH2_LOGIN_FAILURE", 302)
+          .doesNotContain(state)
+          .doesNotContain("test-code");
+      wireMockServer.verify(0, postRequestedFor(urlEqualTo("/idp/oauth/token")));
+    } finally {
+      reactiveStringRedisTemplate.unlink(stateKey).block();
+    }
   }
 
   @Test
@@ -547,6 +625,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
     assertThat(redirectLocation.getPath()).isEqualTo("/oops");
     assertThat(callbackResult.getResponseCookies().keySet())
         .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
+    assertSingleAuditEvent(callbackResult, "anonymous", "OAUTH2_LOGIN_FAILURE", 302);
     wireMockServer.verify(1, postRequestedFor(urlEqualTo(USER_SYNC_PATH)));
     assertThat(
             reactiveStringRedisTemplate
@@ -644,6 +723,7 @@ class SecurityConfigIntegrationTest extends AbstractIntegrationTest {
       assertThat(redirectLocation.getPath()).isEqualTo("/oops");
       assertThat(callbackResult.getResponseCookies().keySet())
           .doesNotContain(PUBLIC_SESSION_COOKIE_NAME);
+      assertSingleAuditEvent(callbackResult, "anonymous", "OAUTH2_LOGIN_FAILURE", 302);
 
       wireMockServer.verify(
           1,

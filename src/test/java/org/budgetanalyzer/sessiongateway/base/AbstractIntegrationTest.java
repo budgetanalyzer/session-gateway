@@ -6,21 +6,32 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
 import java.util.List;
 
+import org.assertj.core.api.AbstractStringAssert;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.reactive.server.ExchangeResult;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+
+import org.budgetanalyzer.service.audit.AuditLogger;
+import org.budgetanalyzer.service.reactive.http.ReactiveCorrelationIdFilter;
 import org.budgetanalyzer.sessiongateway.config.TestContainersConfig;
 import org.budgetanalyzer.sessiongateway.config.WireMockConfig;
 
@@ -34,6 +45,10 @@ public abstract class AbstractIntegrationTest {
   @Autowired protected WebTestClient webTestClient;
 
   @Autowired protected WireMockServer wireMockServer;
+
+  private final Logger auditLogbackLogger =
+      (Logger) LoggerFactory.getLogger(AuditLogger.LOGGER_NAME);
+  private final ListAppender<ILoggingEvent> auditListAppender = new ListAppender<>();
 
   @DynamicPropertySource
   static void configureProperties(DynamicPropertyRegistry registry) {
@@ -51,6 +66,38 @@ public abstract class AbstractIntegrationTest {
   void resetWireMock() {
     wireMockServer.resetAll();
     stubOidcDiscovery();
+  }
+
+  @BeforeEach
+  void attachAuditAppender() {
+    auditListAppender.list.clear();
+    auditListAppender.start();
+    auditLogbackLogger.addAppender(auditListAppender);
+  }
+
+  @AfterEach
+  void detachAuditAppender() {
+    auditLogbackLogger.detachAppender(auditListAppender);
+    auditListAppender.stop();
+  }
+
+  /**
+   * Asserts that exactly one audit event was emitted with the given fields and the response's
+   * correlation ID.
+   */
+  protected AbstractStringAssert<?> assertSingleAuditEvent(
+      ExchangeResult exchangeResult, String actor, String operation, int outcome) {
+    var correlationId =
+        exchangeResult
+            .getResponseHeaders()
+            .getFirst(ReactiveCorrelationIdFilter.CORRELATION_ID_HEADER);
+    assertThat(correlationId).isNotBlank();
+    assertThat(auditListAppender.list).hasSize(1);
+    return assertThat(auditListAppender.list.getFirst().getFormattedMessage())
+        .contains("\"actor\":\"" + actor + "\"")
+        .contains("\"operation\":\"" + operation + "\"")
+        .contains("\"outcome\":" + outcome + ",")
+        .contains("\"correlationId\":\"" + correlationId + "\"");
   }
 
   protected void stubOidcDiscovery() {
