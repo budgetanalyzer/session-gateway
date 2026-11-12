@@ -34,7 +34,7 @@ State records are immutable. Login initiation generates a fresh random state for
 state values must never be reused or recreated after consumption or expiry. Creation uses a small
 Redis script to reject an existing key and write the complete hash plus its configured
 `session.oauth2-state-ttl-seconds` TTL atomically. Its `TYPE`, `HSET`, and `EXPIRE` commands, plus
-`EVALSHA`/`EVAL`, are already in the Session Gateway Redis allowlist from hardening plan 01.
+`EVALSHA`/`EVAL`, are already in the orchestration-owned Session Gateway Redis ACL allowlist.
 No additional Redis permissions are required.
 
 On both successful and denial/error callbacks, the repository:
@@ -66,8 +66,11 @@ and let those records expire. No migration or compatibility reader is provided. 
 is required for this additive hash field; an optional local state reset uses the orchestration
 `./scripts/ops/flush-redis.sh` procedure.
 
-See [hardening evidence](research/security-consensus-hardening-evidence.md) for phase 1 checks and
-handoff details. Live browser proof belongs to hardening plan 02.1 phase 3.
+The decision and its rejected alternatives are recorded in
+[ADR 010](../../orchestration/docs/decisions/010-oauth-callback-browser-binding.md). Orchestration's
+`verify-oauth-browser-binding.py` proves cross-site cookie delivery and rejection of an unbound
+callback through the live stack; see
+[Session Edge Authorization](../../orchestration/docs/architecture/session-edge-authorization-pattern.md#session-gateway---auth-layer).
 
 ## Token Protection
 
