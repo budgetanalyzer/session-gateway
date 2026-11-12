@@ -280,7 +280,9 @@ Callback redirect validation remains in place, including the failure path that p
 return URLs for retries.
 
 The cap bounds the stored return URL per record, not the number of anonymous login attempts.
-Rate limits and Redis memory controls remain necessary (hardening plan 04, phase 1). Existing
+Ingress rate limits and the Redis memory budget remain necessary; anonymous OAuth-state growth is
+an accepted risk in orchestration's
+[security architecture](../../orchestration/docs/architecture/security-architecture.md#accepted-risks). Existing
 pending state keeps its original contents and TTL until consumed or expired; start fresh logins
 when checking these changes. No schema migration or local cluster reset is required.
 
@@ -293,4 +295,4 @@ determine the callback URI sent to the IdP or stored in Redis.
 
 When unset, the default remains `{baseUrl}/login/oauth2/code/{registrationId}` for local runs.
 That default still derives the base URL from the request; deployments must explicitly configure
-the fixed value to remove that dependency. This phase does not change ingress header handling.
+the fixed value to remove that dependency.
