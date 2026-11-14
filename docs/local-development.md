@@ -4,7 +4,7 @@
 
 - Java 25
 - Shared local platform running from `../orchestration` (`tilt up`)
-- Redis available to the service with the `session-gateway` ACL user
+- The `redis-session` instance available to the service with the `session-gateway` ACL user
 - Permission-service reachable at the configured `PERMISSION_SERVICE_URL` (required for login)
 
 **Shared platform setup**: See [getting-started.md](https://github.com/budgetanalyzer/orchestration/blob/main/docs/development/getting-started.md)
@@ -28,7 +28,7 @@ cd ../orchestration
 tilt up
 
 # In separate terminals, expose the dependencies used by direct bootRun
-kubectl port-forward -n infrastructure pod/redis-0 6379:6379
+kubectl port-forward -n infrastructure pod/redis-session-0 6379:6379
 kubectl port-forward deployment/permission-service 8086:8086
 
 cd ../session-gateway

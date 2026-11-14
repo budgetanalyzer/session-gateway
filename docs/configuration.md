@@ -12,7 +12,7 @@
 | `PERMISSION_SERVICE_URL` | Base URL for permission-service | `http://permission-service:8086` |
 | `PERMISSION_SERVICE_LOGIN_TIMEOUT` | Maximum duration for the login user-sync call; on expiry the callback redirects to `/oops` without creating a session | `5s` |
 | `PERMISSION_SERVICE_AUTHORIZATION_REFRESH_TIMEOUT` | Maximum duration for the heartbeat authorization lookup | `2s` |
-| `SPRING_DATA_REDIS_HOST` | Redis host for session storage | `localhost` |
+| `SPRING_DATA_REDIS_HOST` | `redis-session` host for session storage | `localhost` (base profile); `redis-session.infrastructure` (Kubernetes profile) |
 | `SPRING_DATA_REDIS_PORT` | Redis port for session storage | `6379` |
 | `SPRING_DATA_REDIS_USERNAME` | Redis ACL username | `session-gateway` |
 | `SPRING_DATA_REDIS_PASSWORD` | Redis ACL password | — |
@@ -48,10 +48,10 @@ and correlation IDs, but never session tokens, session digests, OAuth values, or
 ## Health Probes
 
 Actuator liveness and readiness probes are enabled in every environment. Liveness contains only
-Spring's `livenessState` indicator. Readiness contains `readinessState` and `redis`, because Redis
-is required to authenticate and manage browser sessions. Permission-service is intentionally not
-part of readiness: it is a downstream dependency, and its outage must not remove the entire auth
-lane from service.
+Spring's `livenessState` indicator. Readiness contains `readinessState` and `redis`, because the
+`redis-session` instance is required to authenticate and manage browser sessions.
+Permission-service is intentionally not part of readiness: it is a downstream dependency, and its
+outage must not remove the entire auth lane from service.
 
 - `/actuator/health/liveness` reports whether the process should be restarted.
 - `/actuator/health/readiness` reports unavailable when Redis cannot be reached.
@@ -73,4 +73,4 @@ property schema.
 | 9002 | ext_authz HTTP service | Called by Istio ingress Envoy proxy on `/api/*` |
 | 8090 | ext_authz health endpoint | Health checks |
 | 8086 | Permission Service | User roles and permissions |
-| 6379 | Redis | Session storage |
+| 6379 | redis-session | Session storage |

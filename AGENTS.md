@@ -145,7 +145,7 @@ Browser → Istio Ingress (:443)
   ├─ /oauth2/*, /auth/*, /login/oauth2/*, /logout
   │      → Session Gateway (:8081) ← OAuth2 → Auth0
   │           ├─ Permission Service (:8086) [login sync; heartbeat authorization]
-  │           └─ Redis (:6379) [session:*]
+  │           └─ redis-session (:6379) [session:*]
   ├─ /login, /* → NGINX (:8080) → budget-analyzer-web
   └─ /api/* → ext_authz HTTP service (:9002) → NGINX (:8080) → Backend Services
 ```
@@ -169,7 +169,7 @@ grep -r "oauth2" src/main/resources/
 - **9002**: ext_authz HTTP service (called by the ingress Envoy proxy on `/api/*`)
 - **8090**: ext_authz health endpoint
 - **8086**: Permission Service (user roles and permissions)
-- **6379**: Redis (session storage)
+- **6379**: redis-session (session storage)
 
 ## Technology Stack
 
@@ -194,7 +194,7 @@ grep "implementation" build.gradle.kts
 - **Service Common (service-web)**: Reactive HTTP logging, correlation IDs, safe logging, exception handling
 - **Permission Client**: WebClient for reactive HTTP calls to permission-service
 - **Build**: Gradle with Kotlin DSL
-- **Cache**: Redis (AOF persistence)
+- **Session store**: redis-session (AOF persistence)
 - **Identity Provider**: Auth0 (OAuth2/OIDC)
 
 **Service-Common Integration**:
@@ -464,14 +464,14 @@ For focused debugging, run Session Gateway locally only after the shared platfor
 
 **Quick Commands**:
 ```bash
-REDIS_OPS_USERNAME=$(kubectl get secret redis-bootstrap-credentials -n infrastructure -o jsonpath='{.data.ops-username}' | base64 -d)
-REDIS_OPS_PASSWORD=$(kubectl get secret redis-bootstrap-credentials -n infrastructure -o jsonpath='{.data.ops-password}' | base64 -d)
+REDIS_SESSION_OPS_USERNAME=$(kubectl get secret redis-session-bootstrap-credentials -n infrastructure -o jsonpath='{.data.ops-username}' | base64 -d)
+REDIS_SESSION_OPS_PASSWORD=$(kubectl get secret redis-session-bootstrap-credentials -n infrastructure -o jsonpath='{.data.ops-password}' | base64 -d)
 
 # Check if Redis is accessible
-kubectl exec -n infrastructure pod/redis-0 -- redis-cli --tls --cacert /tls-ca/ca.crt --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning PING
+kubectl exec -n infrastructure pod/redis-session-0 -- redis-cli --tls --cacert /tls-ca/ca.crt --user "$REDIS_SESSION_OPS_USERNAME" --pass "$REDIS_SESSION_OPS_PASSWORD" --no-auth-warning PING
 
 # View session data in Redis
-kubectl exec -n infrastructure pod/redis-0 -- redis-cli --tls --cacert /tls-ca/ca.crt --user "$REDIS_OPS_USERNAME" --pass "$REDIS_OPS_PASSWORD" --no-auth-warning KEYS "session:*"
+kubectl exec -n infrastructure pod/redis-session-0 -- redis-cli --tls --cacert /tls-ca/ca.crt --user "$REDIS_SESSION_OPS_USERNAME" --pass "$REDIS_SESSION_OPS_PASSWORD" --no-auth-warning KEYS "session:*"
 
 # Check application health
 curl http://localhost:8081/actuator/health
@@ -492,7 +492,8 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 
 **Session Not Persisting**:
 - Verify Redis connection in application.yml
-- Check Redis StatefulSet pod is running: `kubectl get pod -n infrastructure redis-0`
+- Check the `redis-session` StatefulSet pod is running:
+  `kubectl get pod -n infrastructure -l app=redis-session`
 - Inspect Redis session keys with the `redis-ops` credentials shown above
 
 **Session Not Created After Login**:
@@ -527,7 +528,7 @@ curl -v http://localhost:8081/oauth2/authorization/idp
 **Downstream (Sends To)**:
 - **Auth0**: OAuth2 authorization-code flow at login, logout return URL
 - **Permission Service** (port 8086): Synchronizes login grants and returns current heartbeat authorization (no bearer auth — platform network isolation)
-- **Redis**: Session storage as hashes (`session:{digest}`) — read by both Session Gateway and the ext_authz HTTP service
+- **redis-session**: Session storage as hashes (`session:{digest}`) — read by both Session Gateway and the ext_authz HTTP service
 
 **Data Flow**:
 1. Browser loads `/login` through Istio ingress → NGINX → frontend
@@ -614,7 +615,7 @@ Session Gateway is part of the Budget Analyzer microservices ecosystem:
 
 **Runtime Dependencies**:
 - **Permission Service**: Provides user roles and permissions (called at login and heartbeat, no bearer auth)
-- **Redis**: Session persistence (hashes under `session:{digest}`)
+- **redis-session**: Session persistence (hashes under `session:{digest}`)
 - **Auth0**: Identity provider (login and logout)
 
 **Platform Routing Peers**:
