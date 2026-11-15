@@ -5,4 +5,4 @@ spring:
   # Redis configuration for Kubernetes
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:redis}
+      host: ${SPRING_DATA_REDIS_HOST:redis-session.infrastructure}

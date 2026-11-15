@@ -15,7 +15,7 @@ Browser → Istio Ingress (:443)
   ├─ /oauth2/*, /auth/*, /login/oauth2/*, /logout
   │      → Session Gateway (:8081) ← OAuth2 → Auth0
   │           ├─ Permission Service (:8086) [login sync; heartbeat authorization]
-  │           └─ Redis (:6379) [session:*]
+  │           └─ redis-session (:6379) [session:*]
   ├─ /login, /* → NGINX (:8080) → budget-analyzer-web
   └─ /api/* → ext-authz HTTP service (:9002) → NGINX (:8080) → Backend Services
 ```

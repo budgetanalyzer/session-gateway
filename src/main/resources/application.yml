@@ -34,7 +34,7 @@ spring:
   # Redis configuration for session storage
   data:
     redis:
-      host: localhost  # Use 'redis' when running in Docker
+      host: localhost  # Kubernetes profile defaults to redis-session.infrastructure
       port: 6379
       username: ${SPRING_DATA_REDIS_USERNAME:session-gateway}
       password: ${SPRING_DATA_REDIS_PASSWORD:}
